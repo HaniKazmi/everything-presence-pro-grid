@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import time
 from collections.abc import AsyncIterator
 from collections.abc import Callable
 from collections.abc import Coroutine
@@ -45,6 +46,23 @@ from ._helpers import _sync_firmware_repair_issue
 from ._helpers import is_valid_zone_slots_shape
 
 _LOGGER = logging.getLogger(__name__)
+
+# Pre-flight reboot before an OTA. A freshly-booted device has its full heap; on
+# a no-PSRAM ESP32 the resident BLE stack + fragmentation otherwise leave too
+# little for the OTA's mbedTLS handshake, and the download fails mid-flight with
+# ESP_ERR_HTTP_CONNECT. We press the device's Restart Device button and wait for
+# the firmware_version sensor to cycle offline -> online before handing it the
+# OTA manifest. Tunables:
+_REBOOT_POLL_INTERVAL_S = 2
+# Soft: how long to watch for the device to drop off after the restart press.
+# A clean reboot closes the API connection within a second or two, so this only
+# needs to cover the disconnect-detection lag. Kept short so a fast reboot whose
+# offline blip we never observe (or a no-op press) adds little latency before
+# the hard online wait below — which is the real correctness guard.
+_REBOOT_OFFLINE_TIMEOUT_S = 12
+# Hard: how long to wait for it to come back. Exceeding this means the reboot
+# didn't recover, so we raise rather than flash a non-responsive device.
+_REBOOT_ONLINE_TIMEOUT_S = 90
 
 # Transient errors that justify retrying the build-flags fetch on next call.
 # Anything else (AttributeError, TypeError, ...) signals a programmer bug and
@@ -650,6 +668,23 @@ class DeviceManager:
             )
 
         async with lock:
+            # Pre-flight: reboot the device so the OTA flashes from a fresh,
+            # unfragmented heap. On a no-PSRAM ESP32 the resident BLE stack
+            # otherwise leaves too little for the mbedTLS handshake and the
+            # download dies mid-flight with ESP_ERR_HTTP_CONNECT (field-confirmed
+            # at a ~775 B heap low-water mark; a manual reboot reliably fixes it).
+            # Best-effort: a failed reboot must not block the update — the device
+            # may still have enough headroom, and if it's truly unreachable the
+            # set_update_manifest below fails loudly on its own.
+            try:
+                await self.async_reboot_and_wait(mac)
+            except Exception:
+                # Strictly best-effort: any failure (no button, device didn't
+                # return, or a stray error from the button-press service) must
+                # not block the update. CancelledError is BaseException, so a
+                # real cancellation still propagates.
+                _LOGGER.warning("Pre-OTA reboot of %s failed; attempting the update anyway", mac, exc_info=True)
+
             # Prefer the live session if one exists — opening a second connection
             # would race against the device's per-API-client connection cap.
             session = self.get_session(mac)
@@ -690,6 +725,91 @@ class DeviceManager:
                     translation_key="ota_trigger_failed",
                     translation_placeholders={"mac": mac, "error": str(err)},
                 ) from err
+
+    async def async_reboot_and_wait(self, mac: str) -> None:
+        """Reboot a device and block until it has rebooted and reconnected.
+
+        Presses the device's ESPHome **Restart Device** button (the entity whose
+        device_class is ``restart``) and waits for its firmware_version sensor to
+        cycle offline -> online, confirming a fresh boot. A freshly-booted device
+        has the heap headroom the OTA's TLS handshake needs — the resident BLE
+        stack otherwise leaves too little on a no-PSRAM ESP32 and the download
+        fails mid-flight with ESP_ERR_HTTP_CONNECT. The button exists on in-field
+        firmware, so this works on the old build we're updating *from*.
+
+        Raises HomeAssistantError when no restart button is found or the device
+        never reports a version again within the online timeout. Callers that
+        treat the reboot as best-effort must catch it.
+        """
+        from ..const import DOMAIN as _DOMAIN
+
+        dev = self.devices.get(mac)
+        if dev is None or dev.device_id is None:
+            raise HomeAssistantError(
+                f"Device {mac} has no registry device_id; cannot reboot before OTA",
+                translation_domain=_DOMAIN,
+                translation_key="restart_button_unavailable",
+            )
+        device_id = dev.device_id
+
+        ent_reg = er.async_get(self._hass)
+        entries = er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True)
+        restart_entity_id = next(
+            (
+                entry.entity_id
+                for entry in entries
+                if entry.platform == "esphome"
+                and entry.domain == "button"
+                and "restart" in (entry.device_class, entry.original_device_class)
+            ),
+            None,
+        )
+        if restart_entity_id is None:
+            raise HomeAssistantError(
+                f"No Restart Device button found for {mac}; cannot reboot before OTA",
+                translation_domain=_DOMAIN,
+                translation_key="restart_button_unavailable",
+            )
+
+        _LOGGER.info("Rebooting %s before OTA to free heap (pressing %s)", mac, restart_entity_id)
+        await self._hass.services.async_call("button", "press", {"entity_id": restart_entity_id}, blocking=True)
+
+        # Confirm a real reboot before the OTA flashes: the firmware_version
+        # sensor must first drop off (soft — we may miss the disconnect window,
+        # so a still-connected pre-reboot reading isn't mistaken for "back"),
+        # then report again (hard — raise if it never returns). The device's
+        # entity set is stable across a reboot, so reuse the entries scanned
+        # above on every poll instead of re-scanning the registry each time.
+        if not await self._poll_until(
+            lambda: self.read_firmware_version(device_id, entries=entries) is None,
+            _REBOOT_OFFLINE_TIMEOUT_S,
+        ):
+            # Never saw it drop off — the press likely didn't reboot it. Don't
+            # pretend it worked: log it, then still wait for the online check.
+            _LOGGER.warning(
+                "%s never went offline after the restart press; the reboot may not have taken — continuing anyway",
+                mac,
+            )
+        if not await self._poll_until(
+            lambda: self.read_firmware_version(device_id, entries=entries) is not None,
+            _REBOOT_ONLINE_TIMEOUT_S,
+        ):
+            raise HomeAssistantError(
+                f"Device {mac} did not come back online within {_REBOOT_ONLINE_TIMEOUT_S}s after reboot",
+                translation_domain=_DOMAIN,
+                translation_key="device_reboot_timeout",
+            )
+        _LOGGER.info("%s reconnected after reboot", mac)
+
+    async def _poll_until(self, predicate: Callable[[], bool], timeout_s: float) -> bool:
+        """Poll ``predicate`` every ``_REBOOT_POLL_INTERVAL_S`` until it returns
+        true or ``timeout_s`` elapses; returns whether it became true in time."""
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if predicate():
+                return True
+            await asyncio.sleep(_REBOOT_POLL_INTERVAL_S)
+        return False
 
     def _read_sensor_state(
         self, device_id: str | None, suffix: str, *, entries: list[er.RegistryEntry] | None = None

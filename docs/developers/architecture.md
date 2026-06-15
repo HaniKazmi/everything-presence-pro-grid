@@ -210,6 +210,20 @@ hook checks the toggle before restarting scan, so a failed OTA can't
 silently override the user's preference. The BLE controller stack
 (~10-15 KB) stays loaded regardless.
 
+**Pre-OTA reboot** (`DeviceManager.async_reboot_and_wait`): because that
+resident BLE stack plus heap fragmentation can leave a no-PSRAM ESP32 with too
+little contiguous heap for the OTA's mbedTLS handshake — the download then dies
+mid-flight with `ESP_ERR_HTTP_CONNECT` (field-confirmed at a ~775 B `Heap Min
+Free`) — `async_trigger_ota` always reboots the device first. It presses the
+ESPHome **Restart Device** button (present on in-field firmware, so it works on
+the build being updated *from*) and waits for the `firmware_version` sensor to
+cycle offline → online before pushing `set_update_manifest`, so the device
+flashes from a fresh, unfragmented heap. The reboot is **best-effort**: if no
+restart button is found or the device doesn't return, the OTA is still
+attempted. Success/failure is still judged by the Repairs flow polling
+`firmware_version` for the new pinned version (the pre-flight reboot's
+old-version reconnect doesn't count as success).
+
 ## HA Integration
 
 The Python integration is a thin layer between the device and the frontend.
