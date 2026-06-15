@@ -93,6 +93,11 @@ interface FixtureScenario {
 	assisted_clear_timeout?: number;
 	ticks: FixtureTick[];
 	expected: FixtureExpected[];
+	// Per-frame array of emitted detection-log wire codes (in emit order),
+	// GENERATED FROM THE FIRMWARE ENGINE (the source of truth). The TS replica
+	// must emit the same codes for each frame — a mismatch is a real parity bug
+	// (see the file header). Empty `[]` for frames with no transition.
+	expected_events: string[][];
 }
 
 interface ParityFixtures {
@@ -328,6 +333,26 @@ function validateScenario(name: string, s: FixtureScenario): void {
 			`ticks (${s.ticks.length}) and expected (${s.expected.length}) lengths differ`,
 		);
 	}
+	// Mirror of the C++ harness's REQUIRE(expected_events) + length check. The
+	// field is the firmware-generated ground truth for emitted wire codes.
+	if (!Array.isArray(s.expected_events)) {
+		fail('"expected_events" must be an array');
+	}
+	if (s.ticks.length !== s.expected_events.length) {
+		fail(
+			`ticks (${s.ticks.length}) and expected_events (${s.expected_events.length}) lengths differ`,
+		);
+	}
+	s.expected_events.forEach((codes, i) => {
+		if (!Array.isArray(codes)) {
+			fail(`expected_events ${i}: must be an array of wire-code strings`);
+		}
+		codes.forEach((c, j) => {
+			if (typeof c !== "string") {
+				fail(`expected_events ${i}[${j}]: wire code must be a string`);
+			}
+		});
+	});
 	s.ticks.forEach((tick, i) => {
 		if (typeof tick.t !== "number") fail(`tick ${i}: missing numeric "t"`);
 		if (!Array.isArray(tick.targets)) {
@@ -486,6 +511,15 @@ describe("Shared-fixture parity (parity_scenarios.json drives both engines)", ()
 					// only: the TS engine reports status alone (pending-position
 					// display is a render concern handled via targetPrevXY).
 				});
+
+				// Detection-log event parity: the TS replica must emit the SAME
+				// wire codes (in emit order) the FIRMWARE engine produced for
+				// this frame (expected_events is firmware-generated ground
+				// truth). A mismatch here is a genuine firmware-replica parity
+				// bug, not a fixture nit - see the file header.
+				expect(result.events, `tick ${i}: emitted events`).toEqual(
+					scenario.expected_events[i],
+				);
 			});
 		});
 	}
