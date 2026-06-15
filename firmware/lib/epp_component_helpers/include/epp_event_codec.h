@@ -112,12 +112,20 @@ class EventQueue {
   static constexpr int CAP = 32;
 
   // Bytes serialize() holds back from the BoundedWriter so the tail always
-  // fits: 2 for the caller's trailing "]}" plus a worst-case drop marker as the
-  // last array element. The marker is `,"xd:NNNNN"` = 1 (comma) + 1 (open
-  // quote) + 3 ("xd:") + up to 5 digits + 1 (close quote) = 11 bytes. Total 13.
-  // (Held-back budget is generous-by-design: it guarantees the closing bytes
-  // and the marker always fit even when every event was truncated.)
-  static constexpr size_t CLOSING_RESERVE = 13;
+  // fits. NOTE: BoundedWriter::remaining() INCLUDES the NUL slot, so the largest
+  // payload string still writable is remaining() - 1 — the reserve must account
+  // for that extra slot. The held-back tail must cover the caller's trailing
+  // "]}" (2 bytes) plus a worst-case drop marker as the last array element. The
+  // marker is `,"xd:<n>"` = 1 (comma) + 1 (open quote) + 3 ("xd:") + the digits
+  // + 1 (close quote). total_dropped is cast to int16_t, so the widest possible
+  // value is "-32768" (6 chars) → marker = 1+1+3+6+1 = 12 payload bytes. Tail =
+  // 12 (marker) + 2 ("]}") = 14 payload bytes, which needs remaining() >= 15
+  // (the +1 is the NUL-slot accounting). So reserve 15 — bulletproof for any
+  // int16_t drop count (5-digit positive counts only need 14, but 15 also
+  // covers the pathological negative cast). Held-back budget is
+  // generous-by-design: it guarantees the closing bytes and the marker always
+  // fit even when every event was truncated.
+  static constexpr size_t CLOSING_RESERVE = 15;
 
   // Append an event, evicting the oldest (and counting the drop) if full.
   void push(const Event &e) {

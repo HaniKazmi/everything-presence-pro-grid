@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "epp_event_codec.h"
 #include "epp_json_writer.h"
@@ -153,6 +154,106 @@ TEST_CASE("EventQueue serialize stops before overflowing a tight buffer") {
   REQUIRE(s.size() >= 2);
   CHECK(s.substr(s.size() - 2) == "]}");
   CHECK(s.find("\"xd:") != std::string::npos);
+}
+
+// Open `{"ev":[`, serialize the body into a buffer of exactly `cap` bytes, then
+// close with `]}` — mirroring the component. Asserts the whole payload closes
+// cleanly at this buffer size: writer stays ok(), output ends with "]}", and
+// brackets/quotes are balanced (structurally valid JSON). Returns the string so
+// callers can add their own assertions.
+static std::string serialize_full_payload(const EventQueue &q, size_t cap) {
+  std::vector<char> buf(cap);
+  BoundedWriter w(buf.data(), buf.size());
+  w.printf("{\"ev\":[");  // 7-byte opener, as the component emits
+  REQUIRE(w.ok() == true);
+  q.serialize(w);
+  w.printf("]}");
+
+  // The whole tail must fit: serialize() must have held back enough for both the
+  // appended drop marker AND the caller's closing "]}".
+  CHECK(w.ok() == true);
+  std::string s(buf.data());
+  REQUIRE(s.size() >= 2);
+  CHECK(s.substr(s.size() - 2) == "]}");
+  auto count = [&](char c) {
+    return (long)std::count(s.begin(), s.end(), c);
+  };
+  CHECK(count('[') == count(']'));
+  CHECK(count('{') == count('}'));
+  CHECK(count('"') % 2 == 0);
+  return s;
+}
+
+TEST_CASE(
+    "CLOSING_RESERVE leaves room for the closing tail at every tight boundary") {
+  // Regression for an off-by-one in CLOSING_RESERVE: remaining() INCLUDES the
+  // NUL slot, so the usable payload tail is remaining() - 1. The worst-case
+  // appended drop marker `,"xd:<n>"` plus the caller's "]}" must always fit. If
+  // the reserve is one byte too small, serialize() can emit right up to the
+  // limit and leave NO room for the trailing "]}", producing invalid JSON
+  // (e.g. ..."xd:NN"] with no closing brace, or w.printf("]}") failing).
+  //
+  // Sweep a range of tight buffer sizes with a FULL queue of the longest codes
+  // so the body loop stops with remaining() landing on every value in the
+  // reserve window at some size — including exactly CLOSING_RESERVE, the worst
+  // case. At every size the payload must close cleanly (asserted in the helper).
+  // The buffer is always large enough to honour the reserve contract (opener +
+  // reserve). To exercise the WIDEST marker (the byte the off-by-one hides in)
+  // we drive a 5-digit drop count. This passes at CLOSING_RESERVE=15 and FAILS
+  // at 13, where the marker + "]}" no longer fit once remaining() sits at the
+  // reserve (output ends "..."xd:NNNNN"]" with the closing "}" dropped).
+  EventQueue q;
+  // 10060 pushes into CAP=32 → dropped_ = 10028, a 5-digit overflow count.
+  for (int i = 0; i < 10060; ++i) q.push({EventType::TARGET_MOVED, 1, 2, 3});
+  REQUIRE(q.dropped() >= 10000);
+  for (size_t cap = 24; cap <= 64; ++cap) {
+    CAPTURE(cap);
+    std::string s = serialize_full_payload(q, cap);
+    // Something was dropped/truncated, so an xd marker must be present.
+    CHECK(s.find("\"xd:") != std::string::npos);
+  }
+}
+
+TEST_CASE(
+    "5-digit drop marker stays inside its own reserve at the exact boundary") {
+  // Pin the precise worst case from the comment: a 5-digit drop count whose
+  // appended marker `,"xd:NNNNN"` (11 payload bytes) + the caller's "]}" (2)
+  // = 13 payload bytes lands when the body loop has left remaining() exactly at
+  // the reserve. Sweep from tiny buffers (marker only, no body emitted, count =
+  // dropped_ + all-truncated) up to roomy ones (some body emitted, marker
+  // comma-prefixed — the widest tail). At EVERY size the payload must be valid,
+  // the marker must report a 5-digit count, and the sweep must hit the
+  // comma-prefixed widest form. With CLOSING_RESERVE=13 the closing "}" is
+  // dropped at the tightest sizes (..."xd:NNNNN"]); 15 fits.
+  EventQueue q;
+  for (int i = 0; i < 10060; ++i) q.push({EventType::TARGET_MOVED, 1, 2, 3});
+  REQUIRE(q.dropped() == 10028);  // 10060 pushes − CAP(32) retained
+
+  // Matches a quoted 5-digit drop marker, optionally comma-prefixed.
+  auto find_marker = [](const std::string &s, bool comma) -> bool {
+    const std::string prefix = comma ? ",\"xd:" : "\"xd:";
+    size_t at = s.find(prefix);
+    if (at == std::string::npos) return false;
+    size_t d = at + prefix.size();  // first digit
+    int digits = 0;
+    while (d < s.size() && s[d] >= '0' && s[d] <= '9') {
+      ++d;
+      ++digits;
+    }
+    return digits == 5 && d < s.size() && s[d] == '"';
+  };
+
+  bool saw_comma_prefixed_marker = false;
+  for (size_t cap = 24; cap <= 80; ++cap) {
+    CAPTURE(cap);
+    std::string s = serialize_full_payload(q, cap);
+    // The marker reports a 5-digit count (dropped_ + any truncated body events).
+    CHECK(find_marker(s, /*comma=*/false));
+    if (find_marker(s, /*comma=*/true)) saw_comma_prefixed_marker = true;
+  }
+  // The sweep must have hit the comma-prefixed (widest tail) case at least once,
+  // proving the reserve covers the genuine worst case, not just the lone marker.
+  CHECK(saw_comma_prefixed_marker);
 }
 
 TEST_CASE("EventQueue clear resets size and dropped") {
