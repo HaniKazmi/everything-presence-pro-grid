@@ -692,4 +692,14 @@ describe("fitCellPx", () => {
 		// → 20 wins.
 		expect(fitCellPx(480, 900, 100, 20, 5)).toBe(20);
 	});
+
+	it("fitCellPx allows cells up to the desktop cap (48) when width permits", () => {
+		// 10 cols, 2000px wide → width-fit 200, capped at 48
+		expect(fitCellPx(480, 2000, 0, 10, 10, 48)).toBe(48);
+	});
+
+	it("fitCellPx still height-bounds with the desktop cap", () => {
+		// height 300 / 10 rows = 30 < cap 48 → 30 wins
+		expect(fitCellPx(2000, 2000, 300, 10, 10, 48)).toBe(30);
+	});
 });

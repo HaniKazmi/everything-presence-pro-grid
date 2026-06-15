@@ -85,6 +85,8 @@ export class EppGrid extends LitElement {
 
 	/** Measured content width of the host (px); 0 = unmeasured (e.g. unit tests). */
 	@state() private _availPx = 0;
+	/** Measured available height for the grid (px); 0 = unmeasured. Desktop only. */
+	@state() private _availHeightPx = 0;
 	private _ro?: ResizeObserver;
 
 	/* v8 ignore start -- happy-dom has no real layout/ResizeObserver callback */
@@ -123,6 +125,14 @@ export class EppGrid extends LitElement {
 	private _measureAvail(): void {
 		const w = this.clientWidth;
 		if (w && Math.abs(w - this._availPx) >= 1) this._availPx = w;
+		// Desktop only: bound the grid by the space from its top to the viewport
+		// bottom so a tall room can't overflow. Mobile uses capHeightToHalfViewport.
+		if (!this.capHeightToHalfViewport) {
+			const top = this.getBoundingClientRect().top;
+			const avail = Math.floor(window.innerHeight - top - 24); // 24px reserve
+			if (avail > 0 && Math.abs(avail - this._availHeightPx) >= 1)
+				this._availHeightPx = avail;
+		}
 	}
 	/* v8 ignore stop */
 
@@ -277,6 +287,10 @@ export class EppGrid extends LitElement {
 		// The grid adds a 2px border (×2) + (visCols-1)×1px gaps on top of the
 		// cells; subtract that from the measured width so the grid fits exactly.
 		const gridChromePx = this._availPx > 0 ? 4 + (visCols - 1) : 0;
+		// Desktop allows a larger grid + bigger cells than the 480/32 mobile-era caps.
+		const isDesktop = !this.capHeightToHalfViewport;
+		const effMaxGridPx = isDesktop ? 960 : this.maxGridPx;
+		const effMaxCellPx = isDesktop ? 48 : 32;
 		// Mobile only: cap the grid to a fraction of the viewport height so the
 		// controls panel below it keeps a fair share. 0.45 (not 0.5) because the
 		// tab bar + device dropdown sit above the panel, so 50% of the viewport
@@ -287,12 +301,12 @@ export class EppGrid extends LitElement {
 		/* v8 ignore next -- window.innerHeight read has no layout effect under happy-dom */
 		const availHeightPx = this.capHeightToHalfViewport
 			? window.innerHeight * 0.45
-			: 0;
+			: this._availHeightPx;
 		// Vertical chrome mirrors the width chrome: 2px border (×2) + (visRows-1)
 		// ×1px gaps. Subtract it so the cells fit the height budget exactly.
 		const gridChromeHpx = availHeightPx > 0 ? 4 + (visRows - 1) : 0;
 		const cellPx = fitCellPx(
-			this.maxGridPx,
+			effMaxGridPx,
 			// When measured, clamp to ≥1px so a "measured but tiny" width (chrome
 			// exceeds the available px in an extreme-narrow/transient layout) still
 			// shrinks. A negative value would read as "unmeasured" in fitCellPx and
@@ -305,6 +319,7 @@ export class EppGrid extends LitElement {
 			availHeightPx > 0 ? Math.max(1, availHeightPx - gridChromeHpx) : 0,
 			visCols,
 			visRows,
+			effMaxCellPx,
 		);
 
 		return html`

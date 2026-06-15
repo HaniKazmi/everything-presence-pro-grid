@@ -1421,7 +1421,7 @@ describe("epp-grid cell sizing (measured available width)", () => {
 		await el.updateComplete;
 
 		// With a measured-but-tiny width the grid must SHRINK, not snap to the
-		// 32px maxCell ceiling and overflow.
+		// 48px desktop maxCell ceiling and overflow.
 		const cellPx = cellPxOf(grid);
 		expect(cellPx).toBeGreaterThan(0);
 		expect(cellPx).toBeLessThan(32);
@@ -1431,13 +1431,13 @@ describe("epp-grid cell sizing (measured available width)", () => {
 
 	it("uses the ceiling cell size when the width is unmeasured", async () => {
 		// Unmeasured (_availPx === 0, the default in tests) keeps the desktop
-		// look: the cell snaps to the maxCell/ceiling, not 1px.
+		// look: the cell snaps to the desktop maxCell ceiling (48px), not 1px.
 		const el = createGrid();
 		document.body.appendChild(el);
 		await el.updateComplete;
 
 		const grid = el.shadowRoot!.querySelector(".grid") as HTMLElement;
-		expect(cellPxOf(grid)).toBe(32);
+		expect(cellPxOf(grid)).toBe(48);
 
 		document.body.removeChild(el);
 	});
@@ -1450,14 +1450,14 @@ describe("epp-grid cell sizing (measured available width)", () => {
 		const grid = el.shadowRoot!.querySelector(".grid") as HTMLElement;
 		const visCols = visColsOf(grid);
 
-		// A wide-enough measured width must leave the cell at the 32px ceiling
+		// A wide-enough measured width must leave the cell at the 48px desktop ceiling
 		// (unchanged from the unmeasured desktop look).
-		const wide = 32 * visCols + (4 + (visCols - 1)) + 100;
+		const wide = 48 * visCols + (4 + (visCols - 1)) + 100;
 		(el as unknown as { _availPx: number })._availPx = wide;
 		(el as unknown as { requestUpdate: () => void }).requestUpdate();
 		await el.updateComplete;
 
-		expect(cellPxOf(grid)).toBe(32);
+		expect(cellPxOf(grid)).toBe(48);
 
 		document.body.removeChild(el);
 	});
