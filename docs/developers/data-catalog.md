@@ -160,7 +160,7 @@ Parses Target Position, Zone State, and sensor entity updates into structured ev
         "occupancy": {"0": true, "1": false},
         "target_counts": {},
         "frame_count": 10,
-        "events": ["zo:1", "te:0:1", "sc"]
+        "events": ["te:0:1", "zo:1", "oo", "wo"]
     }
 }
 ```
@@ -541,7 +541,7 @@ Publishing (5 independent output timers):
 
 Firmware v1.2.0+ emits structured detection-log events in the zone state JSON text sensor as `"ev": [...]`. The integration passes this array through as `events` in the `subscribe_grid_targets` payload. The panel renders it as a human-readable event timeline.
 
-For older firmware (pre-1.2.0) that still publishes a `"debug_log"` string field, the panel falls back to displaying that raw string directly. `debug_log` is no longer present in current firmware.
+For older firmware (pre-1.2.0) that still publishes a `"debug_log"` string field, the panel falls back to parsing and enriching that snapshot for readability (e.g. replacing zone IDs with zone names) via `enrichDebugLog`. `debug_log` is no longer present in current firmware.
 
 #### Detection-Log Event Codes
 
