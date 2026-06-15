@@ -490,8 +490,10 @@ class TestSubscribeOtaProgress:
     ) -> None:
         """Real failure mode: when the OTA bin fetch fails at the IDF HTTP
         client layer, the actionable log line is tagged http_request.idf,
-        not http_request.ota / .update. Captured live during the
-        cross-origin-redirect heap exhaustion that motivated this PR.
+        not http_request.ota / .update. Captured live during the heap
+        exhaustion that motivated this PR — so it must surface as the
+        low-memory error, which explains the cause and the reboot-and-retry
+        remedy rather than echoing the bare ESP_ERR.
         """
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
@@ -520,7 +522,7 @@ class TestSubscribeOtaProgress:
             {
                 "state": "error",
                 "message": "HTTP Request failed: ESP_ERR_HTTP_CONNECT",
-                "error_key": "flasher.errors.ota_device_error",
+                "error_key": "flasher.errors.ota_low_memory",
             },
         )
 

@@ -238,7 +238,7 @@ When the device session can't be opened (device offline/unknown, or the connecti
 **Events:**
 - `{ "state": "updating", "progress": float|null }` — download progress (0-100 or null for indeterminate)
 - `{ "state": "success", "version": str }` — update complete, versions match
-- `{ "state": "error", "message": str, "error_key": str }` — update failed (log error, version mismatch, or timeout). `error_key` is a frontend translation key (`flasher.errors.*`) — the frontend renders errors exclusively through it. Log-derived failures use `flasher.errors.ota_device_error`, whose translation interpolates the cleaned device text via the `{message}` placeholder.
+- `{ "state": "error", "message": str, "error_key": str }` — update failed (log error, version mismatch, or timeout). `error_key` is a frontend translation key (`flasher.errors.*`) — the frontend renders errors exclusively through it. Log-derived failures use `flasher.errors.ota_device_error`, whose translation interpolates the cleaned device text via the `{message}` placeholder. Download/connect failures (`Code: -1`, `ESP_ERR_HTTP_CONNECT`, `ESP_ERR_NO_MEM` — the device out of contiguous heap for the TLS handshake) instead use `flasher.errors.ota_low_memory`, which explains the likely cause and the reboot-and-retry remedy.
 
 The handler also monitors device log messages for `http_request.ota` and `http_request.update` errors, forwarding the actual error message immediately. Unsubscribe releases the session reference; the manager closes the connection when no other subscriber holds one.
 

@@ -414,6 +414,7 @@
 			"ota_failed_version_unchanged": "Update failed — firmware version unchanged",
 			"ota_timeout": "OTA update timed out",
 			"ota_device_error": "Update failed: {message}",
+			"ota_low_memory": "The device couldn't download the firmware — most likely it's low on memory ({message}). It restarts before each attempt to free memory; if updates keep failing, turn off this device's Bluetooth proxy and try again.",
 			"flash_cancelled": "Flash cancelled",
 			"timeout": "Timeout",
 			"aborted": "Cancelled",

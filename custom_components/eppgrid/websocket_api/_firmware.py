@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -27,6 +28,26 @@ from . import _send_no_session
 # Outer safety net: if no terminal state arrives within 5 minutes after the
 # OTA starts, emit `state: error` so the UI doesn't spin forever.
 _OTA_OUTER_TIMEOUT_S = 300
+
+# Device OTA-error log patterns that mean the firmware download couldn't
+# connect/complete — `Code: -1` (transport failure, no HTTP response; anchored
+# with `(?!\d)` so `Code: -10x` and other negative codes don't match),
+# `ESP_ERR_HTTP_CONNECT` (TLS connect failed), `ESP_ERR_NO_MEM` (explicit OOM).
+# On the memory-tight wifi-ble-co2 build these are almost always the device
+# running out of contiguous heap for the TLS handshake, so we route them to a
+# distinct error_key whose translation explains the likely cause + the
+# reboot-and-retry remedy instead of surfacing the opaque ESP_ERR. A positive
+# HTTP status (e.g. `Code: 404`) means the server answered — not a memory
+# failure — so it falls through to the generic key.
+_OTA_LOW_MEMORY_RE = re.compile(r"ESP_ERR_HTTP_CONNECT|ESP_ERR_NO_MEM|Code: -1(?!\d)")
+
+
+def _classify_ota_error_key(message: str) -> str:
+    """Map a device OTA-error log line to the panel error_key it should raise."""
+    if _OTA_LOW_MEMORY_RE.search(message):
+        return "flasher.errors.ota_low_memory"
+    return "flasher.errors.ota_device_error"
+
 
 # -- update_firmware (trigger OTA) --
 
@@ -267,13 +288,16 @@ async def websocket_subscribe_ota_progress(
         # (flasher-controller falls back to update_failed_generic when the
         # key is absent) — without it, the extracted device message never
         # reaches the user. The key's translation interpolates {message}.
+        # A download/connect failure gets the low-memory key, which explains
+        # the likely cause and the reboot-and-retry remedy rather than just
+        # echoing the raw ESP_ERR.
         connection.send_message(
             websocket_api.event_message(
                 msg["id"],
                 {
                     "state": "error",
                     "message": clean_msg,
-                    "error_key": "flasher.errors.ota_device_error",
+                    "error_key": _classify_ota_error_key(clean_msg),
                 },
             )
         )
