@@ -171,6 +171,16 @@ describe("layout styles", () => {
 		expect(shell).toMatch(/display:\s*flex/);
 	});
 
+	it("editor grid-column overrides the min-content cap so it can grow", () => {
+		// The base .grid-column rule has max-width: min-content (keeps the live
+		// overview tight). The .editor-shell > .grid-column rule must override that
+		// with max-width: none so the grid column actually fills the flex row on
+		// desktop (the whole point of flex: 1 1 auto there).
+		const css = layoutStyles.cssText;
+		const rule = css.slice(css.indexOf(".editor-shell > .grid-column"));
+		expect(rule).toContain("max-width: none");
+	});
+
 	it("editor-shell stacks to a column below the breakpoint", () => {
 		const css = layoutStyles.cssText;
 		const mq = css.slice(css.indexOf("@media (max-width: 819px)"));

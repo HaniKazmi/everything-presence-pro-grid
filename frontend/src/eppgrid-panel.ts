@@ -399,6 +399,7 @@ export const layoutStyles = css`
   .editor-shell > .grid-column {
     flex: 1 1 auto;
     min-width: 0;
+    max-width: none;
     display: flex;
     flex-direction: column;
   }
@@ -2981,10 +2982,11 @@ export class EPPGridPanel extends LitElement {
 		// off a furniture item clears the selection. Shared verbatim by both
 		// branches' wrappers.
 		const onGridContainerClick = (e: Event) => {
-			// `<epp-sheet>` is never a descendant of `.grid-container` (mobile: a
-			// sibling inside `.editor-mobile`; desktop: absent), so a sheet click
-			// never reaches this handler — the active-zone-preserving exemption
-			// lives in `onPanelClick`. This handler only clears furniture selection.
+			// `<epp-sheet>` (class `editor-controls`) is a sibling of `.grid-column`
+			// inside `.editor-shell` at every breakpoint — it is never a descendant
+			// of `.grid-container`, so a sheet click never reaches this handler.
+			// The active-zone-preserving exemption lives in `onPanelClick`.
+			// This handler only clears furniture selection.
 			const onFurniture = e
 				.composedPath()
 				.some(
@@ -3030,7 +3032,7 @@ export class EPPGridPanel extends LitElement {
             <div class="grid-container" @click=${onGridContainerClick}>
               ${gridTemplate}
             </div>
-            ${this._sidebarTab === "zones" || this._sidebarTab === "overlays" ? this._renderDebugLog() : nothing}
+            ${!this._isMobile && (this._sidebarTab === "zones" || this._sidebarTab === "overlays") ? this._renderDebugLog() : nothing}
           </div>
           <epp-sheet inline open class="editor-controls">
             <div slot="peek">${this._renderSidebarTabs()}</div>

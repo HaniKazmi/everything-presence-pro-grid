@@ -516,6 +516,28 @@ describe("render() dispatches to correct view", () => {
 		expect(c.querySelector('[slot="actions"]')).toBeNull();
 	});
 
+	it("editor debug log renders on desktop but not mobile (zones tab)", () => {
+		// Desktop: with the log expanded, .debug-log-container must be present
+		const desk = createPanel() as any;
+		desk._view = "editor";
+		desk._isMobile = false;
+		desk._grid = initGridFromRoom(3000, 4000);
+		desk._sidebarTab = "zones";
+		desk._showDebugLog = true; // expand the log so .debug-log-container renders
+		const cd = renderTo(desk._renderEditor());
+		expect(cd.querySelector(".debug-log-container")).not.toBeNull();
+
+		// Mobile: _renderDebugLog() must not be called at all — no container
+		const mob = createPanel() as any;
+		mob._view = "editor";
+		mob._isMobile = true;
+		mob._grid = initGridFromRoom(3000, 4000);
+		mob._sidebarTab = "zones";
+		mob._showDebugLog = true; // would produce the element if called — must NOT
+		const cm = renderTo(mob._renderEditor());
+		expect(cm.querySelector(".debug-log-container")).toBeNull();
+	});
+
 	it("flips _isMobile when the media query change fires", () => {
 		const a = createPanel() as any;
 		// _onMql mirrors MediaQueryListEvent.matches onto _isMobile.
