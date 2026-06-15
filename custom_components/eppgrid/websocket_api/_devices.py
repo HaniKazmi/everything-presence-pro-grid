@@ -883,6 +883,10 @@ async def websocket_subscribe_grid_targets(
                     # Send on zone state update (not just target position
                     # updates) so sensor state changes appear without delay.
                     _emit()
+                    # `events` are discrete occurrences, not persistent state:
+                    # drop after emitting so the ~5Hz target/sensor emits don't
+                    # re-send (and re-render, undeduped) the same events.
+                    zones.pop("events", None)
 
             elif isinstance(state, BinarySensorState):
                 if state.key in binary_sensor_keys:
