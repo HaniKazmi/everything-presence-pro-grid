@@ -46,7 +46,7 @@ fallback is a latent bug.
 **Radius:** `--epp-radius-sm` 6 · `-md` 10 · `-lg` 16 · `-pill` 9999px
 **Elevation:** `--epp-elevation-1` `0 2px 8px rgba(0,0,0,.12)` · `-2` `0 6px 20px rgba(0,0,0,.18)`
 **Type:** `--epp-font-xs..2xl` = 12 / 13 / 14 / 15 / 16 / 18 / 20px · `--epp-weight-regular|medium|semibold` = 400 / 500 / 600
-**Controls:** `--epp-control-height` 40 · `-sm` 32px · `--epp-focus-ring` `2px solid var(--primary-color,#03a9f4)`
+**Controls:** `--epp-control-height` 40px · `--epp-control-height-sm` 32px · `--epp-focus-ring` `2px solid var(--primary-color,#03a9f4)`
 
 ## Primitives (`frontend/src/ui/`)
 
@@ -56,9 +56,9 @@ when re-emitting a composed HA event (else it double-fires across shadow boundar
 
 | Primitive | Use for | Key interface |
 | --- | --- | --- |
-| `epp-button` | every action button | `variant: "primary"\|"neutral"\|"danger"\|"text"`, `disabled`, `icon`; emits native `click` |
+| `epp-button` | every action button | `variant` (primary / neutral / danger / text), `disabled`, `icon`; emits native `click` |
 | `epp-icon-button` | icon-only actions (remove, delete, kebab trigger) | `icon` (required), `label` (required, a11y), `variant?`; resting colour overridable via `--epp-icon-button-color` |
-| `epp-field` | text/number input | `label`, `value`, `type:"text"\|"number"`, `unit?`, `placeholder?`, `min/max/step?`, `autocomplete?`; emits one `value-changed` `{detail:{value}}` |
+| `epp-field` | text/number input | `label`, `value`, `type` (text / number), `unit?`, `placeholder?`, `min/max/step?`, `autocomplete?`; emits one `value-changed` `{detail:{value}}` |
 | `epp-toggle` | on/off switch | `label?`, `checked`, `disabled?`; emits `value-changed` `{detail:{value:boolean}}` — **not** for multi-select checkboxes (those stay `ha-checkbox`) |
 | `epp-card` | surface container | `heading?`, `elevated?`; slots: default + `actions` (16px padding/16px radius baked in — don't use for tight inset lists) |
 | `epp-section-row` | label-left / control-right row | `label`, `helper?`; slot = control |
