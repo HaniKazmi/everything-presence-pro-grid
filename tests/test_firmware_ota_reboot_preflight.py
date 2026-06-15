@@ -1,0 +1,253 @@
+"""Pre-flight reboot before an OTA.
+
+Field finding: on a no-PSRAM ESP32 running the wifi-ble-co2 build, the resident
+Bluetooth stack (controller + proxy, which stays loaded even with scanning off)
+leaves so little free heap that the HTTPS OTA's mbedTLS handshake can't
+allocate — the device fails the download with `ESP_ERR_HTTP_CONNECT` at a
+~775-byte heap low-water mark. A manual reboot reliably fixes it (a fresh,
+unfragmented heap fits the TLS context), so the integration reboots the device
+and waits for it to come back *before* every OTA. The firmware already pauses
+BLE scanning during the OTA and restores it after, so the reboot is the only
+piece the integration must add.
+
+`async_reboot_and_wait` presses the device's ESPHome **Restart Device** button
+(present on in-field firmware, so it works on the old build we're updating
+*from*) and waits for the firmware_version sensor to cycle offline → online,
+confirming a real reboot completed before we hand the device the OTA manifest.
+"""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
+from unittest.mock import patch
+
+import pytest
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import async_mock_service
+
+from custom_components.eppgrid.device_manager import DeviceManager
+from custom_components.eppgrid.device_manager import ManagedDevice
+from custom_components.eppgrid.storage import EPPGridStore
+
+MAC = "AA:BB:CC:DD:EE:01"
+
+
+def _setup_device_with_restart_button(hass: HomeAssistant, manager: DeviceManager) -> str:
+    """Register an esphome device with a Restart Device button + firmware_version
+    sensor, wire it into the manager, and return the restart button's entity_id.
+    """
+    entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP Bath")
+    entry.add_to_hass(hass)
+
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        connections={("mac", MAC.lower())},
+        name="EPP Bath",
+        manufacturer="EverythingSmartTechnology",
+        model="Everything Presence Pro",
+    )
+
+    ent_reg = er.async_get(hass)
+    restart = ent_reg.async_get_or_create(
+        "button",
+        "esphome",
+        f"{MAC}-restart",
+        device_id=device.id,
+        original_device_class="restart",
+        suggested_object_id="epp_bath_restart_device",
+    )
+    ent_reg.async_get_or_create(
+        "sensor",
+        "esphome",
+        f"{MAC}-firmware_version",
+        device_id=device.id,
+        suggested_object_id="epp_bath_firmware_version",
+    )
+
+    manager.devices[MAC] = ManagedDevice(mac=MAC, name="EPP Bath", host="192.168.1.50", device_id=device.id)
+    return restart.entity_id
+
+
+@pytest.fixture
+def manager(hass: HomeAssistant) -> DeviceManager:
+    return DeviceManager(hass, EPPGridStore(hass))
+
+
+async def test_reboot_and_wait_presses_the_restart_button(hass: HomeAssistant, manager: DeviceManager) -> None:
+    """It must press the device's ESPHome Restart Device button (identified by
+    device_class=restart), not some other button (e.g. Calibrate CO2)."""
+    restart_entity_id = _setup_device_with_restart_button(hass, manager)
+    calls = async_mock_service(hass, "button", "press")
+
+    # Device is already back online on the first poll so the wait returns fast.
+    with (
+        patch.object(manager, "read_firmware_version", side_effect=[None, "1.1.0"]),
+        patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=AsyncMock()),
+    ):
+        await manager.async_reboot_and_wait(MAC)
+
+    assert len(calls) == 1
+    assert calls[0].data.get("entity_id") == restart_entity_id
+
+
+async def test_reboot_and_wait_returns_after_device_cycles_offline_then_online(
+    hass: HomeAssistant, manager: DeviceManager
+) -> None:
+    """The wait must confirm a real reboot: firmware_version goes unavailable
+    (None) and then reports again — only then is the device freshly booted with
+    the heap headroom the OTA needs."""
+    _setup_device_with_restart_button(hass, manager)
+    async_mock_service(hass, "button", "press")
+
+    # offline-poll sees the stale value then None; online-poll then sees a value.
+    versions = iter(["1.1.0", None, "1.1.0"])
+    with (
+        patch.object(manager, "read_firmware_version", side_effect=lambda *_a, **_k: next(versions)),
+        patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=AsyncMock()),
+    ):
+        await manager.async_reboot_and_wait(MAC)  # must not raise
+
+
+async def test_reboot_and_wait_raises_when_device_never_returns(hass: HomeAssistant, manager: DeviceManager) -> None:
+    """If the device never reports a version again after the reboot, the wait
+    must time out with a HomeAssistantError so the OTA caller can surface a
+    clear failure instead of hanging or silently flashing a dead device."""
+    _setup_device_with_restart_button(hass, manager)
+    async_mock_service(hass, "button", "press")
+
+    # Clock jumps 1000 s per call so any deadline is blown on the next read,
+    # regardless of exactly how many times the impl samples the clock.
+    clock = iter(i * 1000.0 for i in range(1000))
+    with (
+        patch.object(manager, "read_firmware_version", return_value=None),
+        patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=AsyncMock()),
+        patch("custom_components.eppgrid.device_manager.time.monotonic", side_effect=lambda: next(clock)),
+        pytest.raises(HomeAssistantError),
+    ):
+        await manager.async_reboot_and_wait(MAC)
+
+
+async def test_reboot_and_wait_raises_when_no_restart_button(hass: HomeAssistant, manager: DeviceManager) -> None:
+    """A device registered without a Restart Device button can't be rebooted —
+    raise so the OTA caller's best-effort wrapper can log it and carry on."""
+    entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP NoButton")
+    entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        connections={("mac", MAC.lower())},
+        name="EPP NoButton",
+    )
+    manager.devices[MAC] = ManagedDevice(mac=MAC, name="EPP NoButton", host="192.168.1.50", device_id=device.id)
+
+    with pytest.raises(HomeAssistantError) as excinfo:
+        await manager.async_reboot_and_wait(MAC)
+    assert excinfo.value.translation_key == "restart_button_unavailable"
+
+
+async def test_reboot_and_wait_warns_but_returns_when_offline_never_observed(
+    hass: HomeAssistant, manager: DeviceManager, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A fast reboot can reconnect within a poll interval, so the device may
+    never be *seen* offline. That's fine: warn (so a no-op press isn't silently
+    treated as a reboot), but still return once it's online — don't raise."""
+    _setup_device_with_restart_button(hass, manager)
+    async_mock_service(hass, "button", "press")
+
+    # Device is reported online throughout (offline never observed). Clock: the
+    # offline poll's deadline is already blown on its first while-check (no read,
+    # returns False → warn); the online poll's first check is within deadline.
+    clock = iter([0.0, 1000.0, 2000.0, 2001.0, 2002.0])
+    with (
+        patch.object(manager, "read_firmware_version", return_value="1.1.0"),
+        patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=AsyncMock()),
+        patch("custom_components.eppgrid.device_manager.time.monotonic", side_effect=lambda: next(clock)),
+        caplog.at_level("WARNING"),
+    ):
+        await manager.async_reboot_and_wait(MAC)  # must not raise
+
+    assert "never went offline" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# async_trigger_ota pre-flight: always reboot before handing over the manifest
+# ---------------------------------------------------------------------------
+
+
+def _fake_head_session(status: int = 200) -> MagicMock:
+    """A fake aiohttp session whose .head() yields ``status`` (manifest check)."""
+    resp = MagicMock()
+    resp.status = status
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=resp)
+    cm.__aexit__ = AsyncMock(return_value=False)
+    session = MagicMock()
+    session.head = MagicMock(return_value=cm)
+    return session
+
+
+def _mock_ota_conn() -> MagicMock:
+    conn = MagicMock()
+    conn.async_connect = AsyncMock()
+    conn.async_disconnect = AsyncMock()
+    conn.async_execute_service = AsyncMock()
+    return conn
+
+
+async def test_trigger_ota_reboots_before_setting_manifest(hass: HomeAssistant, manager: DeviceManager) -> None:
+    """The OTA must reboot the device for a fresh heap *before* it hands over the
+    update manifest — otherwise the device flashes from its tight, fragmented
+    steady-state heap and the TLS download fails."""
+    manager.devices[MAC] = ManagedDevice(mac=MAC, name="EPP", host="192.168.1.50")
+    manager._build_flags[MAC] = {"ethernet_enabled": False}
+    order: list[str] = []
+    conn = _mock_ota_conn()
+    conn.async_execute_service.side_effect = lambda *a, **k: order.append("manifest")
+
+    async def _reboot(_mac: str) -> None:
+        order.append("reboot")
+
+    with (
+        patch(
+            "custom_components.eppgrid.device_manager.async_get_clientsession",
+            return_value=_fake_head_session(200),
+        ),
+        patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=conn),
+        patch.object(manager, "async_reboot_and_wait", side_effect=_reboot),
+    ):
+        await manager.async_trigger_ota(MAC)
+
+    assert order == ["reboot", "manifest"]
+
+
+async def test_trigger_ota_proceeds_when_reboot_fails(hass: HomeAssistant, manager: DeviceManager) -> None:
+    """The pre-flight reboot is best-effort: if it fails (e.g. no restart button,
+    or the device didn't come back), the OTA must still be attempted rather than
+    blocked — a failed reboot mustn't be strictly worse than the old no-reboot
+    behaviour."""
+    manager.devices[MAC] = ManagedDevice(mac=MAC, name="EPP", host="192.168.1.50")
+    manager._build_flags[MAC] = {"ethernet_enabled": False}
+    conn = _mock_ota_conn()
+
+    with (
+        patch(
+            "custom_components.eppgrid.device_manager.async_get_clientsession",
+            return_value=_fake_head_session(200),
+        ),
+        patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=conn),
+        patch.object(
+            manager,
+            "async_reboot_and_wait",
+            side_effect=HomeAssistantError("device did not come back"),
+        ) as reboot_mock,
+    ):
+        await manager.async_trigger_ota(MAC)
+
+    reboot_mock.assert_awaited_once()
+    conn.async_execute_service.assert_awaited_once()
+    name, _payload = conn.async_execute_service.await_args.args
+    assert name == "set_update_manifest"

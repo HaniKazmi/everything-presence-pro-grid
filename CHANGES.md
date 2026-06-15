@@ -4,6 +4,16 @@ User-facing changes to Everything Presence Pro Grid. For full release assets
 and firmware downloads, see the
 [GitHub releases page](https://github.com/clintongormley/everything-presence-pro-grid/releases).
 
+## Unreleased
+
+### Improvements
+
+- **More reliable firmware updates.** Updates now succeed on devices that were
+  low on memory and previously failed with a connection error — the device is
+  restarted to free memory before the update runs. If an update still can't
+  proceed for lack of memory, the panel now explains that clearly instead of
+  showing a generic error.
+
 ## v1.1.0 — 2026-06-14
 
 ### New features
