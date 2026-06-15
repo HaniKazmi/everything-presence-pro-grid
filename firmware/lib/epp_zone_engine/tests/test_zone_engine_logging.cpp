@@ -118,6 +118,15 @@ static const Event* find_event_p0(const ProcessingResult& r, EventType type, int
     return nullptr;
 }
 
+// Count events of `type`.
+static int count_events(const ProcessingResult& r, EventType type) {
+    int n = 0;
+    for (int i = 0; i < r.event_count; ++i) {
+        if (r.events[i].type == type) ++n;
+    }
+    return n;
+}
+
 // ---------------------------------------------------------------------------
 // Infrastructure tests
 // ---------------------------------------------------------------------------
@@ -220,22 +229,27 @@ TEST_CASE("log: target below threshold only logs on drop from confirmed") {
     CHECK(has_debug(r3, "below"));
 }
 
-TEST_CASE("log: target leaving room from confirmed zone logs with zone info") {
+TEST_CASE("log: confirmed target leaving room emits TARGET_LEFT event") {
     ZoneEngine engine = make_engine();
     float t = 100.0f;
 
-    // Target appears outside room — no log (was never in room)
+    // Target appears outside room — no event (was never in room)
     const ProcessingResult& r1 = engine.tick(make_window_1(9000, 9000, 9), t);
-    CHECK_FALSE(has_debug(r1, "left room"));
+    CHECK(find_event(r1, EventType::TARGET_LEFT) == nullptr);
 
-    // Target enters room (zone 1, entry point)
+    // Target enters room and is confirmed in zone 1 (entry point)
     engine.tick(make_window_1(X_OFF + 450, 450, 5), t + 1.0f);
 
-    // Target leaves room — logs with zone context
+    // Target leaves room — must emit the structured TARGET_LEFT event the panel
+    // consumes (this was previously only logged on the serial line).
     const ProcessingResult& r3 = engine.tick(make_window_1(9000, 9000, 9), t + 2.0f);
-    CHECK(has_debug(r3, "T0"));
+    const Event* left = find_event_p0(r3, EventType::TARGET_LEFT, 0);
+    CHECK(left != nullptr);
+    // Exactly one TARGET_LEFT — the confirmed-leave and bare-leave branches are
+    // mutually exclusive on prev_zone, so no double-emit.
+    CHECK(count_events(r3, EventType::TARGET_LEFT) == 1);
+    // The serial "left room" line is still emitted via emit_event_.
     CHECK(has_debug(r3, "left room"));
-    CHECK(has_debug(r3, "was zone 1"));
 }
 
 TEST_CASE("log: stably outside-room target does NOT re-log every tick") {

@@ -496,8 +496,11 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 log_(LogLevel::DEBUG, "T%d below threshold in zone %d (signal %d)",
                      i, prev_zone, target_signal[i]);
             } else if (target_active[i]) {
-                // Target left the room entirely
-                log_(LogLevel::DEBUG, "T%d left room (was zone %d)", i, prev_zone);
+                // Target left the room entirely (was confirmed in a zone) —
+                // emit the structured event the panel consumes. The serial line
+                // (via emit_event_) drops the "(was zone %d)" detail, which is
+                // acceptable; the structured event is what matters.
+                emit_event_(EventType::TARGET_LEFT, i);
             } else {
                 log_(LogLevel::DEBUG, "T%d left zone %d", i, prev_zone);
             }
