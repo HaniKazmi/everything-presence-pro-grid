@@ -53,8 +53,8 @@ export function formatEvent(
 ): string {
 	const parts = code.split(":");
 	const head = parts[0];
-	const zone = (i: number) => zoneName(Number(parts[i]));
-	const target = (i: number) => targetLabel(Number(parts[i]));
+	const zone = (i: number) => zoneName(Number(parts[i] ?? "") || 0);
+	const target = (i: number) => targetLabel(Number(parts[i] ?? "") || 0);
 
 	switch (head) {
 		// --- sensor presence ---
@@ -97,7 +97,7 @@ export function formatEvent(
 		case "td": // td:T:secs
 			return t("live.events.stuck_dismiss", {
 				target: target(1),
-				secs: Number(parts[2]),
+				secs: Number(parts[2] ?? "") || 0,
 			});
 		case "te": // te:T:Z
 			return t("live.events.target_entered", {
@@ -115,7 +115,7 @@ export function formatEvent(
 
 		// --- overflow (xd:n) ---
 		case "xd":
-			return t("live.events.dropped", { n: Number(parts[1]) });
+			return t("live.events.dropped", { n: Number(parts[1] ?? "") || 0 });
 
 		default:
 			return code;

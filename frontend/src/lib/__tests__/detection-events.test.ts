@@ -90,12 +90,19 @@ describe("formatEvent", () => {
 		expect(out).toContain("Target 3");
 	});
 
-	it("resolves target label + both zones for moved", () => {
+	it("resolves target label + both zones for moved (order-sensitive)", () => {
 		const out = formatEvent("tm:1:0:2", zoneName, targetLabel, t);
 		expect(out).toContain("target_moved");
 		expect(out).toContain("Target 2");
-		expect(out).toContain("Room");
-		expect(out).toContain("Zone 2");
+		expect(out).toContain('"from":"Room"');
+		expect(out).toContain('"to":"Zone 2"');
+	});
+
+	it("defaults malformed numeric parts to 0 (no NaN in output)", () => {
+		expect(formatEvent("td:x:y", zoneName, targetLabel, t)).not.toContain(
+			"NaN",
+		);
+		expect(formatEvent("zo:", zoneName, targetLabel, t)).not.toContain("NaN");
 	});
 
 	it("resolves count for dropped", () => {
