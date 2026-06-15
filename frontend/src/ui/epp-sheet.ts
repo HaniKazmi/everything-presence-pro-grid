@@ -87,6 +87,29 @@ export class EppSheet extends LitElement {
          here too rendered TWO stacked lines above the Save/Cancel row. */
     }
     .actions[hidden] { display: none; }
+
+    /* Desktop side-panel presentation. The same element is the mobile bottom
+       sheet (<=819px) and the editor/live side-panel (>=820px). Relative flow as
+       a flex child, full-height, card chrome, no grab handle (not draggable on
+       desktop and there's no peek affordance to hint at). */
+    @media (min-width: 820px) {
+      :host {
+        position: relative;
+        left: auto;
+        right: auto;
+        bottom: auto;
+        z-index: auto;
+        border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+        border-radius: var(--epp-radius-lg, 16px);
+        box-shadow: none;
+        max-height: none;
+        flex: 1 1 auto;
+        min-height: 0;
+      }
+      .handle-bar {
+        display: none;
+      }
+    }
   `;
 
 	render() {

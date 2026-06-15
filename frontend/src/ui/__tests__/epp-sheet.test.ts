@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, test } from "vitest";
 import "../epp-sheet.js";
-import type { EppSheet } from "../epp-sheet.js";
+import { EppSheet } from "../epp-sheet.js";
 
 async function fixture(open = false, includeActions = true): Promise<EppSheet> {
 	const el = document.createElement("epp-sheet") as EppSheet;
@@ -84,4 +84,18 @@ describe("epp-sheet", () => {
 		await el.updateComplete;
 		expect(el.hasAttribute("inline")).toBe(false);
 	});
+});
+
+test("epp-sheet defines a >=820px side-panel presentation that hides the handle", () => {
+	const css = EppSheet.styles.cssText;
+	expect(css).toContain("@media (min-width: 820px)");
+	const desktopBlock = css.slice(css.indexOf("@media (min-width: 820px)"));
+	expect(desktopBlock).toContain(".handle-bar");
+	expect(desktopBlock).toContain("display: none");
+});
+
+test("epp-sheet panel mode is relative-flow, not fixed", () => {
+	const css = EppSheet.styles.cssText;
+	const desktopBlock = css.slice(css.indexOf("@media (min-width: 820px)"));
+	expect(desktopBlock).toContain("position: relative");
 });
