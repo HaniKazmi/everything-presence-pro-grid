@@ -47,6 +47,7 @@ fallback is a latent bug.
 **Elevation:** `--epp-elevation-1` `0 2px 8px rgba(0,0,0,.12)` · `-2` `0 6px 20px rgba(0,0,0,.18)`
 **Type:** `--epp-font-xs..2xl` = 12 / 13 / 14 / 15 / 16 / 18 / 20px · `--epp-weight-regular|medium|semibold` = 400 / 500 / 600
 **Controls:** `--epp-control-height` 40px · `--epp-control-height-sm` 32px · `--epp-focus-ring` `2px solid var(--primary-color,#03a9f4)`
+**Layout:** `--epp-content-max` 720px (centered max-width for the full-width views — settings / flasher / device-groups — so they don't stretch on a wide desktop)
 
 ## Primitives (`frontend/src/ui/`)
 
@@ -65,7 +66,7 @@ when re-emitting a composed HA event (else it double-fires across shadow boundar
 | `epp-tooltip` | hover/focus hint on icon buttons / truncated text | `content`; slot = trigger. Replaces raw `title=` |
 | `epp-info-tip` (`components/`) | the `(?)` explanatory bubble (a sentence of help) | click/tap to open; touch-friendly |
 | `epp-dialog` | **every modal** | `open` (caller-owns), `heading?`; slots: default + `actions`; emits `dialog-dismiss` on Esc. **Slot action buttons directly** (`<epp-button slot="actions">`), not inside a wrapper `<div slot="actions">` (that breaks the flex row) |
-| `epp-sheet` | mobile bottom sheet (the editor's controls below the breakpoint) | `open` (caller-owns) + `inline`; slots: `peek` (always visible) + default (body) + `actions`. The handle is a **non-interactive grab indicator** — the caller controls `open` (no tap-to-toggle, no `sheet-open-changed`). `inline` flows it in document order below the grid (the mobile editor); the default fixes it to the viewport bottom. Only rendered below the mobile breakpoint |
+| `epp-sheet` | the editor/live **controls panel** — one element, two presentations by breakpoint | `open` (caller-owns) + `inline`; slots: `peek` (always visible) + default (body) + `actions`. The handle is a **non-interactive grab indicator** — the caller controls `open` (no tap-to-toggle, no `sheet-open-changed`). **≤819px:** bottom sheet (`inline` flows it below the grid in the mobile editor; the default fixes it to the viewport bottom). **≥820px:** a relative-flow **side-panel card** (border + `--epp-radius-lg`, no grab handle), used as the desktop editor/live controls column. Presentation is purely breakpoint-driven CSS — the same `<epp-sheet inline open>` is correct at every width |
 
 ## Theming rules
 
@@ -86,19 +87,25 @@ when re-emitting a composed HA event (else it double-fires across shadow boundar
 
 ## Responsive / mobile (Phase 3)
 
-- **Breakpoint: 820px.** Below it the panel uses the mobile layout; at/above it the desktop
-  layout is unchanged. Use `@media (max-width: 819px)` for pure-CSS reflow and
+- **Breakpoint: 820px.** One responsive component set: below it the panel stacks (mobile
+  layout); at/above it the same components reflow to the desktop side-by-side / side-panel
+  layout. Use `@media (max-width: 819px)` for pure-CSS reflow and
   `window.matchMedia("(max-width: 819px)")` for the structural JS flag (`_isMobile` on the
   panel host). Keep the two in sync.
 - **Touch targets ≥44px.** Below the breakpoint the panel host sets `--epp-control-height: 44px`,
   which cascades into every primitive. The grid's furniture handles carry a transparent
   ≥44px `::after` hit area (visible nub unchanged).
-- **Editor on mobile = grid + bottom sheet.** The grid renders full-width (it fits the
-  container via `fitCellPx` + a `ResizeObserver`) with the controls in an `epp-sheet`
-  (peek = mode tabs; expanded = the same `epp-zone-sidebar`/`epp-furniture-sidebar`/
-  `epp-overlay-sidebar` content; dirty-only save/cancel in `actions`). The desktop
-  side-by-side is untouched. **Pan/pinch-zoom is deferred** (scope C); painting uses
-  per-cell-element pointer events, so a future zoom transform is additive.
+- **Editor + live overview = grid + `epp-sheet` controls, one responsive layout.**
+  `.editor-shell` is a flex **row** ≥820px (grid left; the `epp-sheet` controls as a
+  side-panel card right) and a flex **column** ≤819px (grid on top; the `epp-sheet` as a
+  bottom sheet below). The grid fits its column via `fitCellPx` + measured width/height:
+  on desktop it grows to fill, bounded by the column height (cell cap 48px); on mobile it
+  is capped to ~45% of the viewport height. The controls' `peek` = mode tabs (editor) or
+  title + kebab (live overview); body = the same `epp-zone-sidebar`/`epp-furniture-sidebar`/
+  `epp-overlay-sidebar` (or `epp-live-sidebar`); `actions` = Save/Cancel (editor only —
+  always shown on desktop, dirty-and-not-typing gated on mobile). **Pan/pinch-zoom is
+  deferred** (scope C); painting uses per-cell-element pointer events, so a future zoom
+  transform is additive.
 - Conventional views (settings/live/flasher/device-groups) already stack; they reflow with
   reduced panel padding + full width below the breakpoint.
 
