@@ -105,25 +105,26 @@ function createPanel(): EPPGridPanel {
 describe("layout styles", () => {
 	const layoutCss = layoutStyles.cssText;
 
-	it("sidebar has flex-shrink: 0 to prevent squeezing", () => {
-		// Extract the base (desktop) .zone-sidebar block — the one with
-		// width: 240px, not the @media (max-width: 819px) width: auto override.
+	it("live-controls side-panel has a fixed width (no squeezing)", () => {
+		// The live overview's epp-sheet.live-controls is sized by
+		// .editor-shell > .live-controls { flex: 0 0 320px } — the flex shorthand
+		// sets flex-shrink:0 implicitly. Verify the rule exists.
 		const match = layoutCss.match(
-			/\.zone-sidebar\s*\{([^}]*width:\s*240px[^}]*)\}/,
+			/\.editor-shell\s*>\s*\.live-controls\s*\{([^}]*flex:[^}]*)\}/,
 		);
 		expect(match).not.toBeNull();
-		const sidebarCss = match![1];
-		expect(sidebarCss).toMatch(/flex-shrink:\s*0/);
+		const rule = match![1];
+		expect(rule).toMatch(/flex:\s*0\s+0\s+320px/);
 	});
 
-	it("sidebar does not clip overflow (so menu is not cut off)", () => {
+	it("live-controls side-panel rule does not set overflow: hidden", () => {
+		// The live-controls rule must not clip overflow (kebab menus would be cut off).
 		const match = layoutCss.match(
-			/\.zone-sidebar\s*\{([^}]*width:\s*240px[^}]*)\}/,
+			/\.editor-shell\s*>\s*\.live-controls\s*\{([^}]*flex:[^}]*)\}/,
 		);
 		expect(match).not.toBeNull();
-		const sidebarCss = match![1];
-		// Should NOT have overflow: hidden
-		expect(sidebarCss).not.toMatch(/overflow:\s*hidden/);
+		const rule = match![1];
+		expect(rule).not.toMatch(/overflow:\s*hidden/);
 	});
 
 	it("grid-column constrains width to grid via max-width: min-content", () => {
@@ -138,29 +139,25 @@ describe("layout styles", () => {
 		expect(gridColCss).not.toMatch(/overflow:\s*hidden/);
 	});
 
-	it("has scrollable sidebar-scroll wrapper", () => {
-		const match = layoutCss.match(/\.sidebar-scroll\s*\{([^}]+)\}/);
-		expect(match).not.toBeNull();
-		const scrollCss = match![1];
-		expect(scrollCss).toMatch(/overflow-y:\s*auto/);
-		expect(scrollCss).toMatch(/min-height:\s*0/);
-		expect(scrollCss).toMatch(/flex:\s*1/);
+	it("epp-sheet body provides scrollable content area (overflow-y: auto in shadow)", () => {
+		// The live overview's epp-sheet.live-controls owns scrolling through its
+		// shadow-DOM .body { overflow-y: auto } — verified in epp-sheet's own tests.
+		// Here we just confirm layoutStyles no longer ships a .sidebar-scroll rule
+		// (which would double-scroll if it were still present alongside epp-sheet).
+		expect(layoutCss).not.toMatch(/\.sidebar-scroll\s*\{/);
 	});
 
 	it("layout mobile overrides come after their base rules (cascade order)", () => {
 		// Media queries add NO specificity; at equal specificity the LATER rule in
 		// the concatenated cssText wins. The mobile @media (max-width: 819px) block
-		// overrides .zone-sidebar (width:auto) and .grid-column (max-width:100%), so
-		// it MUST come after the base .zone-sidebar (width:240px) and base
-		// .grid-column (max-width:min-content) declarations — otherwise the bases win
-		// and the grid overflows / the live sidebar stays narrow on phones.
-		const sidebarBaseIdx = layoutCss.indexOf("240px");
+		// overrides .grid-column (max-width:100%), so it MUST come after the base
+		// .grid-column (max-width:min-content) declaration — otherwise the base wins
+		// and the grid overflows on phones.
 		const gridColBaseIdx = layoutCss.indexOf("min-content");
 		const mediaIdx = layoutCss.indexOf("@media (max-width: 819px)");
 
-		expect(sidebarBaseIdx).toBeGreaterThan(-1);
 		expect(gridColBaseIdx).toBeGreaterThan(-1);
-		expect(mediaIdx).toBeGreaterThan(sidebarBaseIdx);
+		expect(mediaIdx).toBeGreaterThan(-1);
 		expect(mediaIdx).toBeGreaterThan(gridColBaseIdx);
 	});
 
@@ -205,7 +202,7 @@ describe("layout styles", () => {
 });
 
 describe("live overview layout structure", () => {
-	it("left column uses grid-column class", () => {
+	it("left column uses grid-column class inside editor-shell", () => {
 		const el = createPanel();
 		const a = el as any;
 		a._view = "live";
@@ -215,9 +212,9 @@ describe("live overview layout structure", () => {
 		const container = document.createElement("div");
 		render(result, container);
 
-		const editorLayout = container.querySelector(".editor-layout");
-		expect(editorLayout).not.toBeNull();
-		const leftCol = editorLayout!.firstElementChild as HTMLElement;
+		const editorShell = container.querySelector(".editor-shell");
+		expect(editorShell).not.toBeNull();
+		const leftCol = editorShell!.firstElementChild as HTMLElement;
 		expect(leftCol.classList.contains("grid-column")).toBe(true);
 	});
 
@@ -230,13 +227,13 @@ describe("live overview layout structure", () => {
 		const container = document.createElement("div");
 		render(result, container);
 
-		const editorLayout = container.querySelector(".editor-layout");
-		const leftCol = editorLayout!.firstElementChild as HTMLElement;
+		const editorShell = container.querySelector(".editor-shell");
+		const leftCol = editorShell!.firstElementChild as HTMLElement;
 		// Should use CSS class, not inline style
 		expect(leftCol.style.minWidth).toBe("");
 	});
 
-	it("sidebar content is wrapped in sidebar-scroll", () => {
+	it("sidebar content is inside epp-sheet.live-controls (shared card shell)", () => {
 		const el = createPanel();
 		const a = el as any;
 		a._view = "live";
@@ -245,12 +242,13 @@ describe("live overview layout structure", () => {
 		const container = document.createElement("div");
 		render(result, container);
 
-		const sidebar = container.querySelector(".zone-sidebar");
-		expect(sidebar).not.toBeNull();
-		const scroll = sidebar!.querySelector(".sidebar-scroll");
-		expect(scroll).not.toBeNull();
-		// The live sidebar component should be inside the scroll wrapper
-		expect(scroll!.querySelector("epp-live-sidebar")).not.toBeNull();
+		// Old .zone-sidebar/.sidebar-scroll structure is replaced by epp-sheet.
+		expect(container.querySelector(".zone-sidebar")).toBeNull();
+		expect(container.querySelector(".sidebar-scroll")).toBeNull();
+		const sheet = container.querySelector("epp-sheet.live-controls");
+		expect(sheet).not.toBeNull();
+		// The live sidebar component is slotted directly into the sheet body.
+		expect(sheet!.querySelector("epp-live-sidebar")).not.toBeNull();
 	});
 });
 

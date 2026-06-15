@@ -1011,6 +1011,18 @@ describe("_renderLiveOverview", () => {
 		// calibration: settings + calibration + backup + restore remain.
 		expect(ids).toEqual(["settings", "calibration", "backup", "restore"]);
 	});
+
+	it("live overview uses the shared card shell: kebab in peek, no save footer", async () => {
+		const a = createPanel() as any;
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		a._grid = initGridFromRoom(3000, 4000);
+		a._isMobile = false;
+		const c = renderTo(a._renderLiveOverview());
+		const sheet = c.querySelector("epp-sheet.live-controls");
+		expect(sheet).not.toBeNull();
+		expect(sheet!.querySelector('[slot="peek"] epp-kebab-menu')).not.toBeNull();
+		expect(sheet!.querySelector('[slot="actions"]')).toBeNull(); // read-only
+	});
 });
 
 describe("_renderLiveGrid", () => {

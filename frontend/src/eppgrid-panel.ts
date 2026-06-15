@@ -343,12 +343,6 @@ const protocolFullpageStyles = css`
 
 // Exported so panel-layout.test.ts can introspect .cssText for regression checks.
 export const layoutStyles = css`
-  .editor-layout {
-    display: flex;
-    gap: 24px;
-    align-items: flex-start;
-  }
-
   .grid-column {
     min-width: 0;
     max-width: min-content;
@@ -358,28 +352,6 @@ export const layoutStyles = css`
     position: relative;
     max-width: 100%;
     overflow: visible;
-  }
-
-  .sidebar-scroll {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-  }
-
-  .zone-sidebar {
-    width: 240px;
-    flex-shrink: 0;
-    background: var(--card-background-color, #fff);
-    border-left: 1px solid var(--divider-color, #e0e0e0);
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    overflow: visible;
-  }
-
-  .zone-sidebar.scrollable {
-    max-height: 70vh;
   }
 
   .sidebar-title {
@@ -404,7 +376,8 @@ export const layoutStyles = css`
     flex-direction: column;
   }
 
-  .editor-shell > .editor-controls {
+  .editor-shell > .editor-controls,
+  .editor-shell > .live-controls {
     flex: 0 0 320px;
   }
 
@@ -445,29 +418,14 @@ export const layoutStyles = css`
     .editor-shell > .grid-column {
       flex: 0 0 auto;
     }
-    .editor-shell > .editor-controls {
+    .editor-shell > .editor-controls,
+    .editor-shell > .live-controls {
       flex: 1 1 auto;
-      min-height: 0;
-    }
-    /* Live overview (.editor-layout, already column on mobile): same full-height
-       behavior — the grid column is fixed-height and the sidebar fills the rest.
-       The single scroller is .sidebar-scroll (the .zone-sidebar stays a plain
-       flex:1 container so we don't double-scroll). */
-    .editor-layout {
-      flex-direction: column;
-      align-items: stretch;
-      flex: 1;
       min-height: 0;
     }
     .grid-column {
       max-width: 100%;
       flex: 0 0 auto;
-    }
-    .zone-sidebar {
-      width: auto;
-      border-left: none;
-      flex: 1 1 auto;
-      min-height: 0;
     }
   }
 `;
@@ -2790,7 +2748,7 @@ export class EPPGridPanel extends LitElement {
 				}
 			}}>
         ${this._renderHeader()}
-        <div class="editor-layout">
+        <div class="editor-shell">
           <div class="grid-column">
             <div class="grid-container" style="position: relative;">
               ${gridContent}
@@ -2798,32 +2756,31 @@ export class EPPGridPanel extends LitElement {
             </div>
             ${this._perspective ? this._renderBackendDebugLog() : nothing}
           </div>
-          <div class="zone-sidebar">
-            <div class="sidebar-header">
+          <epp-sheet inline open class="live-controls">
+            <div slot="peek" class="sidebar-header">
               <span class="sidebar-title" style="margin-right: auto;">${this._localize("sidebar.live_overview")}</span>
               <epp-kebab-menu
                 .items=${this._liveMenuItems()}
                 @item-select=${this._onLiveMenuSelect}
               ></epp-kebab-menu>
             </div>
-            <div class="sidebar-scroll">
-              <epp-live-sidebar
-                .sensorState=${this._sensorState}
-                .zoneState=${this._zoneState}
-                .zoneConfigs=${this._namedZones()}
-                .hasPerspective=${this._perspective != null}
-                .localize=${this._localize}
-                @view-change=${(e: CustomEvent) => {
-									this._navGuard.guardNavigation(() =>
-										this._applyView({
-											view: e.detail.view,
-											sidebarTab: e.detail.sidebarTab ?? this._sidebarTab,
-										}),
-									);
-								}}
-              ></epp-live-sidebar>
-            </div>
-          </div>
+            <epp-live-sidebar
+              .sensorState=${this._sensorState}
+              .zoneState=${this._zoneState}
+              .zoneConfigs=${this._namedZones()}
+              .hasPerspective=${this._perspective != null}
+              .localize=${this._localize}
+              ?capHeightToHalfViewport=${this._isMobile}
+              @view-change=${(e: CustomEvent) => {
+								this._navGuard.guardNavigation(() =>
+									this._applyView({
+										view: e.detail.view,
+										sidebarTab: e.detail.sidebarTab ?? this._sidebarTab,
+									}),
+								);
+							}}
+            ></epp-live-sidebar>
+          </epp-sheet>
         </div>
       </div>
     `;
