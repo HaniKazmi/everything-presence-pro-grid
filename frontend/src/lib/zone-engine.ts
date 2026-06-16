@@ -346,6 +346,7 @@ export function runLocalZoneEngine(
 		prevZoneKind.set(zid, zoneStateKind(st));
 	}
 
+	stepPendingRelocation(ctx);
 	stepPerTargetEval(ctx);
 	stepTargetTransitionLog(ctx);
 	stepHandoffDetection(ctx);
@@ -379,6 +380,113 @@ type ZoneStateKind = "clear" | "occupied" | "pending";
 function zoneStateKind(st: ZoneState): ZoneStateKind {
 	if (!st.occupied) return "clear";
 	return st.pendingSince !== null ? "pending" : "occupied";
+}
+
+function gridHasEntryOverlayCell(grid: Uint8Array): boolean {
+	for (let c = 0; c < grid.length; c++) {
+		if (cellOverlay(grid[c]) === CELL_OVERLAY_ENTRY) return true;
+	}
+	return false;
+}
+
+/**
+ * Step 0 — pending-target slot relocation. Mirror of firmware
+ * ZoneEngine::relocate_pending_targets_. When a brand-new, far occupant reuses
+ * a slot that still holds a PENDING target, move the held target's tracking
+ * state + zone bit(s) to the highest free slot (entrance-gated, auto-falling
+ * back to distance-only when no entry overlay is configured). pendingSince is
+ * preserved so the parked target times out on its original schedule.
+ */
+function stepPendingRelocation(ctx: TickContext): void {
+	const { state, params } = ctx;
+	const hasEntry = gridHasEntryOverlayCell(params.grid);
+	for (let i = 0; i < MAX_TARGETS; i++) {
+		const t = i < params.targets.length ? params.targets[i] : null;
+		if (!t || t.x == null || t.y == null || t.signal <= 0) continue; // (1) new occupant present
+		const prevXY = state.targetPrevXY[i];
+		if (!prevXY) continue;
+		let held = false; // (2) slot i still holds a pending target
+		for (const st of state.localZoneState.values()) {
+			if (
+				st.occupied &&
+				st.pendingSince !== null &&
+				st.confirmedTargets.has(i)
+			) {
+				held = true;
+				break;
+			}
+		}
+		if (!held) continue;
+		const np = mapTargetToGridCell(
+			t.x,
+			t.y,
+			params.roomWidth,
+			params.roomDepth,
+		);
+		const pp = mapTargetToGridCell(
+			prevXY.x,
+			prevXY.y,
+			params.roomWidth,
+			params.roomDepth,
+		);
+		if (!np || !pp) continue;
+		const dist = Math.max(
+			Math.abs(Math.floor(np.col) - Math.floor(pp.col)),
+			Math.abs(Math.floor(np.row) - Math.floor(pp.row)),
+		);
+		if (dist <= MAX_MOVEMENT_CELLS) continue; // (3) close → re-acquisition
+		if (hasEntry && !(t.onOverlay ?? false)) continue; // (4) entrance gate
+
+		let j = -1; // highest-index free slot
+		for (let cand = MAX_TARGETS - 1; cand >= 0; cand--) {
+			if (cand === i) continue;
+			const ct = cand < params.targets.length ? params.targets[cand] : null;
+			if (ct && ct.x != null && ct.y != null && ct.signal > 0) continue;
+			let hasBit = false;
+			for (const st of state.localZoneState.values()) {
+				if (st.confirmedTargets.has(cand)) {
+					hasBit = true;
+					break;
+				}
+			}
+			if (!hasBit) {
+				j = cand;
+				break;
+			}
+		}
+		if (j < 0) {
+			for (const st of state.localZoneState.values())
+				st.confirmedTargets.delete(i);
+			continue;
+		}
+
+		state.targetPrev[j] = state.targetPrev[i];
+		state.targetGateCount[j] = state.targetGateCount[i];
+		state.targetPrevXY[j] = state.targetPrevXY[i];
+		state.lastZone[j] = state.lastZone[i];
+		state.lastOnOverlay[j] = state.lastOnOverlay[i];
+		state.dismissedCells[j] = state.dismissedCells[i];
+		state.stuckRef[j] = state.stuckRef[i];
+		state.targetLogZone[j] = state.targetLogZone[i];
+		state.targetLogInRoom[j] = state.targetLogInRoom[i];
+
+		for (const st of state.localZoneState.values()) {
+			if (st.confirmedTargets.has(i)) {
+				st.confirmedTargets.delete(i);
+				st.confirmedTargets.add(j);
+			}
+		}
+
+		state.targetPrev[i] = null;
+		state.targetGateCount[i] = 0;
+		state.targetPrevXY[i] = null;
+		state.lastZone[i] = null;
+		state.lastOnOverlay[i] = false;
+		state.dismissedCells[i] = -1;
+		state.stuckRef[i] = null;
+		state.targetLogZone[i] = -1;
+		state.targetLogInRoom[i] = false;
+	}
 }
 
 /**
