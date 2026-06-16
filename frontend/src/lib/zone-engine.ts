@@ -406,6 +406,9 @@ function stepPendingRelocation(ctx: TickContext): void {
 		const prevXY = state.targetPrevXY[i];
 		if (!prevXY) continue;
 		let held = false; // (2) slot i still holds a pending target
+		// localZoneState only ever holds configured zones (unconfigured ones are
+		// purged in stepZoneStateMachine), so no enabled-zone guard is needed —
+		// the parity-equivalent of the firmware's set_zones zeroing disabled slots.
 		for (const st of state.localZoneState.values()) {
 			if (
 				st.occupied &&
