@@ -173,8 +173,6 @@
 	},
 	"sidebar": {
 		"detection_zones": "Zonas de detección",
-		"furniture": "Mobiliario",
-		"overlays": "Capas",
 		"live_overview": "Vista en directo",
 		"add_zone": "Añadir zona",
 		"rest_of_room": "Resto de la habitación",
