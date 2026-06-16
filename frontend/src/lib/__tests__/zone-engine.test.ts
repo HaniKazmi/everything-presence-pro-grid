@@ -2530,4 +2530,17 @@ describe("pending-target relocation (firmware Step 0 parity)", () => {
 		expect(after.occupancy[1]).toBe(false);
 		expect(after.targets[2].status).toBe("inactive");
 	});
+
+	it("does not relocate when the new occupant is off-grid (C++ parity)", () => {
+		const state = createZoneEngineState();
+		const p = makeReloParams(false); // distance-only path (no entry overlay)
+		const at = (t0: any, now: number) =>
+			runLocalZoneEngine(state, { ...p, targets: reloTargets(t0), now });
+		at({ x: 2850, y: 750, signal: 5 }, 100);
+		at({ x: 2850, y: 750, signal: 5 }, 101);
+		at({ x: 2850, y: 750, signal: 0 }, 102); // PENDING
+		// Off-grid new occupant: y=6300 -> row 21, outside the 20-row grid.
+		const r = at({ x: 2850, y: 6300, signal: 5 }, 103);
+		expect(r.targets[2].status).toBe("inactive"); // must NOT park (mirror C++)
+	});
 });

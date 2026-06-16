@@ -1489,3 +1489,14 @@ TEST_CASE("parked target times out on the original schedule, not extended") {
     CHECK_FALSE(after.zone_occupancy[1]);                    // cleared on original schedule
     CHECK(after.targets[2].status == TargetStatus::INACTIVE);
 }
+
+TEST_CASE("off-grid new occupant does not trigger relocation") {
+    ZoneEngine e = make_relo_engine(/*with_entry=*/false);
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);
+    e.tick(relo_win(2850, 750, 5, false), t + 1);            // bed OCCUPIED
+    e.tick(relo_win(2850, 750, 0, false), t + 2);            // bed PENDING
+    // New "occupant" reported off-grid (y=6300 -> row 21, outside the 20-row grid).
+    const ProcessingResult& r = e.tick(relo_win(2850, 6300, 5, false), t + 3);
+    CHECK(r.targets[2].status == TargetStatus::INACTIVE);    // nothing parked
+}

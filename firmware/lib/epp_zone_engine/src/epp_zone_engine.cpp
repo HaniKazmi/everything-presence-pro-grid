@@ -252,6 +252,8 @@ void ZoneEngine::relocate_pending_targets_(const WindowOutput& window) {
             if (cand == i || window.targets[cand].active) continue;
             bool has_bit = false;
             for (int zi = 0; zi < zone_count_; ++zi) {
+                // No zone_enabled_ guard needed here: a disabled slot's
+                // confirmed_targets is always 0, so it never matches.
                 if (zones_[zi].confirmed_targets & (1 << cand)) { has_bit = true; break; }
             }
             if (!has_bit) { j = cand; break; }

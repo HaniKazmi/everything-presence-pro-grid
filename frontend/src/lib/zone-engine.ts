@@ -1,4 +1,4 @@
-import { mapTargetToGridCell } from "./coordinates.js";
+import { mapTargetToGridCell, targetCellIndex } from "./coordinates.js";
 import {
 	CELL_OVERLAY_ENTRY,
 	CELL_OVERLAY_INTERFERENCE,
@@ -429,7 +429,16 @@ function stepPendingRelocation(ctx: TickContext): void {
 			params.roomWidth,
 			params.roomDepth,
 		);
-		if (!np || !pp) continue;
+		// Mirror firmware xy_to_col_row's false return: an off-grid col/row skips
+		// relocation. mapTargetToGridCell itself does NOT bounds-check, so use
+		// targetCellIndex (floor + grid bounds) to match the C++ engine exactly.
+		if (
+			!np ||
+			!pp ||
+			targetCellIndex(np) === null ||
+			targetCellIndex(pp) === null
+		)
+			continue;
 		const dist = Math.max(
 			Math.abs(Math.floor(np.col) - Math.floor(pp.col)),
 			Math.abs(Math.floor(np.row) - Math.floor(pp.row)),
