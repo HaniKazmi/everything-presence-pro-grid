@@ -2496,8 +2496,12 @@ describe("pending-target relocation (firmware Step 0 parity)", () => {
 	});
 
 	it("drops the held pending target when no free slot exists", () => {
+		// No entry overlay → distance-only trigger; the new occupant and blockers
+		// sit on plain zone-0 cells below the gated threshold, so none confirms a
+		// zone. A leftover bed bit is then the only thing that could make slot 0
+		// PENDING after it goes inactive — isolating the clobber for the follow-up.
 		const state = createZoneEngineState();
-		const p = makeReloParams(true);
+		const p = makeReloParams(false);
 		at3(state, p, [{ x: 2850, y: 750, signal: 5 }, null, null], 100);
 		at3(state, p, [{ x: 2850, y: 750, signal: 5 }, null, null], 101);
 		at3(state, p, [{ x: 2850, y: 750, signal: 0 }, null, null], 102); // bed PENDING (slot 0)
@@ -2505,13 +2509,21 @@ describe("pending-target relocation (firmware Step 0 parity)", () => {
 			state,
 			p,
 			[
-				{ x: 2850, y: 3750, signal: 5, onOverlay: true }, // door
-				{ x: 2850, y: 3150, signal: 5 }, // [9,10]
-				{ x: 2850, y: 1950, signal: 5 }, // [9,6]
+				{ x: 2850, y: 3150, signal: 5 }, // [9,10] zone 0, far from bed
+				{ x: 2850, y: 2550, signal: 5 }, // [9,8]  zone 0
+				{ x: 2850, y: 1950, signal: 5 }, // [9,6]  zone 0
 			],
 			103,
 		);
 		expect(r.targets.some((t) => t.status === "pending")).toBe(false);
+		// Follow-up: bed bit stripped → slot 0 going inactive must not resurrect as PENDING.
+		const r2 = at3(
+			state,
+			p,
+			[{ x: 2850, y: 3150, signal: 0 }, null, null],
+			104,
+		);
+		expect(r2.targets[0].status).toBe("inactive");
 	});
 
 	it("parked target times out on the original schedule", () => {

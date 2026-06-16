@@ -892,7 +892,7 @@
         {"t": 100.0, "targets": [{"x": 2850, "y": 2250, "frames": 5}]},
         {"t": 101.0, "targets": [{"x": 2850, "y": 2250, "frames": 5}]},
         {"t": 102.0, "targets": [{"x": 2850, "y": 2250, "frames": 0}]},
-        {"t": 103.0, "targets": [{"x": 2850, "y": 4350, "frames": 5}]}
+        {"t": 103.0, "targets": [{"x": 2850, "y": 4350, "frames": 5}, {"x": 0, "y": 0, "frames": 0}, {"x": 0, "y": 0, "frames": 0}]}
       ],
       "expected": [
         {
@@ -905,7 +905,8 @@
           "zone_occupancy": {"4": true}
         },
         {
-          "zone_occupancy": {"4": true}
+          "zone_occupancy": {"4": true},
+          "targets": [{"status": "active"}, {"status": "inactive"}, {"status": "inactive"}]
         }
       ],
       "expected_events": [

@@ -1455,23 +1455,34 @@ TEST_CASE("entrance configured, occupant off-overlay: pending NOT parked") {
 }
 
 TEST_CASE("no free slot: held pending target is dropped (clean clobber)") {
-    ZoneEngine e = make_relo_engine(/*with_entry=*/true);
+    // No entry overlay → relocation triggers on distance alone. The new occupant
+    // and the two blockers land on plain zone-0 corridor cells with signal below
+    // the gated threshold, so NONE confirms a zone. That isolates the bed zone's
+    // bit for the follow-up assertion: the only thing that could make slot 0
+    // PENDING after it goes inactive is a leftover bed bit (a failed clobber).
+    ZoneEngine e = make_relo_engine(/*with_entry=*/false);
     float t = 100.0f;
     e.tick(relo_win(2850, 750, 5, false), t);
     e.tick(relo_win(2850, 750, 5, false), t + 1);            // bed (slot 0) OCCUPIED
     e.tick(relo_win(2850, 750, 0, false), t + 2);            // bed PENDING (slot 0 held)
 
-    // Collision tick: slot 0 = far new occupant on overlay; slots 1 & 2 active.
+    // Collision tick: slot 0 = far new occupant in zone 0; slots 1 & 2 active → no free slot.
     WindowOutput wo{};
     wo.total_frames = CANONICAL_FRAMES;
-    wo.targets[0] = {2850.0f, 3750.0f, 5, true, true};       // door, on_overlay
-    wo.targets[1] = {2850.0f, 3150.0f, 5, true, false};      // [9,10]
-    wo.targets[2] = {2850.0f, 1950.0f, 5, true, false};      // [9,6]
+    wo.targets[0] = {2850.0f, 3150.0f, 5, true, false};      // [9,10] zone 0, far from bed
+    wo.targets[1] = {2850.0f, 2550.0f, 5, true, false};      // [9,8]  zone 0
+    wo.targets[2] = {2850.0f, 1950.0f, 5, true, false};      // [9,6]  zone 0
     const ProcessingResult& r = e.tick(wo, t + 3);
-    // No slot is PENDING — the held target was dropped (no free slot to park).
+    // All three slots active → none can be PENDING this tick.
     CHECK(r.targets[0].status != TargetStatus::PENDING);
     CHECK(r.targets[1].status != TargetStatus::PENDING);
     CHECK(r.targets[2].status != TargetStatus::PENDING);
+
+    // Follow-up: the bed bit was stripped, so slot 0 going inactive must NOT
+    // resurrect as a PENDING ghost. (No zone-0 cell ever confirmed a zone, so a
+    // leftover bed bit is the only thing that could make slot 0 PENDING here.)
+    const ProcessingResult& r2 = e.tick(relo_win(2850, 3150, 0, false), t + 4);
+    CHECK(r2.targets[0].status == TargetStatus::INACTIVE);
 }
 
 TEST_CASE("parked target times out on the original schedule, not extended") {
