@@ -1483,8 +1483,9 @@ TEST_CASE("parked target times out on the original schedule, not extended") {
     e.tick(relo_win(2850, 3750, 5, true), t + 3);            // park to slot 2 at t=103
 
     // New occupant stays at the door; assert the bed (slot 2) clears at 107, not 108.
-    CHECK(e.tick(relo_win(2850, 3750, 5, true), 106.9f).zone_occupancy[1]);          // still held
-    CHECK(e.tick(relo_win(2850, 3750, 5, true), 106.9f).targets[2].status == TargetStatus::PENDING);
+    const ProcessingResult& held = e.tick(relo_win(2850, 3750, 5, true), 106.9f);  // still held
+    CHECK(held.zone_occupancy[1]);
+    CHECK(held.targets[2].status == TargetStatus::PENDING);
     const ProcessingResult& after = e.tick(relo_win(2850, 3750, 5, true), 107.1f);
     CHECK_FALSE(after.zone_occupancy[1]);                    // cleared on original schedule
     CHECK(after.targets[2].status == TargetStatus::INACTIVE);
