@@ -1443,7 +1443,14 @@ describe("epp-grid cell sizing (measured available width)", () => {
 	});
 
 	it("fits the cells to a generous measured width without exceeding the ceiling", async () => {
-		const el = createGrid();
+		// Use a shallow room so the desktop height-fit path isn't the binding
+		// constraint under happy-dom's short 768px viewport (which would cap a
+		// deep room below the ceiling). This isolates width-fitting against the
+		// 48px ceiling — the case that matters on a real, taller desktop viewport.
+		const el = createGrid({
+			grid: initGridFromRoom(3000, 2000),
+			roomDepth: 2000,
+		});
 		document.body.appendChild(el);
 		await el.updateComplete;
 

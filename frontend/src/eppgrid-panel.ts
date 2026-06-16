@@ -207,6 +207,17 @@ export const panelStyles = css`
     font-size: 14px;
   }
 
+  /* Grid-hero views (editor + live overview) fill the available width instead
+     of the 1100px centered reading column. CRITICAL: drop the auto side margins
+     — auto margins on a flex item (the panel is a child of the flex-column
+     .tab-layout) disable align-items:stretch, so the panel shrink-wraps to its
+     content and the grid never gets the width to flex into. */
+  .panel.panel--grid {
+    max-width: none;
+    margin: 0;
+    align-self: stretch;
+  }
+
   @media (max-width: 819px) {
     :host {
       --epp-control-height: 44px;
@@ -354,6 +365,17 @@ export const layoutStyles = css`
     overflow: visible;
   }
 
+  /* Desktop editor/live: frame the grid in a full-width "expansion area" card.
+     The grid centres within it, the white surface shows the space the grid can
+     use, and the detection log below lines up with the card's left edge. Reset
+     on mobile (the grid fills the screen there — no card). */
+  .editor-shell .grid-container {
+    background: var(--epp-surface, var(--card-background-color, #fff));
+    border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+    border-radius: var(--epp-radius-lg, 16px);
+    padding: 16px;
+  }
+
   .sidebar-title {
     font-size: 15px;
     font-weight: 600;
@@ -361,15 +383,21 @@ export const layoutStyles = css`
     color: var(--primary-text-color, #212121);
   }
 
-  /* Unified editor shell: flex row on desktop (grid left, controls right). */
+  /* Unified editor shell: CSS grid on desktop — grid column takes the remaining
+     space, the controls panel a fixed 360px track. A grid TRACK (vs a flex
+     item) is reserved by the container regardless of whether the controls
+     element is momentarily present, so the grid column's width stays stable
+     across the editor↔live swap (no "jump bigger then back" on save). The 1fr
+     uses minmax(0,…) so the column can shrink below its content. */
   .editor-shell {
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
     gap: 24px;
     align-items: stretch;
+    width: 100%;
   }
 
   .editor-shell > .grid-column {
-    flex: 1 1 auto;
     min-width: 0;
     max-width: none;
     display: flex;
@@ -378,7 +406,15 @@ export const layoutStyles = css`
 
   .editor-shell > .editor-controls,
   .editor-shell > .live-controls {
-    flex: 0 0 320px;
+    /* Pin the controls panel to a fixed width so the grid column reliably gets
+       all the remaining width. min-width:0 is essential: without it a flex
+       item's automatic minimum size is its content's MIN-CONTENT width, which
+       overrides flex-basis/max-width — the editor's zone form has a wide
+       min-content, so the sidebar refused to shrink and squashed the grid. With
+       min-width:0 the form wraps/scrolls within the fixed width instead. */
+    flex: 0 0 360px;
+    max-width: 360px;
+    min-width: 0;
   }
 
   /* Sidebar-tab switcher — rendered in the epp-sheet peek at every breakpoint. */
@@ -411,6 +447,7 @@ export const layoutStyles = css`
        filling height). The grid column is fixed-height (flex:0 0 auto) and the
        inline <epp-sheet> fills the rest and owns its own scroll. */
     .editor-shell {
+      display: flex;
       flex-direction: column;
       flex: 1;
       min-height: 0;
@@ -423,6 +460,13 @@ export const layoutStyles = css`
     .editor-shell > .live-controls {
       flex: 1 1 auto;
       min-height: 0;
+      max-width: none;
+    }
+    /* No expansion-area card on mobile — the grid fills the screen. */
+    .editor-shell .grid-container {
+      background: none;
+      border: none;
+      padding: 0;
     }
   }
 `;
@@ -2739,7 +2783,7 @@ export class EPPGridPanel extends LitElement {
           ></epp-wizard>`;
 
 		return html`
-      <div class="panel" @click=${(e: MouseEvent) => {
+      <div class="panel panel--grid" @click=${(e: MouseEvent) => {
 				if (!(e.target instanceof Element)) return;
 				if (this._targetMenu && !e.target.closest(".target-menu")) {
 					this._closeTargetMenu();
@@ -2976,7 +3020,7 @@ export class EPPGridPanel extends LitElement {
 				: nothing;
 
 		return html`
-      <div class="panel" @click=${onPanelClick}>
+      <div class="panel panel--grid" @click=${onPanelClick}>
         ${this._renderHeader()}
         <div class="editor-shell" @focusin=${this._onEditorFocusIn} @focusout=${this._onEditorFocusOut}>
           <div class="grid-column">

@@ -293,6 +293,8 @@ describe("render() dispatches to correct view", () => {
 		// Both desktop and mobile now use .editor-shell + epp-sheet.
 		expect(c.querySelector(".editor-shell")).not.toBeNull();
 		expect(c.querySelector("epp-sheet")).not.toBeNull();
+		// The editor is a grid-hero view: its panel opts into full width.
+		expect(c.querySelector(".panel.panel--grid")).not.toBeNull();
 		// Old two-branch classes are gone.
 		expect(c.querySelector(".editor-layout")).toBeNull();
 		expect(c.querySelector(".editor-mobile")).toBeNull();
@@ -971,6 +973,8 @@ describe("_renderLiveOverview", () => {
 		expect(c.querySelector("epp-grid")).not.toBeNull();
 		expect(c.querySelector("epp-live-sidebar")).not.toBeNull();
 		expect(c.querySelector("epp-wizard")).toBeNull();
+		// The live overview is a grid-hero view: its panel opts into full width.
+		expect(c.querySelector(".panel.panel--grid")).not.toBeNull();
 	});
 
 	it("renders live overview without perspective (uncalibrated)", () => {

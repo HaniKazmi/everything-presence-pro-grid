@@ -107,14 +107,14 @@ describe("layout styles", () => {
 
 	it("live-controls side-panel has a fixed width (no squeezing)", () => {
 		// The live overview's epp-sheet.live-controls is sized by
-		// .editor-shell > .live-controls { flex: 0 0 320px } — the flex shorthand
+		// .editor-shell > .live-controls { flex: 0 0 360px } — the flex shorthand
 		// sets flex-shrink:0 implicitly. Verify the rule exists.
 		const match = layoutCss.match(
 			/\.editor-shell\s*>\s*\.live-controls\s*\{([^}]*flex:[^}]*)\}/,
 		);
 		expect(match).not.toBeNull();
 		const rule = match![1];
-		expect(rule).toMatch(/flex:\s*0\s+0\s+320px/);
+		expect(rule).toMatch(/flex:\s*0\s+0\s+360px/);
 	});
 
 	it("live-controls side-panel rule does not set overflow: hidden", () => {
@@ -176,18 +176,27 @@ describe("layout styles", () => {
 		expect(scopedRule).toMatch(/max-width:\s*100%/);
 	});
 
-	it("editor-shell is a flex row at desktop width", () => {
+	it("editor-shell is a two-track grid row at desktop width", () => {
+		// Desktop uses CSS grid (not flex): a minmax(0,1fr) grid column + a fixed
+		// 360px controls track. A reserved TRACK keeps the grid column's width
+		// stable across the editor↔live swap. Target the base ".editor-shell {"
+		// rule specifically — not the ".editor-shell .grid-container" card rule
+		// nor the mobile @media override that resets to flex-column.
 		const css = layoutStyles.cssText;
-		expect(css).toContain(".editor-shell");
-		const shell = css.slice(css.indexOf(".editor-shell"));
-		expect(shell).toMatch(/display:\s*flex/);
+		const idx = css.indexOf(".editor-shell {");
+		expect(idx).toBeGreaterThan(-1);
+		const shell = css.slice(idx, css.indexOf("}", idx));
+		expect(shell).toMatch(/display:\s*grid/);
+		expect(shell).toMatch(
+			/grid-template-columns:\s*minmax\(0,\s*1fr\)\s+360px/,
+		);
 	});
 
 	it("editor grid-column overrides the min-content cap so it can grow", () => {
 		// The base .grid-column rule has max-width: min-content (keeps the live
 		// overview tight). The .editor-shell > .grid-column rule must override that
-		// with max-width: none so the grid column actually fills the flex row on
-		// desktop (the whole point of flex: 1 1 auto there).
+		// with max-width: none so the grid column actually fills the minmax(0,1fr)
+		// grid track on desktop.
 		const css = layoutStyles.cssText;
 		const rule = css.slice(css.indexOf(".editor-shell > .grid-column"));
 		expect(rule).toContain("max-width: none");
@@ -213,6 +222,37 @@ describe("layout styles", () => {
 		const minWidthIdx = panelCss.indexOf("min-width: 0");
 		expect(mediaIdx).toBeGreaterThan(-1);
 		expect(minWidthIdx).toBeGreaterThan(mediaIdx);
+	});
+
+	it("panel--grid drops the reading-column cap so grid-hero views fill the width", () => {
+		// The editor + live overview carry .panel--grid to opt out of the 1100px
+		// centered .panel max-width. CRITICAL: it must also drop the auto side
+		// margins (margin:0) and stretch — auto margins on a flex item disable
+		// align-items:stretch, so the panel would shrink-wrap and starve the grid.
+		const css = panelStyles.cssText;
+		const idx = css.indexOf(".panel.panel--grid");
+		expect(idx).toBeGreaterThan(-1);
+		const rule = css.slice(idx, css.indexOf("}", idx));
+		expect(rule).toMatch(/max-width:\s*none/);
+		expect(rule).toMatch(/margin:\s*0/);
+		expect(rule).toMatch(/align-self:\s*stretch/);
+	});
+
+	it("desktop frames the grid in an expansion-area card, reset on mobile", () => {
+		// .editor-shell .grid-container gets a themed surface + border on desktop
+		// (shows the area the grid can expand into; the log lines up with its left
+		// edge). The mobile @media resets it to none — the grid fills the screen.
+		const css = layoutStyles.cssText;
+		const cardIdx = css.indexOf(".editor-shell .grid-container");
+		expect(cardIdx).toBeGreaterThan(-1);
+		const cardRule = css.slice(cardIdx, css.indexOf("}", cardIdx));
+		expect(cardRule).toMatch(/background:/);
+		expect(cardRule).toMatch(/border:/);
+		// The reset lives inside the mobile @media block (after its marker).
+		const mediaIdx = css.indexOf("@media (max-width: 819px)");
+		const resetIdx = css.indexOf(".editor-shell .grid-container", mediaIdx);
+		expect(mediaIdx).toBeGreaterThan(-1);
+		expect(resetIdx).toBeGreaterThan(mediaIdx);
 	});
 });
 

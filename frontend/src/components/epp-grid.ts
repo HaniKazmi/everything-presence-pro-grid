@@ -52,6 +52,11 @@ const OVERLAY_STRIPE_CSS: Record<number, string> = {
 // width-fit and the page can scroll instead of collapsing the cells.
 const DESKTOP_MIN_HEIGHT_PX = 200;
 
+// Space (px) reserved below the grid on desktop for the dimensions caption +
+// the detection-log toggle, so a height-bounded grid doesn't push them off the
+// bottom of the viewport.
+const DESKTOP_HEIGHT_RESERVE_PX = 130;
+
 export class EppGrid extends LitElement {
 	@property({ attribute: false }) grid: Uint8Array = new Uint8Array(0);
 	@property({ attribute: false }) zoneConfigs: (ZoneConfig | null)[] = [];
@@ -136,7 +141,9 @@ export class EppGrid extends LitElement {
 		// bottom so a tall room can't overflow. Mobile uses capHeightToHalfViewport.
 		if (!this.capHeightToHalfViewport) {
 			const top = this.getBoundingClientRect().top;
-			const avail = Math.floor(window.innerHeight - top - 24); // 24px reserve
+			const avail = Math.floor(
+				window.innerHeight - top - DESKTOP_HEIGHT_RESERVE_PX,
+			);
 			if (avail > 0 && Math.abs(avail - this._availHeightPx) >= 1)
 				this._availHeightPx = avail;
 		}
