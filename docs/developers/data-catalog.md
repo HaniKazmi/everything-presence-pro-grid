@@ -27,7 +27,7 @@ Frontend (eppgrid-panel.ts — orchestrator)
   ├── controllers/
   │   ├── device-controller.ts — WS subscriptions, device loading
   │   ├── grid-state-controller.ts — grid/zone/furniture mutation, saved configurations
-  │   ├── target-controller.ts — target/sensor/zone state, zone engine, debug logs
+  │   ├── target-controller.ts — target/sensor/zone state, zone engine, detection-log events
   │   ├── flasher-controller.ts — serial port + USB flash state machine
   │   └── panel-host.ts — typed PanelHost interface declaring every panel field/method the controllers touch
   ├── components/
@@ -160,7 +160,7 @@ Parses Target Position, Zone State, and sensor entity updates into structured ev
         "occupancy": {"0": true, "1": false},
         "target_counts": {},
         "frame_count": 10,
-        "debug_log": "S:I M:P Occ:1|T0:Z1:A:9|Z1:O:9"
+        "events": ["te:0:1", "zo:1", "oo", "wo"]
     }
 }
 ```
@@ -537,18 +537,39 @@ Publishing (5 independent output timers):
                                  (always published)
 ```
 
-### Debug Log Format
+### Zone State JSON (firmware `ev` field)
 
-Both firmware and frontend zone engine produce the same raw format:
+Firmware v1.2.0+ emits structured detection-log events in the zone state JSON text sensor as `"ev": [...]`. The integration passes this array through as `events` in the `subscribe_grid_targets` payload. The panel renders it as a human-readable event timeline.
 
-```
-T0:Z1:A:9 T1:Z0:P:3|Z0:O:9 Z1:P:3
-```
+For older firmware (pre-1.2.0) that still publishes a `"debug_log"` string field, the panel falls back to parsing and enriching that snapshot for readability (e.g. replacing zone IDs with zone names) via `enrichDebugLog`. `debug_log` is no longer present in current firmware.
 
-- Before `|`: targets — `T{idx}:Z{zone_id}:{A|P}:{signal}`
-- After `|`: zones — `Z{zone_id}:{O|P}:{signal}`
+#### Detection-Log Event Codes
 
-The frontend enricher replaces zone IDs with names for display.
+| Code | Meaning |
+| --- | --- |
+| `sa` / `sp` / `sc` | static presence active / pending / cleared |
+| `ma` / `mp` / `mc` | motion presence active / pending / cleared |
+| `zo:Z` / `zp:Z` | zone Z occupied / clearing |
+| `zc:Z:r` | zone Z cleared, reason `r` (see legend below) |
+| `oo` / `of` | room occupancy on / off |
+| `wo` / `wf` | mmWave on / off |
+| `fc:Z` | zone Z sensor-assisted force-clear |
+| `td:T:secs` | target T auto-dismissed (stuck for secs seconds) |
+| `te:T:Z` | target T entered zone Z |
+| `tl:T` | target T left the room |
+| `tm:T:Za:Zb` | target T moved from zone Za to Zb |
+| `xd:n` | n events dropped (firmware queue / JSON-budget overflow) |
+
+Zone-clear reason `r` (the `zc:Z:r` suffix):
+
+| `r` | reason |
+| --- | --- |
+| `t` | timeout — the zone's normal clear timeout elapsed |
+| `h` | handoff — the last confirmed target moved to another zone |
+| `o` | overlay exit — the last confirmed target vanished from an entry-overlay cell |
+| `f` | force — sensor-assisted force-clear (both presence sensors idle) |
+
+A `zc:Z` with no `:r` suffix (forward/back-compat) renders as a plain "cleared".
 
 ## 5. Configuration Storage
 

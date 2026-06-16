@@ -49,6 +49,27 @@ TEST_CASE("BoundedWriter: chained printfs accumulate correctly") {
   CHECK(std::strcmp(buf, "{\"a\":1,\"b\":two}") == 0);
 }
 
+TEST_CASE("BoundedWriter: remaining() decreases as we printf and nears zero") {
+  char buf[16];
+  BoundedWriter w(buf, sizeof(buf));
+  // remaining() includes the NUL slot, so a fresh writer reports total_.
+  CHECK(w.remaining() == 16);
+  w.printf("abc");  // 3 bytes of payload
+  CHECK(w.remaining() == 13);
+  w.printf("defghij");  // 7 more -> 10 written
+  CHECK(w.remaining() == 6);
+  // Fill right up to the last payload byte: 15 written + NUL slot.
+  w.printf("klmno");  // 5 more -> 15 written
+  CHECK(w.ok() == true);
+  CHECK(w.size() == 15);
+  // Only the NUL slot is left now.
+  CHECK(w.remaining() == 1);
+  // Once not-ok, remaining() collapses to 0 so budget math never goes negative.
+  w.printf("p");  // would need 1 payload byte + NUL = 2; only 1 byte left
+  CHECK(w.ok() == false);
+  CHECK(w.remaining() == 0);
+}
+
 TEST_CASE("BoundedWriter: overflow by exactly 1 is detected and reported") {
   // Buffer holds 8 chars + null = 9 bytes. "1234567" is 7 chars (fits).
   // Adding one more char would write the 9th byte past the null slot.

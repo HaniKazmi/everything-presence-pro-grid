@@ -4724,6 +4724,7 @@ class TestSubscriptionCallbacks:
                 "mmwave": True,
                 "frame_count": 42,
                 "debug_log": "test debug",
+                "ev": ["zo:0", "sc"],
             }
         )
         state = TextSensorState(key=300, state=zone_json, missing_state=False)
@@ -4736,6 +4737,208 @@ class TestSubscriptionCallbacks:
         assert event["event"]["zones"]["debug_log"] == "test debug"
         assert event["event"]["sensors"]["target_presence"] is True
         assert event["event"]["sensors"]["mmwave"] is True
+        assert event["event"]["zones"]["events"] == ["zo:0", "sc"]
+
+    async def test_grid_targets_zone_state_without_events(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Zone state JSON without 'ev' key omits 'events' from the emitted payload (BWC)."""
+        import json
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        zone_state_entity = MagicMock()
+        zone_state_entity.key = 300
+        zone_state_entity.name = "Zone State"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn.entities = [zone_state_entity]
+        mock_device_conn.subscribe_states = AsyncMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 43, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+
+        from aioesphomeapi import TextSensorState
+
+        # Old firmware: no 'ev' key present
+        zone_json = json.dumps(
+            {
+                "targets": [{"signal": 60, "status": "active"}],
+                "zones": {"occupancy": [True, False, False], "tracking": True},
+                "frame_count": 10,
+                "debug_log": "old firmware",
+            }
+        )
+        state = TextSensorState(key=300, state=zone_json, missing_state=False)
+        on_state(state)
+
+        connection.send_message.assert_called_once()
+        event = connection.send_message.call_args[0][0]
+        assert "events" not in event["event"]["zones"]
+
+    async def test_grid_targets_malformed_ev_string_is_dropped(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Zone state JSON with 'ev' as a bare string (not a list) must not reach the frontend."""
+        import json
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        zone_state_entity = MagicMock()
+        zone_state_entity.key = 300
+        zone_state_entity.name = "Zone State"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn.entities = [zone_state_entity]
+        mock_device_conn.subscribe_states = AsyncMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 44, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+
+        from aioesphomeapi import TextSensorState
+
+        # Malformed: 'ev' is a bare string, not a list
+        zone_json = json.dumps(
+            {
+                "targets": [{"signal": 60, "status": "active"}],
+                "zones": {"occupancy": [True, False, False], "tracking": True},
+                "frame_count": 5,
+                "ev": "zo:1",
+            }
+        )
+        state = TextSensorState(key=300, state=zone_json, missing_state=False)
+        on_state(state)
+
+        connection.send_message.assert_called_once()
+        event = connection.send_message.call_args[0][0]
+        assert "events" not in event["event"]["zones"]
+
+    async def test_grid_targets_malformed_ev_mixed_types_strips_non_strings(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Zone state JSON with mixed-type 'ev' items: non-string items are silently dropped."""
+        import json
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        zone_state_entity = MagicMock()
+        zone_state_entity.key = 300
+        zone_state_entity.name = "Zone State"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn.entities = [zone_state_entity]
+        mock_device_conn.subscribe_states = AsyncMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 45, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+
+        from aioesphomeapi import TextSensorState
+
+        # Malformed: 'ev' contains mixed types — only string items should pass through
+        zone_json = json.dumps(
+            {
+                "targets": [{"signal": 60, "status": "active"}],
+                "zones": {"occupancy": [True, False, False], "tracking": True},
+                "frame_count": 5,
+                "ev": ["zo:1", 5, "sc"],
+            }
+        )
+        state = TextSensorState(key=300, state=zone_json, missing_state=False)
+        on_state(state)
+
+        connection.send_message.assert_called_once()
+        event = connection.send_message.call_args[0][0]
+        assert event["event"]["zones"]["events"] == ["zo:1", "sc"]
+
+    async def test_grid_targets_events_not_re_emitted_on_target_position(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Detection-log events emit once per zone-state frame, not on later frames.
+
+        `events` are discrete occurrences (not persistent state) and the
+        frontend's events path is intentionally NOT deduped. The zone-state
+        branch sets `zones["events"]` but the persistent `zones` accumulator is
+        re-sent on every ~5Hz target/sensor emit, so without dropping `events`
+        after the zone-state emit the same events would be re-sent (and
+        re-rendered) repeatedly until the next zone-state publish.
+        """
+        import json
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        zone_state_entity = MagicMock()
+        zone_state_entity.key = 300
+        zone_state_entity.name = "Zone State"
+
+        target0 = MagicMock()
+        target0.key = 200
+        target0.name = "Target 1 Position"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn.entities = [zone_state_entity, target0]
+        mock_device_conn.subscribe_states = AsyncMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 45, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+
+        from aioesphomeapi import TextSensorState
+
+        # 1Hz zone-state frame carrying a discrete event.
+        zone_json = json.dumps(
+            {
+                "targets": [{"signal": 80, "status": "active"}],
+                "zones": {"occupancy": [True, False, False], "tracking": True},
+                "frame_count": 1,
+                "ev": ["zo:1"],
+            }
+        )
+        on_state(TextSensorState(key=300, state=zone_json, missing_state=False))
+
+        # The zone-state emit carries the event.
+        event = connection.send_message.call_args[0][0]
+        assert event["event"]["zones"]["events"] == ["zo:1"]
+
+        # A subsequent 5Hz target-position frame must NOT re-send the stale event.
+        on_state(TextSensorState(key=200, state="1500.0,2000.0,active", missing_state=False))
+
+        event = connection.send_message.call_args[0][0]
+        assert "events" not in event["event"]["zones"]
 
     async def test_grid_targets_drops_wrong_shape_zone_state_frames(
         self, hass: HomeAssistant, config_entry: MockConfigEntry

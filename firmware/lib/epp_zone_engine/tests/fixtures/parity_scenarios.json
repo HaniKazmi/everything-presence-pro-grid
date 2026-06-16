@@ -28,6 +28,9 @@
         {
           "zone_occupancy": {"0": false, "1": false}
         }
+      ],
+      "expected_events": [
+        []
       ]
     },
     "test_inactive_target_all_clear": {
@@ -38,6 +41,9 @@
         {
           "zone_occupancy": {"0": false, "1": false}
         }
+      ],
+      "expected_events": [
+        []
       ]
     },
     "test_target_in_custom_zone_occupied": {
@@ -48,6 +54,9 @@
         {
           "zone_occupancy": {"0": false, "1": true}
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"]
       ]
     },
     "test_target_below_trigger_stays_clear": {
@@ -58,6 +67,9 @@
         {
           "zone_occupancy": {"0": false}
         }
+      ],
+      "expected_events": [
+        []
       ]
     },
     "test_zone_0_gating": {
@@ -72,6 +84,10 @@
         {
           "zone_occupancy": {"0": true}
         }
+      ],
+      "expected_events": [
+        [],
+        ["te:0:0", "zo:0", "oo", "wo"]
       ]
     },
     "test_entry_point_bypasses_gating": {
@@ -82,6 +98,9 @@
         {
           "zone_occupancy": {"1": true}
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"]
       ]
     },
     "test_pending_then_clear_after_timeout": {
@@ -100,6 +119,11 @@
         {
           "zone_occupancy": {"1": false}
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["zp:1", "wf"],
+        ["zc:1:o", "of"]
       ]
     },
     "test_target_reappears_during_pending": {
@@ -118,6 +142,11 @@
         {
           "zone_occupancy": {"1": true}
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["zp:1", "wf"],
+        ["te:0:1", "zo:1", "wo"]
       ]
     },
     "test_two_targets_different_zones": {
@@ -132,6 +161,10 @@
         {
           "zone_occupancy": {"0": true, "1": true}
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["te:1:0", "zo:0"]
       ]
     },
     "test_target_outside_grid_no_occupancy": {
@@ -142,6 +175,9 @@
         {
           "zone_occupancy": {"0": false, "1": false}
         }
+      ],
+      "expected_events": [
+        []
       ]
     },
     "test_target_on_non_room_cell_no_occupancy": {
@@ -152,6 +188,9 @@
         {
           "zone_occupancy": {"0": false, "1": false}
         }
+      ],
+      "expected_events": [
+        []
       ]
     },
     "test_continuity_skips_gating": {
@@ -170,6 +209,11 @@
         {
           "zone_occupancy": {"0": true}
         }
+      ],
+      "expected_events": [
+        [],
+        ["te:0:0", "zo:0", "oo", "wo"],
+        []
       ]
     },
     "test_active_target_status": {
@@ -181,6 +225,9 @@
           "zone_occupancy": {},
           "targets": [{"status": "active", "x": 2850, "y": 450, "signal": 5}]
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"]
       ]
     },
     "test_no_targets_empty_list": {
@@ -192,6 +239,9 @@
           "zone_occupancy": {},
           "targets": []
         }
+      ],
+      "expected_events": [
+        []
       ]
     },
     "test_inactive_target_status": {
@@ -203,6 +253,9 @@
           "zone_occupancy": {},
           "targets": [{"status": "inactive"}]
         }
+      ],
+      "expected_events": [
+        []
       ]
     },
     "test_pending_target_status": {
@@ -218,6 +271,10 @@
           "zone_occupancy": {},
           "targets": [{"status": "pending", "x": 2850, "y": 450, "signal": 0}]
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["zp:1", "wf"]
       ]
     },
     "test_inactive_after_timeout": {
@@ -237,6 +294,11 @@
           "zone_occupancy": {},
           "targets": [{"status": "inactive"}]
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["zp:1", "wf"],
+        ["zc:1:o", "of"]
       ]
     },
     "test_tracked_target_outside_room_no_prior": {
@@ -248,6 +310,9 @@
           "zone_occupancy": {},
           "targets": [{"status": "inactive"}]
         }
+      ],
+      "expected_events": [
+        []
       ]
     },
     "test_tracked_target_outside_room_with_prior": {
@@ -263,6 +328,10 @@
           "zone_occupancy": {},
           "targets": [{"status": "pending", "x": 2850, "y": 450}]
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["tl:0", "zp:1", "wf"]
       ]
     },
     "test_reappears_during_pending_back_to_active": {
@@ -283,6 +352,11 @@
           "zone_occupancy": {},
           "targets": [{"status": "active", "x": 2850, "y": 450, "signal": 3}]
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["zp:1", "wf"],
+        ["te:0:1", "zo:1", "wo"]
       ]
     },
     "test_two_targets_one_leaves_mixed_states": {
@@ -305,6 +379,11 @@
             {"status": "pending", "x": 2550, "y": 150}
           ]
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["te:1:0", "zo:0"],
+        ["zp:0"]
       ]
     },
     "test_outside_room_then_stops_tracking_pending": {
@@ -325,6 +404,11 @@
           "zone_occupancy": {"1": false},
           "targets": [{"status": "inactive"}]
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["tl:0", "zp:1", "wf"],
+        ["zc:1:o", "of"]
       ]
     },
     "test_signal_zero_but_tracking_inactive": {
@@ -344,6 +428,11 @@
           "zone_occupancy": {},
           "targets": [{"status": "inactive"}]
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["zp:1", "wf"],
+        ["zc:1:o", "of"]
       ]
     },
     "test_handoff_target_moves_between_zones": {
@@ -364,6 +453,11 @@
           "zone_occupancy": {"0": true, "1": true},
           "targets": [{"status": "active"}]
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["te:0:0", "tm:0:1:0", "zo:0", "zp:1"],
+        []
       ]
     },
     "test_overlay_exit_handoff": {
@@ -382,6 +476,11 @@
         {
           "zone_occupancy": {"1": false}
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["zp:1", "wf"],
+        ["zc:1:o", "of"]
       ]
     },
     "test_stale_prev_cleared_when_target_absent": {
@@ -400,6 +499,11 @@
         {
           "zone_occupancy": {"0": false}
         }
+      ],
+      "expected_events": [
+        [],
+        [],
+        []
       ]
     },
     "test_unconfigured_zone_never_occupies": {
@@ -414,6 +518,10 @@
         {
           "zone_occupancy": {"3": false}
         }
+      ],
+      "expected_events": [
+        [],
+        []
       ]
     },
     "test_unconfigured_zone_still_provides_continuity": {
@@ -428,6 +536,10 @@
         {
           "zone_occupancy": {"0": true, "3": false}
         }
+      ],
+      "expected_events": [
+        [],
+        ["te:0:0", "tm:0:3:0", "zo:0", "oo", "wo"]
       ]
     },
     "test_trigger_zero_clamps_gated_threshold": {
@@ -442,6 +554,10 @@
         {
           "zone_occupancy": {"2": false}
         }
+      ],
+      "expected_events": [
+        [],
+        []
       ]
     },
     "test_trigger_zero_confirms_after_gating": {
@@ -456,6 +572,10 @@
         {
           "zone_occupancy": {"2": true}
         }
+      ],
+      "expected_events": [
+        [],
+        ["te:0:2", "zo:2", "oo", "wo"]
       ]
     },
     "test_overlay_neighbourhood_does_not_bypass_gating": {
@@ -470,6 +590,10 @@
         {
           "zone_occupancy": {"1": false}
         }
+      ],
+      "expected_events": [
+        [],
+        []
       ]
     },
     "test_raw_overlay_touch_bypasses_gating": {
@@ -480,6 +604,9 @@
         {
           "zone_occupancy": {"1": true}
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"]
       ]
     },
     "test_stale_overlay_touch_cleared_on_slot_reuse": {
@@ -502,6 +629,12 @@
         {
           "zone_occupancy": {"1": false}
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["zp:1", "wf"],
+        ["zc:1:o", "of"],
+        []
       ]
     },
     "test_stuck_target_auto_dismissed": {
@@ -527,6 +660,12 @@
           "zone_occupancy": {"1": false},
           "targets": [{"status": "inactive"}]
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        [],
+        ["td:0:5", "zc:1:t", "of", "wf"],
+        []
       ]
     },
     "test_dismissed_target_clears_on_move": {
@@ -550,6 +689,12 @@
         {
           "zone_occupancy": {"0": true, "1": false}
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["td:0:5", "zc:1:t", "of", "wf"],
+        [],
+        ["te:0:0", "zo:0", "oo", "wo"]
       ]
     },
     "test_force_clear_tick_still_reports_pending": {
@@ -584,6 +729,13 @@
           "zone_occupancy": {"0": false},
           "targets": [{"status": "inactive"}]
         }
+      ],
+      "expected_events": [
+        ["sa", "oo", "wo"],
+        ["te:0:0", "zo:0"],
+        ["sp", "zp:0"],
+        ["sc", "fc:0", "zc:0:f", "of", "wf"],
+        []
       ]
     },
     "test_assisted_clear_grace": {
@@ -638,6 +790,16 @@
           "zone_occupancy": {"0": false},
           "targets": [{"status": "inactive"}]
         }
+      ],
+      "expected_events": [
+        ["sa", "oo", "wo"],
+        ["te:0:0", "zo:0"],
+        ["sp", "zp:0"],
+        ["sc", "wf"],
+        [],
+        [],
+        ["fc:0", "zc:0:f", "of"],
+        []
       ]
     },
     "test_overlay_exit_handoff_suppress_cell": {
@@ -656,6 +818,11 @@
         {
           "zone_occupancy": {"0": false, "1": false}
         }
+      ],
+      "expected_events": [
+        ["te:0:1", "zo:1", "oo", "wo"],
+        ["zp:1", "wf"],
+        ["zc:1:o", "of"]
       ]
     }
   }

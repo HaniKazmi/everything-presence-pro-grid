@@ -13,6 +13,9 @@ and firmware downloads, see the
   restarted to free memory before the update runs. If an update still can't
   proceed for lack of memory, the panel now explains that clearly instead of
   showing a generic error.
+- **Detection log now shows a readable event timeline** — zone and sensor
+  transitions, room occupancy, sensor-assisted clears, stuck-target dismissals,
+  and target movement — instead of a raw state dump. Requires firmware v1.2.0.
 
 ## v1.1.0 — 2026-06-14
 

@@ -241,7 +241,32 @@
 			"room": "Habitación",
 			"no_targets": "sin objetivos",
 			"all_clear": "todo despejado",
-			"zone_n": "Zona {n}"
+			"zone_n": "Zona {n}",
+			"target_n": "Objetivo {n}"
+		},
+		"events": {
+			"static_active": "Presencia estática detectada",
+			"static_fading": "Presencia estática desvaneciéndose…",
+			"static_cleared": "Presencia estática eliminada",
+			"motion_active": "Presencia en movimiento detectada",
+			"motion_fading": "Presencia en movimiento desvaneciéndose…",
+			"motion_cleared": "Presencia en movimiento eliminada",
+			"zone_occupied": "{zone} ocupada",
+			"zone_clearing": "{zone} despejándose…",
+			"zone_cleared": "{zone} despejada",
+			"zone_cleared_handoff": "{zone} despejada (transferencia)",
+			"zone_cleared_overlay": "{zone} despejada (salida de capa)",
+			"zone_cleared_force": "{zone} despejada (asistida por sensor)",
+			"room_occupied": "Habitación ocupada",
+			"room_empty": "Habitación vacía",
+			"mmwave_on": "mmWave activado",
+			"mmwave_off": "mmWave desactivado",
+			"force_clear": "{zone} forzada a despejar (ambos sensores inactivos)",
+			"stuck_dismiss": "{target} descartado automáticamente (atascado {secs}s)",
+			"target_entered": "{target} entró en {zone}",
+			"target_left": "{target} salió de la habitación",
+			"target_moved": "{target} se movió de {from} → {to}",
+			"dropped": "{n} eventos descartados"
 		}
 	},
 	"entities": {

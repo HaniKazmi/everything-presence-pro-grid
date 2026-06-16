@@ -76,6 +76,14 @@ class BoundedWriter {
   /// Number of payload bytes written so far (excluding null terminator).
   size_t size() const { return pos_; }
 
+  /// Bytes left in the buffer INCLUDING the NUL-terminator slot. This mirrors
+  /// the `remaining` local in printf() exactly: printf refuses to write once
+  /// this reaches 0 (only the NUL slot left), so the largest payload string we
+  /// can still append (excluding its own NUL) is remaining() - 1. Returns 0
+  /// once the writer has gone not-ok (degenerate or truncated). Budget-aware
+  /// callers use this to stop emitting before they would overflow.
+  size_t remaining() const { return ok_ ? (total_ - pos_) : 0; }
+
   /// Pointer to the underlying buffer (always null-terminated when ok-ish).
   const char *c_str() const { return buf_; }
 

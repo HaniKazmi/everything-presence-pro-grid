@@ -18,6 +18,11 @@ export interface ZoneState {
 	occupied: boolean;
 	pendingSince: number | null;
 	confirmedTargets: Set<number>;
+	// Why this zone last entered pending (and will report on the next clear):
+	// 0=timeout, 1=handoff, 2=overlay-exit, 3=force. Set at every pending-entry
+	// and at force-clear, so it is always current before a zone reaches clear.
+	// Mirrors firmware ZoneRuntime.clear_reason.
+	clearReason: 0 | 1 | 2 | 3;
 }
 
 export interface ZoneEngineState {
@@ -48,6 +53,17 @@ export interface ZoneEngineState {
 	sensorsEverActive: boolean;
 	// Grace-timer start for sensor-assisted clear; null = no timer running.
 	assistedClearSince: number | null;
+	// Per-target transition-log state (mirror firmware target_log_zone_ /
+	// target_log_in_room_). Persist last tick's confirmed-zone (-1 = none) and
+	// in-room flag so the target-entered / target-left events fire only on a
+	// change, exactly like the firmware's Step 1b.
+	targetLogZone: number[];
+	targetLogInRoom: boolean[];
+	// Previous room-occupancy / mmwave outputs (mirror firmware prev_occupancy_
+	// / prev_mmwave_). Tracked across ticks so the oo/of and wo/wf events fire
+	// only on a change.
+	prevOccupancy: boolean;
+	prevMmwave: boolean;
 }
 
 export interface ZoneEngineParams {
@@ -92,6 +108,13 @@ export interface ZoneEngineResult {
 	motionState: "active" | "pending" | "inactive";
 	sensorOccupancy: boolean;
 	mmwave: boolean;
+	// Detection-log wire codes emitted this tick (mirror of the firmware
+	// ZoneEngine::emit_event_ sites). Same compact colon-delimited strings the
+	// firmware ships, ONLY for transitions that happened this tick. The panel
+	// renders them through the same formatEvent mapper as backend events, so the
+	// editor preview and the live device read identically. See detection-events.ts
+	// for the wire-code contract.
+	events: string[];
 }
 
 // ---- Factory ----
@@ -112,6 +135,10 @@ export function createZoneEngineState(): ZoneEngineState {
 		motionPendingSince: null,
 		sensorsEverActive: false,
 		assistedClearSince: null,
+		targetLogZone: [-1, -1, -1],
+		targetLogInRoom: [false, false, false],
+		prevOccupancy: false,
+		prevMmwave: false,
 	};
 }
 
@@ -179,6 +206,11 @@ export function resetForGridChange(state: ZoneEngineState): void {
 		state.lastZone[i] = null;
 		state.dismissedCells[i] = -1;
 		state.stuckRef[i] = null;
+		// target_log_* are OLD-grid-relative; carrying them across a grid edit
+		// would emit a spurious "left zone"/"entered zone" on the first post-edit
+		// tick. Mirrors firmware set_grid (epp_zone_engine.cpp:84-85).
+		state.targetLogZone[i] = -1;
+		state.targetLogInRoom[i] = false;
 	}
 }
 
@@ -195,6 +227,11 @@ export function resetForZoneConfigChange(state: ZoneEngineState): void {
 	state.staticPendingSince = null;
 	state.motionPendingSince = null;
 	state.sensorsEverActive = false;
+	// Mirror firmware set_zones' reset of the detection-log baseline
+	// (epp_zone_engine.cpp:147-148): a fresh zone layout must re-announce
+	// occupancy/mmwave from scratch rather than diff against stale values.
+	state.prevOccupancy = false;
+	state.prevMmwave = false;
 }
 
 /**
@@ -218,6 +255,7 @@ function getOrCreateZoneState(state: ZoneEngineState, zid: number): ZoneState {
 			occupied: false,
 			pendingSince: null,
 			confirmedTargets: new Set(),
+			clearReason: 0,
 		};
 		state.localZoneState.set(zid, st);
 	}
@@ -243,7 +281,18 @@ interface TickContext {
 	// frames this window. Pending targets echoed by the backend (x/y non-null
 	// but signal=0) correspond to firmware tw.active=false.
 	targetActive: boolean[];
+	// Mirror of firmware target_confirmed_zone[]: the zone a target was
+	// CONFIRMED in this tick (-1 = none). Distinct from targetZoneCurr (the
+	// mere cell-zone): only set when the target's signal cleared the threshold.
+	// Drives the target-entered / target-left transition events (Step 1b).
+	targetConfirmedZone: number[];
+	// Mirror of firmware target_in_room[]: the target landed in a room cell
+	// this tick (regardless of confirmation). Drives the "left room" event.
+	targetInRoom: boolean[];
 	occupancy: Record<number, boolean>;
+	// Detection-log wire codes accumulated this tick. Pushed at each transition
+	// point, returned as ZoneEngineResult.events.
+	events: string[];
 }
 
 /**
@@ -282,10 +331,23 @@ export function runLocalZoneEngine(
 		targetZonePrev: [null, null, null],
 		targetZoneCurr: [null, null, null],
 		targetActive: [false, false, false],
+		targetConfirmedZone: [-1, -1, -1],
+		targetInRoom: [false, false, false],
 		occupancy: {},
+		events: [],
 	};
 
+	// Snapshot each known zone's state-kind BEFORE the state machine runs, so
+	// the deferred zone-transition log (after force-clear) diffs against the
+	// pre-tick value — mirror of firmware's prev_zone_state[] snapshot taken at
+	// the top of tick(). Zones not yet tracked are implicitly CLEAR.
+	const prevZoneKind = new Map<number, ZoneStateKind>();
+	for (const [zid, st] of state.localZoneState) {
+		prevZoneKind.set(zid, zoneStateKind(st));
+	}
+
 	stepPerTargetEval(ctx);
+	stepTargetTransitionLog(ctx);
 	stepHandoffDetection(ctx);
 	stepOverlayExitHandoff(ctx);
 	stepZoneStateMachine(ctx);
@@ -293,6 +355,11 @@ export function runLocalZoneEngine(
 	stepCleanupConfirmed(ctx);
 	stepSensorPresence(ctx);
 	stepForceClear(ctx);
+	// Deferred zone-transition log — runs AFTER force-clear so a zone that
+	// force-clear rewrites from PENDING to CLEAR emits its final zc:Z transition
+	// rather than the state machine's intermediate zp:Z. Mirror of firmware
+	// epp_zone_engine.cpp:791-800.
+	stepZoneTransitionLog(ctx, prevZoneKind);
 	const { sensorOccupancy, mmwave } = stepComputeOccupancy(ctx);
 
 	return {
@@ -302,7 +369,16 @@ export function runLocalZoneEngine(
 		motionState: state.motionState,
 		sensorOccupancy,
 		mmwave,
+		events: ctx.events,
 	};
+}
+
+/** Zone-state "kind" for transition-log diffing (mirror firmware ZoneState). */
+type ZoneStateKind = "clear" | "occupied" | "pending";
+
+function zoneStateKind(st: ZoneState): ZoneStateKind {
+	if (!st.occupied) return "clear";
+	return st.pendingSince !== null ? "pending" : "occupied";
 }
 
 /**
@@ -365,6 +441,11 @@ function stepPerTargetEval(ctx: TickContext): void {
 			continue;
 		}
 
+		// Mirror firmware target_in_room[i] = true (epp_zone_engine.cpp:280):
+		// set as soon as the target lands in a room cell, BEFORE the dismiss /
+		// suppress / stuck early-continues. Drives the "left room" event.
+		ctx.targetInRoom[i] = true;
+
 		// Check if this target is dismissed at this cell (firmware checks
 		// this right after the in-room test, before suppress/stuck).
 		if (state.dismissedCells[i] === idx) {
@@ -389,6 +470,10 @@ function stepPerTargetEval(ctx: TickContext): void {
 			const ref = state.stuckRef[i];
 			if (ref !== null && t.x === ref.x && t.y === ref.y) {
 				if (now - ref.since >= stuckTimeout) {
+					// td:T:secs — emitted BEFORE dismiss (mirror firmware
+					// epp_zone_engine.cpp:302). secs is the configured timeout,
+					// truncated to an int exactly like the firmware's (int) cast.
+					ctx.events.push(`td:${i}:${Math.trunc(stuckTimeout)}`);
 					dismissTarget(state, i, idx, params.grid);
 					// dismissTarget reset prev/gate/overlay/lastZone/stuckRef.
 					// Skip remaining per-target work — the dismiss collapses
@@ -503,6 +588,8 @@ function stepPerTargetEval(ctx: TickContext): void {
 			if (signal >= gatedThresh) {
 				state.targetGateCount[i]++;
 				if (state.targetGateCount[i] >= 2) {
+					// Mirror firmware target_confirmed_zone[i] = zone_id (cpp:430).
+					ctx.targetConfirmedZone[i] = zid;
 					zoneConfirmed.set(zid, true);
 					st.confirmedTargets.add(i);
 					state.targetPrev[i] = { col, row };
@@ -516,6 +603,8 @@ function stepPerTargetEval(ctx: TickContext): void {
 			}
 		} else {
 			if (signal >= baseTrigger) {
+				// Mirror firmware target_confirmed_zone[i] = zone_id (cpp:455).
+				ctx.targetConfirmedZone[i] = zid;
 				zoneConfirmed.set(zid, true);
 				st.confirmedTargets.add(i);
 				state.targetPrev[i] = { col, row };
@@ -524,6 +613,55 @@ function stepPerTargetEval(ctx: TickContext): void {
 				state.targetPrev[i] = { col, row };
 			}
 		}
+	}
+}
+
+/**
+ * Step 1b — Per-target transition logging (event-driven, not per-tick). Mirror
+ * of firmware epp_zone_engine.cpp ~479-517. Diffs each target's CONFIRMED zone
+ * and in-room flag against the persisted previous-tick values
+ * (state.targetLogZone / state.targetLogInRoom) and emits:
+ *   te:T:Z  — target newly confirmed in a zone (or changed confirmed zone)
+ *   tl:T    — target left the room (two branches, both gated on target active)
+ * The firmware's pure-debug branches (below-threshold / left-zone) have no wire
+ * code and are intentionally not mirrored. Runs before Step 2 so a zone change
+ * can still emit both te:T:Z here and tm:T:Za:Zb in handoff, exactly like
+ * firmware.
+ */
+function stepTargetTransitionLog(ctx: TickContext): void {
+	const { state, targetActive, targetConfirmedZone, targetInRoom } = ctx;
+
+	for (let i = 0; i < MAX_TARGETS; i++) {
+		const prevZone = state.targetLogZone[i];
+		const currZone = targetConfirmedZone[i];
+		const wasInRoom = state.targetLogInRoom[i];
+		const isInRoom = targetInRoom[i];
+
+		// Entered a zone (newly confirmed, or moved to a different zone).
+		if (currZone >= 0 && currZone !== prevZone) {
+			ctx.events.push(`te:${i}:${currZone}`);
+		}
+
+		// Left a zone — only the "left the room" branch carries a wire code.
+		if (prevZone >= 0 && currZone !== prevZone) {
+			if (currZone >= 0) {
+				// Moved to another zone — handoff (Step 2) logs the tm:T event.
+			} else if (isInRoom) {
+				// Still in room but signal dropped — firmware debug-only, no event.
+			} else if (targetActive[i]) {
+				ctx.events.push(`tl:${i}`);
+			}
+			// else: target gone while unconfirmed — firmware debug-only.
+		}
+
+		// Left room (was in room, still tracked but now outside any zone cell).
+		if (wasInRoom && !isInRoom && targetActive[i] && prevZone < 0) {
+			ctx.events.push(`tl:${i}`);
+		}
+
+		// Persist for next tick's diff (mirror firmware cpp:515-516).
+		state.targetLogZone[i] = currZone;
+		state.targetLogInRoom[i] = isInRoom;
 	}
 }
 
@@ -540,6 +678,11 @@ function stepHandoffDetection(ctx: TickContext): void {
 		const prevZid = targetZonePrev[i];
 		const currZid = targetZoneCurr[i];
 		if (prevZid === null || currZid === null || prevZid === currZid) continue;
+
+		// tm:T:Za:Zb — emitted as soon as a move between (cell) zones is seen,
+		// BEFORE the source-zone-configured check, mirror of firmware cpp:528
+		// which emits before its `find_zone_index(prev_zid) >= 0` guard.
+		ctx.events.push(`tm:${i}:${prevZid}:${currZid}`);
 
 		// Mirror firmware `if (src_zi >= 0)`: unconfigured source zones have
 		// no runtime to hand off from.
@@ -563,6 +706,7 @@ function stepHandoffDetection(ctx: TickContext): void {
 			);
 			const { timeout, handoffTimeout } = handoffThresholds;
 			srcSt.pendingSince = now - (timeout - handoffTimeout);
+			srcSt.clearReason = 1; // handoff
 		}
 	}
 }
@@ -613,8 +757,10 @@ function stepOverlayExitHandoff(ctx: TickContext): void {
 						const accel = now - (th.timeout - th.handoffTimeout);
 						if (st.pendingSince === null) {
 							st.pendingSince = accel;
+							st.clearReason = 2; // overlay
 						} else if (st.pendingSince > accel) {
 							st.pendingSince = accel;
+							st.clearReason = 2; // overlay (overlay-exit drives the sooner clear)
 						}
 					}
 				}
@@ -669,6 +815,7 @@ function stepZoneStateMachine(ctx: TickContext): void {
 		} else if (st.pendingSince === null) {
 			if (!confirmed) {
 				st.pendingSince = now;
+				st.clearReason = 0; // timeout
 			}
 		} else {
 			if (confirmed) {
@@ -766,6 +913,11 @@ function stepSensorPresence(ctx: TickContext): void {
 	const staticTimeout = params.staticTimeout ?? 10;
 	const motionTimeout = params.motionTimeout ?? 10;
 
+	// Snapshot before the state machine mutates, so the transition events fire
+	// only on change (mirror firmware prev_static / prev_motion, cpp:212-213).
+	const prevStatic = state.staticState;
+	const prevMotion = state.motionState;
+
 	if (staticOn) {
 		state.staticState = "active";
 		state.staticPendingSince = null;
@@ -799,6 +951,20 @@ function stepSensorPresence(ctx: TickContext): void {
 			state.motionPendingSince = null;
 		}
 	}
+
+	// Emit sensor transitions (mirror firmware cpp:733-742). sa/sp/sc for
+	// static active/pending/inactive; ma/mp/mc for motion.
+	if (state.staticState !== prevStatic) {
+		ctx.events.push(`s${sensorStateCode(state.staticState)}`);
+	}
+	if (state.motionState !== prevMotion) {
+		ctx.events.push(`m${sensorStateCode(state.motionState)}`);
+	}
+}
+
+/** Sensor-state → wire-code suffix: active→a, pending→p, inactive→c. */
+function sensorStateCode(s: "active" | "pending" | "inactive"): string {
+	return s === "active" ? "a" : s === "pending" ? "p" : "c";
 }
 
 /**
@@ -839,6 +1005,11 @@ function stepForceClear(ctx: TickContext): void {
 	if (now - state.assistedClearSince >= timeout) {
 		for (const [zid, st] of state.localZoneState) {
 			if (st.occupied && st.pendingSince !== null) {
+				// fc:Z — emitted before the force-clear rewrite (mirror firmware
+				// cpp:776). The deferred zone-transition log then also emits the
+				// zc:Z for the resulting CLEAR state.
+				ctx.events.push(`fc:${zid}`);
+				st.clearReason = 3; // force — set before clear so the deferred zone log reports force
 				st.occupied = false;
 				st.pendingSince = null;
 				st.confirmedTargets.clear();
@@ -877,5 +1048,59 @@ function stepComputeOccupancy(ctx: TickContext): {
 		}
 	}
 
+	// Emit room-occupancy + mmwave transitions (mirror firmware cpp:836-845).
+	// oo/of for room occupied/empty; wo/wf for mmWave on/off. prev tracked on
+	// the persistent state so the diff survives across ticks.
+	if (sensorOccupancy !== state.prevOccupancy) {
+		ctx.events.push(sensorOccupancy ? "oo" : "of");
+		state.prevOccupancy = sensorOccupancy;
+	}
+	if (mmwave !== state.prevMmwave) {
+		ctx.events.push(mmwave ? "wo" : "wf");
+		state.prevMmwave = mmwave;
+	}
+
 	return { sensorOccupancy, mmwave };
 }
+
+/**
+ * Deferred zone-transition log — mirror of firmware epp_zone_engine.cpp
+ * ~791-800. Runs AFTER Step 3 (state machine) and Step 5c (force-clear) so a
+ * zone force-clear rewrites to CLEAR emits its FINAL transition (zc:Z) instead
+ * of the state machine's intermediate zp:Z. Diffs each configured+in-grid
+ * zone's final kind against the pre-tick snapshot:
+ *   occupied → zo:Z, pending → zp:Z, clear → zc:Z
+ */
+function stepZoneTransitionLog(
+	ctx: TickContext,
+	prevZoneKind: Map<number, ZoneStateKind>,
+): void {
+	const { state } = ctx;
+	// Emit in ASCENDING zone-id order to match the firmware, whose deferred
+	// transition loop walks zones_[zi] for zi in [0, zone_count_) and indexes
+	// zones_ by zone id (set_zones: zones_[zc.id]). localZoneState is a Map in
+	// first-touched order, so iterating it directly would emit zone events in a
+	// different order whenever a higher-id zone is occupied before a lower-id
+	// one — a real event-parity divergence the detection-log parity test
+	// catches. Sort the keys so both engines emit identical event sequences.
+	const zids = [...state.localZoneState.keys()].sort((a, b) => a - b);
+	for (const zid of zids) {
+		const st = state.localZoneState.get(zid);
+		if (!st) continue;
+		const kind = zoneStateKind(st);
+		// Zones absent from the snapshot were CLEAR before this tick (firmware's
+		// prev_zone_state[] defaults every slot to CLEAR).
+		const prev = prevZoneKind.get(zid) ?? "clear";
+		if (kind === prev) continue;
+		if (kind === "occupied") ctx.events.push(`zo:${zid}`);
+		else if (kind === "pending") ctx.events.push(`zp:${zid}`);
+		else {
+			// clear — carry the reason char (mirror firmware emit p2 → codec):
+			// 0=timeout→t, 1=handoff→h, 2=overlay→o, 3=force→f.
+			ctx.events.push(`zc:${zid}:${CLEAR_REASON_CHARS[st.clearReason]}`);
+		}
+	}
+}
+
+/** Clear-reason index → wire-code char (mirror firmware codec's {t,h,o,f}). */
+const CLEAR_REASON_CHARS = ["t", "h", "o", "f"] as const;

@@ -77,6 +77,34 @@ struct LogEntry {
 
 constexpr int MAX_LOG_ENTRIES = 16;
 
+// Structured, user-facing detection-log events. Distinct from LogEntry: these
+// are the curated subset shipped to the panel. Params are interpreted per type
+// (target id, zone id, second zone, or a duration/bool); unused params are 0.
+enum class EventType : uint8_t {
+    STATIC = 0,          // p0 = sensor state (0 active / 1 pending / 2 inactive)
+    MOTION = 1,          // p0 = sensor state
+    ZONE = 2,            // p0 = zone id, p1 = zone state (0 clear / 1 occupied / 2 pending),
+                         //   p2 = clear reason (0 timeout / 1 handoff / 2 overlay / 3 force), only when p1==0
+
+    OCCUPANCY = 3,       // p0 = 1 on / 0 off
+    MMWAVE = 4,          // p0 = 1 on / 0 off
+    FORCE_CLEAR = 5,     // p0 = zone id
+    STUCK_DISMISS = 6,   // p0 = target id, p1 = seconds
+    TARGET_ENTERED = 7,  // p0 = target id, p1 = zone id
+    TARGET_LEFT = 8,     // p0 = target id
+    TARGET_MOVED = 9,    // p0 = target id, p1 = from zone, p2 = to zone
+    EVENTS_DROPPED = 10, // p0 = count (synthetic, added later by the component queue)
+};
+
+struct Event {
+    EventType type = EventType::STATIC;
+    int16_t p0 = 0;
+    int16_t p1 = 0;
+    int16_t p2 = 0;
+};
+
+constexpr int MAX_EVENTS = 16;
+
 // Compute the published signal (0–9 scale) from a frame count.
 // `frame_count` is the number of frames the target was active in the rolling
 // window (RollingWindow::WINDOW_MS = 1000ms). At the nominal 10Hz sensor

@@ -98,6 +98,27 @@ function mockHost() {
 					"live.debug.no_targets": "no targets",
 					"live.debug.all_clear": "all clear",
 					"live.debug.zone_n": `Zone ${params?.n ?? ""}`,
+					"live.debug.target_n": `Target ${params?.n ?? ""}`,
+					// Detection-event lines (subset used by tests).
+					"live.events.zone_occupied": `${params?.zone ?? ""} occupied`,
+					"live.events.zone_clearing": `${params?.zone ?? ""} clearing`,
+					"live.events.zone_cleared": `${params?.zone ?? ""} cleared`,
+					"live.events.static_active": "Static presence detected",
+					"live.events.static_fading": "Static presence fading",
+					"live.events.static_cleared": "Static presence cleared",
+					"live.events.motion_active": "Motion detected",
+					"live.events.motion_fading": "Motion fading",
+					"live.events.motion_cleared": "Motion cleared",
+					"live.events.room_occupied": "Room occupied",
+					"live.events.room_empty": "Room empty",
+					"live.events.mmwave_on": "mmWave on",
+					"live.events.mmwave_off": "mmWave off",
+					"live.events.force_clear": `${params?.zone ?? ""} force-cleared`,
+					"live.events.stuck_dismiss": `${params?.target ?? ""} auto-dismissed (stuck ${params?.secs ?? ""}s)`,
+					"live.events.target_entered": `${params?.target ?? ""} entered ${params?.zone ?? ""}`,
+					"live.events.target_left": `${params?.target ?? ""} left the room`,
+					"live.events.target_moved": `${params?.target ?? ""} moved ${params?.from ?? ""} → ${params?.to ?? ""}`,
+					"live.events.dropped": `${params?.n ?? ""} events dropped`,
 				};
 				return map[key] ?? key;
 			},
@@ -343,6 +364,90 @@ describe("TargetController", () => {
 						target_counts: {},
 						frame_count: 1,
 						debug_log: "T0:Z1:A:5|Z1:O:1",
+					},
+				}),
+			);
+			expect(host._backendDebugLogLines.length).toBe(0);
+		});
+
+		it("renders backend events via formatEvent when zones.events present", () => {
+			host._showBackendDebugLog = true;
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{ name: "Lounge", color: "#fff", type: "default" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			ctrl.handleTargetData(
+				makeTargetData({
+					zones: {
+						occupancy: {},
+						target_counts: {},
+						frame_count: 1,
+						events: ["zo:1", "sc"],
+					},
+				}),
+			);
+			expect(host._backendDebugLogLines.length).toBe(2);
+			expect(host._backendDebugLogLines[0]).toContain("Lounge");
+		});
+
+		it("falls back to debug_log enrichment when events absent (old firmware)", () => {
+			host._showBackendDebugLog = true;
+			ctrl.handleTargetData(
+				makeTargetData({
+					zones: {
+						occupancy: {},
+						target_counts: {},
+						frame_count: 1,
+						debug_log: "T0:Z1:A:5|Z1:O:1",
+					},
+				}),
+			);
+			expect(host._backendDebugLogLines.length).toBe(1);
+		});
+
+		it("prefers events over debug_log when both present", () => {
+			host._showBackendDebugLog = true;
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{ name: "Lounge", color: "#fff", type: "default" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			ctrl.handleTargetData(
+				makeTargetData({
+					zones: {
+						occupancy: {},
+						target_counts: {},
+						frame_count: 1,
+						events: ["zo:1"],
+						debug_log: "T0:Z1:A:5|Z1:O:1",
+					},
+				}),
+			);
+			// One line — the event, not the snapshot.
+			expect(host._backendDebugLogLines.length).toBe(1);
+			expect(host._backendDebugLogLines[0]).toContain("Lounge");
+		});
+
+		it("does not append backend events when _showBackendDebugLog is false", () => {
+			host._showBackendDebugLog = false;
+			ctrl.handleTargetData(
+				makeTargetData({
+					zones: {
+						occupancy: {},
+						target_counts: {},
+						frame_count: 1,
+						events: ["zo:1", "sc"],
 					},
 				}),
 			);
@@ -900,6 +1005,93 @@ describe("TargetController", () => {
 	});
 
 	// -------------------------------------------------------------------------
+	// appendBackendEvents
+	// -------------------------------------------------------------------------
+	describe("appendBackendEvents", () => {
+		let container: HTMLDivElement;
+
+		beforeEach(() => {
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{ name: "Lounge", color: "#fff", type: "default" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			container = document.createElement("div");
+			container.id = "backend-debug-log-scroll";
+			host._mockBackendContainer = container;
+		});
+
+		it("appends one DOM line per event", () => {
+			ctrl.appendBackendEvents(["zo:1", "sc"]);
+			expect(container.children.length).toBe(2);
+			for (const child of Array.from(container.children)) {
+				expect(child.className).toBe("debug-log-line");
+			}
+		});
+
+		it("resolves the zone name for zone events", () => {
+			ctrl.appendBackendEvents(["zo:1"]);
+			expect(host._backendDebugLogLines[0]).toContain("Lounge");
+		});
+
+		it("resolves zone 0 to the room label", () => {
+			ctrl.appendBackendEvents(["zo:0"]);
+			expect(host._backendDebugLogLines[0]).toContain("Room");
+		});
+
+		it("falls back to 'Zone N' for an unconfigured zone id", () => {
+			ctrl.appendBackendEvents(["zo:5"]);
+			expect(host._backendDebugLogLines[0]).toContain("Zone 5");
+		});
+
+		it("resolves a 0-based target index to a 1-based target label", () => {
+			ctrl.appendBackendEvents(["te:0:1"]);
+			// target index 0 → "Target 1"; zone 1 → "Lounge"
+			expect(host._backendDebugLogLines[0]).toContain("Target 1");
+			expect(host._backendDebugLogLines[0]).toContain("Lounge");
+		});
+
+		it("does NOT deduplicate consecutive identical events (each is discrete)", () => {
+			ctrl.appendBackendEvents(["sc", "sc"]);
+			expect(container.children.length).toBe(2);
+			expect(host._backendDebugLogLines.length).toBe(2);
+		});
+
+		it("returns an unknown code verbatim (forward-compat)", () => {
+			ctrl.appendBackendEvents(["zz:9"]);
+			expect(host._backendDebugLogLines[0]).toContain("zz:9");
+		});
+
+		it("maintains the backing array for copy-all and caps at DEBUG_LOG_MAX", () => {
+			const many = Array.from(
+				{ length: DEBUG_LOG_MAX + 5 },
+				(_, i) => `xd:${i}`,
+			);
+			ctrl.appendBackendEvents(many);
+			expect(host._backendDebugLogLines.length).toBeLessThanOrEqual(
+				DEBUG_LOG_MAX,
+			);
+			expect(container.children.length).toBeLessThanOrEqual(DEBUG_LOG_MAX);
+		});
+
+		it("does NOT call host.requestUpdate", () => {
+			ctrl.appendBackendEvents(["zo:1"]);
+			expect(host.requestUpdate).not.toHaveBeenCalled();
+		});
+
+		it("handles a missing container gracefully", () => {
+			host._mockBackendContainer = null;
+			expect(() => ctrl.appendBackendEvents(["zo:1"])).not.toThrow();
+			expect(host._backendDebugLogLines.length).toBe(1);
+		});
+	});
+
+	// -------------------------------------------------------------------------
 	// runLocalZoneEngine — default resolution by zone type
 	// -------------------------------------------------------------------------
 	describe("runLocalZoneEngine default resolution", () => {
@@ -1058,40 +1250,60 @@ describe("TargetController", () => {
 			expect(ctrl.zoneEngineState.targetGateCount[0]).toBeGreaterThanOrEqual(0);
 		});
 
-		it("builds frontend debug log when _showDebugLog is true", () => {
+		/**
+		 * Sensor-state object with all-false defaults; pass overrides to drive a
+		 * specific transition (e.g. static_presence true → the replica emits sa).
+		 */
+		function makeSensors(overrides: Record<string, unknown> = {}) {
+			return {
+				occupancy: false,
+				static_presence: false,
+				motion_presence: false,
+				target_presence: false,
+				mmwave: false,
+				illuminance: null,
+				temperature: null,
+				humidity: null,
+				co2: null,
+				...overrides,
+			};
+		}
+
+		it("renders replica detection-log events when _showDebugLog is true", () => {
 			host._showDebugLog = true;
-			// Place a target in the centre of the grid so it maps to an inside cell
-			const centerCol = Math.floor(GRID_COLS / 2);
-			const centerRow = Math.floor(GRID_ROWS / 2);
-			host._targets = [
-				{
-					x: (centerCol - GRID_COLS / 2 + 0.5) * 300, // mm
-					y: centerRow * 300 + 150, // mm
-					status: "active",
-					signal: 80,
-				},
-			];
+			host._targets = [];
+			// Static presence turning on is a transition → the replica emits sa
+			// (and oo/wo), each rendered via formatEvent.
+			host._sensorState = makeSensors({ static_presence: true });
 			ctrl.runLocalZoneEngine();
-			// A line should have been appended (or prev should be set)
-			// Either the line was added or deduplication kicked in — at minimum requestUpdate was called
-			const hasLines =
-				host._debugLogLines.length > 0 || host._debugLogPrev !== "";
-			expect(hasLines).toBe(true);
+			expect(host._debugLogLines.length).toBeGreaterThan(0);
+			expect(host._debugLogLines.join(" ")).toContain(
+				"Static presence detected",
+			);
 		});
 
 		it("does NOT build frontend debug log when _showDebugLog is false", () => {
 			host._showDebugLog = false;
-			host._targets = [{ x: 100, y: 100, status: "active", signal: 80 }];
+			host._sensorState = makeSensors({ static_presence: true });
+			ctrl.runLocalZoneEngine();
+			expect(host._debugLogLines.length).toBe(0);
+		});
+
+		it("emits NO lines on a tick with no transitions (events only on change)", () => {
+			host._showDebugLog = true;
+			host._targets = [];
+			host._sensorState = makeSensors();
 			ctrl.runLocalZoneEngine();
 			expect(host._debugLogLines.length).toBe(0);
 		});
 
 		it("caps frontend debug log lines at DEBUG_LOG_MAX", () => {
 			host._showDebugLog = true;
-			// Run engine DEBUG_LOG_MAX+2 times, each with a unique target position so
-			// dedup doesn't suppress lines.  We clear _debugLogPrev before each call.
-			for (let i = 0; i <= DEBUG_LOG_MAX; i++) {
-				host._debugLogPrev = "";
+			host._targets = [];
+			// Each run toggles static presence so every tick produces a fresh
+			// transition event (sa or sc) — overrun the cap.
+			for (let i = 0; i <= DEBUG_LOG_MAX + 2; i++) {
+				host._sensorState = makeSensors({ static_presence: i % 2 === 0 });
 				ctrl.runLocalZoneEngine();
 			}
 			expect(host._debugLogLines.length).toBeLessThanOrEqual(DEBUG_LOG_MAX);
@@ -1103,168 +1315,96 @@ describe("TargetController", () => {
 			expect(() => ctrl.runLocalZoneEngine()).not.toThrow();
 		});
 
-		it("builds frontend debug log with static/motion sensor prefix from zone engine state", () => {
+		it("renders the static-presence-detected event (sa)", () => {
 			host._showDebugLog = true;
-			// Directly set the internal zone engine state to have active static/motion
+			host._targets = [];
+			host._sensorState = makeSensors({ static_presence: true });
+			ctrl.runLocalZoneEngine();
+			expect(host._debugLogLines.join(" ")).toContain(
+				"Static presence detected",
+			);
+		});
+
+		it("renders the motion-detected event (ma)", () => {
+			host._showDebugLog = true;
+			host._targets = [];
+			host._sensorState = makeSensors({ motion_presence: true });
+			ctrl.runLocalZoneEngine();
+			expect(host._debugLogLines.join(" ")).toContain("Motion detected");
+		});
+
+		it("does NOT deduplicate consecutive identical events (each is discrete)", () => {
+			host._showDebugLog = true;
+			host._targets = [];
+			// Two ticks that each emit sc: seed static as pending, then run with
+			// no presence twice — the first transitions pending→inactive (sc), and
+			// we re-seed pending to repeat the same sc on the next tick.
+			const seedPending = () => {
+				const state = ctrl.zoneEngineState;
+				state.staticState = "pending";
+				state.staticPendingSince = 0; // long-expired → goes inactive (sc)
+				ctrl.zoneEngineState = state;
+			};
+			host._sensorState = makeSensors();
+			seedPending();
+			ctrl.runLocalZoneEngine();
+			const after1 = host._debugLogLines.length;
+			seedPending();
+			ctrl.runLocalZoneEngine();
+			// Discrete events are appended without dedup → the count grows again.
+			expect(host._debugLogLines.length).toBeGreaterThan(after1);
+		});
+
+		it("renders the static-fading event (sp)", () => {
+			host._showDebugLog = true;
+			// Seed static active, then run with no presence → active→pending (sp).
 			const state = ctrl.zoneEngineState;
 			state.staticState = "active";
+			ctrl.zoneEngineState = state;
+			host._targets = [];
+			host._sensorState = makeSensors();
+			ctrl.runLocalZoneEngine();
+			expect(host._debugLogLines.join(" ")).toContain("Static presence fading");
+		});
+
+		it("renders the motion-fading event (mp)", () => {
+			host._showDebugLog = true;
+			const state = ctrl.zoneEngineState;
 			state.motionState = "active";
 			ctrl.zoneEngineState = state;
 			host._targets = [];
+			host._sensorState = makeSensors();
 			ctrl.runLocalZoneEngine();
-			// Should have produced a log line containing sensor info
-			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
-			expect(allLog).toContain("Static:");
+			expect(host._debugLogLines.join(" ")).toContain("Motion fading");
 		});
 
-		it("encodes 'active' static state as 'A' in frontend debug log", () => {
+		it("renders a zone-occupied event with the resolved zone name", () => {
 			host._showDebugLog = true;
-			host._targets = [];
-			// Pass static_presence = true so the zone engine produces staticState "active"
-			host._sensorState = {
-				occupancy: false,
-				static_presence: true,
-				motion_presence: false,
-				target_presence: false,
-				mmwave: false,
-				illuminance: null,
-				temperature: null,
-				humidity: null,
-				co2: null,
-			};
-			ctrl.runLocalZoneEngine();
-			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
-			expect(allLog).toContain("Static: active");
-		});
-
-		it("encodes 'active' motion state as 'A' in frontend debug log", () => {
-			host._showDebugLog = true;
-			host._targets = [];
-			host._sensorState = {
-				occupancy: false,
-				static_presence: false,
-				motion_presence: true,
-				target_presence: false,
-				mmwave: false,
-				illuminance: null,
-				temperature: null,
-				humidity: null,
-				co2: null,
-			};
-			ctrl.runLocalZoneEngine();
-			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
-			expect(allLog).toContain("Motion: active");
-		});
-
-		it("deduplicates frontend debug log on consecutive identical results", () => {
-			host._showDebugLog = true;
-			host._targets = [];
-			// First call populates the log
-			ctrl.runLocalZoneEngine();
-			const countAfterFirst = host._debugLogLines.length;
-			// Second call with identical state should be deduped
-			ctrl.runLocalZoneEngine();
-			expect(host._debugLogLines.length).toBe(countAfterFirst);
-		});
-
-		it("encodes 'pending' static state as 'P' in frontend debug log", () => {
-			host._showDebugLog = true;
-			// Pre-seed state as "active" then run with no targets/presence → transitions to "pending"
+			// All-room grid (zone 0). Pre-seed the zone state so the deferred zone
+			// log sees a CLEAR→OCCUPIED transition for zone 0 (the room) → zo:0,
+			// rendered with the "Room" label.
 			const state = ctrl.zoneEngineState;
-			state.staticState = "pending";
-			state.staticPendingSince = Date.now() / 1000; // recent, not timed-out yet
+			state.prevOccupancy = true; // suppress oo/of noise
+			state.prevMmwave = true;
 			ctrl.zoneEngineState = state;
-			host._targets = [];
-			// No static presence → state stays "pending" (not timed out)
-			host._sensorState = {
-				occupancy: false,
-				static_presence: false,
-				motion_presence: false,
-				target_presence: false,
-				mmwave: false,
-				illuminance: null,
-				temperature: null,
-				humidity: null,
-				co2: null,
-			};
+			// Drive a confirmed target in the centre cell so zone 0 occupies.
+			const centerCol = Math.floor(GRID_COLS / 2);
+			const centerRow = Math.floor(GRID_ROWS / 2);
+			host._targets = [
+				{
+					x: (centerCol - GRID_COLS / 2 + 0.5) * 300,
+					y: centerRow * 300 + 150,
+					status: "active",
+					signal: 9,
+				},
+			];
+			host._sensorState = makeSensors();
+			// Two ticks: gating confirms zone 0 OCCUPIED on the second.
 			ctrl.runLocalZoneEngine();
-			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
-			expect(allLog).toContain("Static: pending");
-		});
-
-		it("encodes 'pending' motion state as 'P' in frontend debug log", () => {
-			host._showDebugLog = true;
-			const state = ctrl.zoneEngineState;
-			state.motionState = "pending";
-			state.motionPendingSince = Date.now() / 1000;
-			ctrl.zoneEngineState = state;
-			host._targets = [];
-			host._sensorState = {
-				occupancy: false,
-				static_presence: false,
-				motion_presence: false,
-				target_presence: false,
-				mmwave: false,
-				illuminance: null,
-				temperature: null,
-				humidity: null,
-				co2: null,
-			};
 			ctrl.runLocalZoneEngine();
-			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
-			expect(allLog).toContain("Motion: pending");
-		});
-
-		it("encodes zone 'O' state (occupied, no pendingSince) in frontend debug log", () => {
-			host._showDebugLog = true;
-			// Zone 0 (Room) occupied with pendingSince === null → state code "O"
-			const state = ctrl.zoneEngineState;
-			state.localZoneState.set(0, {
-				occupied: true,
-				pendingSince: null, // confirmed occupied → "O"
-				confirmedTargets: new Set(),
-			});
-			ctrl.zoneEngineState = state;
-			host._targets = [];
-			ctrl.runLocalZoneEngine();
-			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
+			const allLog = host._debugLogLines.join(" ");
 			expect(allLog).toContain("Room");
-		});
-
-		it("includes 'pending' zone state (P) in debug log when zone has pendingSince set", () => {
-			host._showDebugLog = true;
-			// Seed the zone engine state with an occupied zone that has pendingSince set
-			const state = ctrl.zoneEngineState;
-			state.localZoneState.set(0, {
-				occupied: true,
-				pendingSince: Date.now() / 1000,
-				confirmedTargets: new Set(),
-			});
-			ctrl.zoneEngineState = state;
-			host._targets = [];
-			ctrl.runLocalZoneEngine();
-			// The log should either have a line or prev set
-			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
-			// Zone 0 (Room) with pendingSince set → state code "P"
-			expect(allLog).toContain("Room");
-		});
-
-		it("computes allZoneIds once per grid reference (cached across runs)", () => {
-			host._showDebugLog = true;
-			const spy = vi.spyOn(ctrl as any, "_computeAllZoneIds");
-			ctrl.runLocalZoneEngine();
-			ctrl.runLocalZoneEngine();
-			ctrl.runLocalZoneEngine();
-			expect(spy).toHaveBeenCalledTimes(1);
-		});
-
-		it("recomputes allZoneIds when host._grid is replaced", () => {
-			host._showDebugLog = true;
-			const spy = vi.spyOn(ctrl as any, "_computeAllZoneIds");
-			ctrl.runLocalZoneEngine();
-			host._grid = makeSimpleGrid();
-			ctrl.runLocalZoneEngine();
-			expect(spy).toHaveBeenCalledTimes(2);
+			expect(allLog).toContain("occupied");
 		});
 
 		// -----------------------------------------------------------------------
@@ -1276,10 +1416,12 @@ describe("TargetController", () => {
 			beforeEach(() => {
 				host._showDebugLog = true;
 				host._grid = makeSimpleGrid();
+				host._targets = [];
 				container = document.createElement("div");
 				host._mockFrontendContainer = container;
-				// Ensure a unique log line is generated each test (no dedup suppression)
-				host._debugLogPrev = "";
+				// Static presence on is a transition → the replica emits at least one
+				// detection-log event (sa/oo/wo), so each test below sees a line.
+				host._sensorState = makeSensors({ static_presence: true });
 			});
 
 			it("appends a div to the frontend container", () => {
@@ -1374,6 +1516,7 @@ describe("TargetController", () => {
 				occupied: true,
 				pendingSince: null,
 				confirmedTargets: new Set([0]),
+				clearReason: 0,
 			});
 
 			ctrl.resetEngineForGridChange();
@@ -1393,6 +1536,7 @@ describe("TargetController", () => {
 				occupied: true,
 				pendingSince: null,
 				confirmedTargets: new Set([0]),
+				clearReason: 0,
 			});
 			st.staticState = "active";
 			st.sensorsEverActive = true;

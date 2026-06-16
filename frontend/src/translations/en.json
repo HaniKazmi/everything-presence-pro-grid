@@ -241,7 +241,32 @@
 			"room": "Room",
 			"no_targets": "no targets",
 			"all_clear": "all clear",
-			"zone_n": "Zone {n}"
+			"zone_n": "Zone {n}",
+			"target_n": "Target {n}"
+		},
+		"events": {
+			"static_active": "Static presence detected",
+			"static_fading": "Static presence fading…",
+			"static_cleared": "Static presence cleared",
+			"motion_active": "Motion presence detected",
+			"motion_fading": "Motion presence fading…",
+			"motion_cleared": "Motion presence cleared",
+			"zone_occupied": "{zone} occupied",
+			"zone_clearing": "{zone} clearing…",
+			"zone_cleared": "{zone} cleared",
+			"zone_cleared_handoff": "{zone} cleared (handoff)",
+			"zone_cleared_overlay": "{zone} cleared (overlay exit)",
+			"zone_cleared_force": "{zone} cleared (sensor-assisted)",
+			"room_occupied": "Room occupied",
+			"room_empty": "Room empty",
+			"mmwave_on": "mmWave on",
+			"mmwave_off": "mmWave off",
+			"force_clear": "{zone} force-cleared (both sensors idle)",
+			"stuck_dismiss": "{target} auto-dismissed (stuck {secs}s)",
+			"target_entered": "{target} entered {zone}",
+			"target_left": "{target} left the room",
+			"target_moved": "{target} moved {from} → {to}",
+			"dropped": "{n} events dropped"
 		}
 	},
 	"entities": {

@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "epp_event_codec.h"
 #include "epp_grid.h"
 #include "epp_window.h"
 #include "epp_zone_engine.h"
@@ -134,6 +135,20 @@ static const char* status_name(TargetStatus s) {
     return "unknown";
 }
 
+// Collect this tick's emitted events as wire-code strings, in emit order, via
+// the firmware's single-source-of-truth codec (epp_event_codec.h). This is the
+// firmware-side ground truth the fixture's `expected_events` is generated from
+// and asserted against.
+static std::vector<std::string> collect_event_codes(const ProcessingResult& result) {
+    std::vector<std::string> codes;
+    char code[24];
+    for (int i = 0; i < result.event_count; ++i) {
+        format_event_code(result.events[i], code, sizeof(code));
+        codes.emplace_back(code);
+    }
+    return codes;
+}
+
 // ---------------------------------------------------------------------------
 // Test runner
 // ---------------------------------------------------------------------------
@@ -148,6 +163,11 @@ static void run_scenario(const std::string& name, const json& scenario,
     INFO("Scenario: " << name);
     REQUIRE(scenario.contains("ticks"));
     REQUIRE(scenario.contains("expected"));
+    // expected_events is the firmware-generated ground truth for the emitted
+    // detection-log wire codes per frame. The firmware engine is the SOURCE OF
+    // TRUTH; the TS replica's panel-zone-engine-parity.test.ts asserts the same
+    // field, so a TS divergence is a real parity bug (see that file's header).
+    REQUIRE(scenario.contains("expected_events"));
 
     Grid grid = build_grid(fixtures["grid"]);
     auto zone_cfgs = build_zones(fixtures["zones"]);
@@ -173,11 +193,14 @@ static void run_scenario(const std::string& name, const json& scenario,
 
     auto& ticks = scenario["ticks"];
     auto& expected_arr = scenario["expected"];
+    auto& expected_events_arr = scenario["expected_events"];
 
     REQUIRE(ticks.is_array());
     REQUIRE(!ticks.empty());
     REQUIRE(expected_arr.is_array());
     REQUIRE(ticks.size() == expected_arr.size());
+    REQUIRE(expected_events_arr.is_array());
+    REQUIRE(ticks.size() == expected_events_arr.size());
 
     // Track per-target overlay flag (sticky), simulating component behaviour
     // (epp_component.cpp Stage 2b — keep this simulation AND the TS harness's
@@ -278,6 +301,27 @@ static void run_scenario(const std::string& name, const json& scenario,
                 if (exp_t.contains("signal")) {
                     CHECK(result.targets[j].signal == exp_t["signal"].get<int>());
                 }
+            }
+        }
+
+        // Check emitted detection-log events (wire codes), in emit order. The
+        // firmware engine is the source of truth; the TS replica asserts the
+        // SAME expected_events, so this proves both engines emit identical
+        // event sequences for identical inputs.
+        std::vector<std::string> got_codes = collect_event_codes(result);
+        std::vector<std::string> exp_codes;
+        for (auto& code : expected_events_arr[i]) {
+            exp_codes.push_back(code.get<std::string>());
+        }
+        {
+            INFO("Scenario: " << name << ", tick " << i << ", events");
+            CHECK(got_codes == exp_codes);
+            if (got_codes != exp_codes) {
+                std::string got_str, exp_str;
+                for (auto& c : got_codes) got_str += c + " ";
+                for (auto& c : exp_codes) exp_str += c + " ";
+                MESSAGE("  expected events: [" << exp_str << "], got: ["
+                        << got_str << "]");
             }
         }
     }

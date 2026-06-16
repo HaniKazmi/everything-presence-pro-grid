@@ -176,6 +176,12 @@ void EPPComponent::loop() {
       }
     }
 
+    // Accumulate structured events across ticks; the publish throttle below ships
+    // and clears them at ~1Hz, so a one-tick event isn't lost ~9/10 ticks.
+    for (int i = 0; i < result.event_count; ++i) {
+      event_queue_.push(result.events[i]);
+    }
+
     // Cache the result for the publish throttles below, skipping the trailing
     // LogEntry log[16] buffer (~1.5 KB): its entries were already flushed to
     // the ESP log just above and nothing reads the log from the cache, so the
@@ -289,7 +295,7 @@ void EPPComponent::loop() {
 
     // Publish zone state as compact JSON
     if (zone_state_sensor_ != nullptr) {
-      // Compute sensor state codes (used in JSON fields and debug log)
+      // Compute sensor state codes (used in the static_state/motion_state fields)
       const char *static_code = result.static_state == SensorPresenceState::ACTIVE ? "A" :
                                  result.static_state == SensorPresenceState::PENDING ? "P" : "I";
       const char *motion_code = result.motion_state == SensorPresenceState::ACTIVE ? "A" :
@@ -316,47 +322,28 @@ void EPPComponent::loop() {
       w.printf("],\"tracking\":%s},"
                "\"static_state\":\"%s\",\"motion_state\":\"%s\",\"occupancy\":%s,"
                "\"mmwave\":%s,"
-               "\"frame_count\":%d,\"debug_log\":\"",
+               "\"frame_count\":%d,\"ev\":[",
                result.device_tracking_present ? "true" : "false",
                static_code, motion_code,
                result.occupancy ? "true" : "false",
                result.mmwave ? "true" : "false",
                result.frame_count);
 
-      // Debug log: "S:A M:P Occ:1|T0:Z1:A:5|Z0:O:1 Z1:O:1"
-      // Sensor prefix
-      w.printf("S:%s M:%s Occ:%d|",
-               static_code, motion_code, result.occupancy ? 1 : 0);
-      // Targets part
-      bool first_target = true;
-      for (int i = 0; i < NUM_TARGETS; i++) {
-        if (!is_target_active(result, i)) continue;
-        const char *s = result.targets[i].status == TargetStatus::ACTIVE ? "A" : "P";
-        // Debug log historically prints zone 0 for an unresolvable position.
-        int zone = target_zone_or_invalid(grid_, result.targets[i].status,
-                                          result.targets[i].x, result.targets[i].y);
-        if (zone < 0) zone = 0;
-        w.printf("%sT%d:Z%d:%s:%d",
-                 first_target ? "" : " ", i, zone, s, result.targets[i].signal);
-        first_target = false;
-      }
-      // Zones part
-      w.printf("|");
-      bool first_zone = true;
-      for (int i = 0; i < MAX_ZONE_SLOTS; i++) {
-        if (!result.zone_occupancy[i]) continue;
-        const char *zs = result.zone_states[i] == epp::ZoneState::PENDING_CLEAR ? "P" : "O";
-        w.printf("%sZ%d:%s:%d",
-                 first_zone ? "" : " ", i, zs, result.zone_target_counts[i]);
-        first_zone = false;
-      }
-      w.printf("\"}");
+      // Structured detection-log events accumulated across the ~10 ticks since
+      // the last publish, serialized as the JSON array body.
+      event_queue_.serialize(w);
+      w.printf("]}");
       if (!w.ok()) {
         ESP_LOGW(TAG, "zone-state JSON truncated to %u/%u bytes",
                  (unsigned)w.size(), (unsigned)sizeof(json));
       }
       zone_state_sensor_->publish_state(json);
     }
+
+    // Drain the event queue every interval regardless of sensor presence.
+    // If the zone-state sensor is unwired, events would otherwise accumulate
+    // forever (overflowing CAP and inflating dropped_ unboundedly).
+    event_queue_.clear();
   }
 
   // Timer 3: Entity target (structured HA entities, user Hz)

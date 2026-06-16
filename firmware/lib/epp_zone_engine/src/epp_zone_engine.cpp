@@ -24,6 +24,45 @@ void ZoneEngine::log_(LogLevel level, const char* fmt, ...) {
     result_.log_count++;
 }
 
+// Map sensor/zone enums to the structured-event param index. The indices must
+// stay in sync with emit_event_'s sensor_name[]/zone_name[] tables and the wire
+// codec's suffix/prefix order (see epp_event_codec.h): sensor 0=active/1=pending/
+// 2=inactive; zone 0=clear/1=occupied/2=pending.
+static int sensor_state_index(SensorPresenceState s) {
+    return s == SensorPresenceState::ACTIVE ? 0 :
+           s == SensorPresenceState::PENDING ? 1 : 2;
+}
+
+static int zone_state_index(ZoneState s) {
+    return s == ZoneState::OCCUPIED ? 1 :
+           s == ZoneState::PENDING_CLEAR ? 2 : 0;
+}
+
+void ZoneEngine::emit_event_(EventType type, int p0, int p1, int p2) {
+    if (result_.event_count < MAX_EVENTS) {
+        Event& e = result_.events[result_.event_count++];
+        e.type = type;
+        e.p0 = (int16_t)p0;
+        e.p1 = (int16_t)p1;
+        e.p2 = (int16_t)p2;
+    }
+    static const char* sensor_name[3] = {"active", "pending", "inactive"};
+    static const char* zone_name[3] = {"clear", "occupied", "pending"};
+    switch (type) {
+        case EventType::STATIC:        log_(LogLevel::INFO, "Static: %s", sensor_name[p0]); break;
+        case EventType::MOTION:        log_(LogLevel::INFO, "Motion: %s", sensor_name[p0]); break;
+        case EventType::ZONE:          log_(LogLevel::INFO, "Zone %d: %s", p0, zone_name[p1]); break;
+        case EventType::OCCUPANCY:     log_(LogLevel::INFO, "Occupancy: %s", p0 ? "on" : "off"); break;
+        case EventType::MMWAVE:        log_(LogLevel::INFO, "mmWave: %s", p0 ? "on" : "off"); break;
+        case EventType::FORCE_CLEAR:   log_(LogLevel::INFO, "Zone %d: force-clear", p0); break;
+        case EventType::STUCK_DISMISS: log_(LogLevel::INFO, "T%d auto-dismissed (stuck %ds)", p0, p1); break;
+        case EventType::TARGET_ENTERED:log_(LogLevel::DEBUG, "T%d entered zone %d", p0, p1); break;
+        case EventType::TARGET_LEFT:   log_(LogLevel::DEBUG, "T%d left room", p0); break;
+        case EventType::TARGET_MOVED:  log_(LogLevel::DEBUG, "T%d handoff zone %d -> zone %d", p0, p1, p2); break;
+        case EventType::EVENTS_DROPPED: break;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Construction / configuration
 // ---------------------------------------------------------------------------
@@ -120,6 +159,7 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
     motion_pending_since_ = -1.0f;
     sensors_ever_active_ = false;
     prev_occupancy_ = false;
+    prev_mmwave_ = false;
 }
 
 void ZoneEngine::dismiss_target(int target_index, int cell_index) {
@@ -186,9 +226,10 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
     SensorPresenceState prev_static = static_state_;
     SensorPresenceState prev_motion = motion_state_;
 
-    // Clear result (skip zeroing log buffer — log_count gates access)
+    // Clear result (skip zeroing log/event buffers — *_count gates access)
     std::memset(&result_, 0, offsetof(ProcessingResult, log));
     result_.log_count = 0;
+    result_.event_count = 0;
     result_.frame_count = window.total_frames;
 
     // Per-zone tracking: confirmed flag, best signal, and target count
@@ -272,9 +313,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 tw.median_x == stuck_ref_x_[i] &&
                 tw.median_y == stuck_ref_y_[i]) {
                 if (timestamp - stuck_since_s_[i] >= stuck_target_timeout_s_) {
-                    log_(LogLevel::INFO,
-                         "T%d auto-dismissed (stuck at %.1f,%.1f for %.1fs)",
-                         i, tw.median_x, tw.median_y, stuck_target_timeout_s_);
+                    emit_event_(EventType::STUCK_DISMISS, i, (int)stuck_target_timeout_s_);
                     dismiss_target(i, cell);
                     // dismiss_target reset target_has_prev_/gate/overlay/last_zone/stuck for us.
                     // Skip remaining per-target work — the dismiss collapses the zone.
@@ -459,8 +498,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
 
         // Entered a zone (newly confirmed or changed zone)
         if (curr_zone >= 0 && curr_zone != prev_zone) {
-            log_(LogLevel::DEBUG, "T%d entered zone %d (signal %d)",
-                 i, curr_zone, target_signal[i]);
+            emit_event_(EventType::TARGET_ENTERED, i, curr_zone);
         }
 
         // Left a zone — use specific reason when available
@@ -472,8 +510,11 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 log_(LogLevel::DEBUG, "T%d below threshold in zone %d (signal %d)",
                      i, prev_zone, target_signal[i]);
             } else if (target_active[i]) {
-                // Target left the room entirely
-                log_(LogLevel::DEBUG, "T%d left room (was zone %d)", i, prev_zone);
+                // Target left the room entirely (was confirmed in a zone) —
+                // emit the structured event the panel consumes. The serial line
+                // (via emit_event_) drops the "(was zone %d)" detail, which is
+                // acceptable; the structured event is what matters.
+                emit_event_(EventType::TARGET_LEFT, i);
             } else {
                 log_(LogLevel::DEBUG, "T%d left zone %d", i, prev_zone);
             }
@@ -481,7 +522,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
 
         // Left room (was in room, target still tracked but outside)
         if (was_in_room && !is_in_room && target_active[i] && prev_zone < 0) {
-            log_(LogLevel::DEBUG, "T%d left room", i);
+            emit_event_(EventType::TARGET_LEFT, i);
         }
 
         // Update log state for next tick
@@ -498,7 +539,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         if (prev_zid < 0 || curr_zid < 0 || prev_zid == curr_zid) continue;
 
         // Target i moved from prev_zid to curr_zid
-        log_(LogLevel::DEBUG, "T%d handoff zone %d -> zone %d", i, prev_zid, curr_zid);
+        emit_event_(EventType::TARGET_MOVED, i, prev_zid, curr_zid);
         int src_zi = find_zone_index(prev_zid);
         if (src_zi >= 0) {
             ZoneRuntime& src_rt = zones_[src_zi];
@@ -509,6 +550,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             if (src_rt.confirmed_targets == 0 && src_rt.state == ZoneState::OCCUPIED) {
                 src_rt.state = ZoneState::PENDING_CLEAR;
                 src_rt.pending_since = timestamp - (src_rt.config.timeout - src_rt.config.handoff_timeout);
+                src_rt.clear_reason = 1;  // handoff
             }
         }
     }
@@ -536,8 +578,10 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                     if (rt.state == ZoneState::OCCUPIED) {
                         rt.state = ZoneState::PENDING_CLEAR;
                         rt.pending_since = accel;
+                        rt.clear_reason = 2;  // overlay
                     } else if (rt.state == ZoneState::PENDING_CLEAR && rt.pending_since > accel) {
                         rt.pending_since = accel;
+                        rt.clear_reason = 2;  // overlay (overlay-exit now drives the sooner clear)
                     }
                     log_(LogLevel::DEBUG, "T%d overlay exit handoff: zone %d, handoff=%.1fs",
                          i, prev_zid, rt.config.handoff_timeout);
@@ -574,6 +618,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 if (!confirmed) {
                     rt.state = ZoneState::PENDING_CLEAR;
                     rt.pending_since = timestamp;
+                    rt.clear_reason = 0;  // timeout
                 }
                 break;
 
@@ -702,18 +747,12 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         }
     }
 
-    // Log sensor state transitions
+    // Emit sensor state transitions (event + serial)
     if (static_state_ != prev_static) {
-        const char* name =
-            static_state_ == SensorPresenceState::ACTIVE ? "active" :
-            static_state_ == SensorPresenceState::PENDING ? "pending" : "inactive";
-        log_(LogLevel::INFO, "Static: %s", name);
+        emit_event_(EventType::STATIC, sensor_state_index(static_state_));
     }
     if (motion_state_ != prev_motion) {
-        const char* name =
-            motion_state_ == SensorPresenceState::ACTIVE ? "active" :
-            motion_state_ == SensorPresenceState::PENDING ? "pending" : "inactive";
-        log_(LogLevel::INFO, "Motion: %s", name);
+        emit_event_(EventType::MOTION, sensor_state_index(motion_state_));
     }
 
     result_.static_state = static_state_;
@@ -748,7 +787,8 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 if (!zone_enabled_[zi]) continue;
                 if (zones_[zi].state == ZoneState::PENDING_CLEAR) {
                     int zid = zones_[zi].config.id;
-                    log_(LogLevel::INFO, "Zone %d: force-clear", zid);
+                    emit_event_(EventType::FORCE_CLEAR, zid);
+                    zones_[zi].clear_reason = 3;  // force — set before CLEAR so the deferred ZONE log reports force
                     zones_[zi].state = ZoneState::CLEAR;
                     zones_[zi].pending_since = -1.0f;
                     zones_[zi].confirmed_targets = 0;
@@ -768,10 +808,10 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         ZoneRuntime& rt = zones_[zi];
         int zone_id = rt.config.id;
         if (rt.state != prev_zone_state[zone_id]) {
-            const char* state_name =
-                rt.state == ZoneState::OCCUPIED ? "occupied" :
-                rt.state == ZoneState::PENDING_CLEAR ? "pending" : "clear";
-            log_(LogLevel::INFO, "Zone %d: %s", zone_id, state_name);
+            // p2 = clear reason (0=timeout/1=handoff/2=overlay/3=force), only
+            // meaningful for a CLEAR transition; 0 for occupied/pending.
+            emit_event_(EventType::ZONE, zone_id, zone_state_index(rt.state),
+                        rt.state == ZoneState::CLEAR ? rt.clear_reason : 0);
         }
     }
 
@@ -808,10 +848,16 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         }
     }
 
-    // Log occupancy transitions
+    // Emit occupancy transitions (event + serial)
     if (result_.occupancy != prev_occupancy_) {
-        log_(LogLevel::INFO, "Occupancy: %s", result_.occupancy ? "on" : "off");
+        emit_event_(EventType::OCCUPANCY, result_.occupancy ? 1 : 0);
         prev_occupancy_ = result_.occupancy;
+    }
+
+    // Emit mmWave transitions (event + serial)
+    if (result_.mmwave != prev_mmwave_) {
+        emit_event_(EventType::MMWAVE, result_.mmwave ? 1 : 0);
+        prev_mmwave_ = result_.mmwave;
     }
 
     // -----------------------------------------------------------------------

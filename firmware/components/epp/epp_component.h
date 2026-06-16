@@ -16,6 +16,7 @@
 #include "epp_nvs_layout.h"
 #include "epp_relay_publish.h"
 #include "epp_indexed_setter.h"
+#include "epp_event_codec.h"
 
 #include <string>
 
@@ -254,6 +255,14 @@ class EPPComponent : public esphome::Component {
   // values (engine log entries are flushed to the ESP log at drain time, never
   // read from this cache).
   ProcessingResult last_zone_result_{};
+
+  // Accumulates structured detection-log events across engine ticks. The engine
+  // emits events for the single tick they occur on, but the zone-state JSON only
+  // publishes at ~1Hz (one publish per ~10 ticks). loop() pushes each tick's
+  // events here; the zone-state publish serializes them into the JSON and clears
+  // the queue, so a one-tick event isn't lost in the ~9/10 ticks between publishes.
+  EventQueue event_queue_;
+
   // Cached window output (rolling-median view) of the most recent frame
   // processed. Used by the Display throttle when no new frames arrived this
   // loop tick. See M6 stale-frame handling.
