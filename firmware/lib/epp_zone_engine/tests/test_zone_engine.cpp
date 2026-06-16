@@ -91,6 +91,46 @@ static WindowOutput make_window_2(float x1, float y1, int fc1,
     return make_window(specs, 2);
 }
 
+// --- Relocation test helpers ---------------------------------------------
+// Vertical corridor at col 9, rows 0..15 (room/zone 0). Bed = zone 1 at
+// [9,2] (no overlay). Door = zone 2 at [9,12]; with_entry adds the entry
+// overlay there. Bed↔door = 10 cells > MAX_MOVEMENT_CELLS.
+static Grid make_relo_grid(bool with_entry) {
+    Grid grid(0.0f, 0.0f, GRID_COLS, GRID_ROWS, GRID_CELL_SIZE_MM);
+    for (int r = 0; r < 16; ++r) grid.cell(r * GRID_COLS + 9) = CELL_ROOM_BIT;
+    grid.cell(2 * GRID_COLS + 9) = CELL_ROOM_BIT | (1 << CELL_ZONE_SHIFT);
+    uint8_t door = CELL_ROOM_BIT | (2 << CELL_ZONE_SHIFT);
+    if (with_entry) door |= (CELL_OVERLAY_ENTRY << CELL_OVERLAY_SHIFT);
+    grid.cell(12 * GRID_COLS + 9) = door;
+    return grid;
+}
+
+static ZoneEngine make_relo_engine(bool with_entry) {
+    ZoneConfig z0{}; z0.id = 0; z0.trigger = 5; z0.renew = 3; z0.timeout = 10.0f; z0.handoff_timeout = 3.0f;
+    ZoneConfig z1{}; z1.id = 1; z1.trigger = 3; z1.renew = 2; z1.timeout = 5.0f;  z1.handoff_timeout = 1.0f;
+    ZoneConfig z2{}; z2.id = 2; z2.trigger = 3; z2.renew = 2; z2.timeout = 5.0f;  z2.handoff_timeout = 1.0f;
+    ZoneConfig zones[] = {z0, z1, z2};
+    ZoneEngine e;
+    e.set_grid(make_relo_grid(with_entry));
+    e.set_zones(zones, 3);
+    return e;
+}
+
+// Single-target window with an explicit on_overlay flag.
+static WindowOutput relo_win(float x, float y, int fc, bool on_overlay) {
+    WindowOutput wo{};
+    wo.total_frames = CANONICAL_FRAMES;
+    wo.targets[0].active = (fc > 0);
+    wo.targets[0].median_x = x;
+    wo.targets[0].median_y = y;
+    wo.targets[0].frame_count = fc;
+    wo.targets[0].on_overlay = on_overlay;
+    return wo;
+}
+
+// Bed = [9,2] -> (2850, 750); Door = [9,12] -> (2850, 3750);
+// Far non-overlay = [9,8] -> (2850, 2550).
+
 // ---------------------------------------------------------------------------
 // Parity tests
 // ---------------------------------------------------------------------------
@@ -1355,4 +1395,21 @@ TEST_CASE("assisted-clear: timeout 0 == legacy immediate clear") {
     engine.tick(make_window_0(), t + 2.0f, sensors);  // sensors pending
     const ProcessingResult& r = engine.tick(make_window_0(), t + 3.5f, sensors);
     CHECK_FALSE(r.zone_occupancy[0]);  // cleared on first inactive tick
+}
+
+TEST_CASE("pending target relocates to free slot on far entrance-overlay reuse") {
+    ZoneEngine e = make_relo_engine(/*with_entry=*/true);
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);            // bed: gate_count=1
+    CHECK(e.tick(relo_win(2850, 750, 5, false), t + 1).zone_occupancy[1]);  // OCCUPIED
+    const ProcessingResult& r3 = e.tick(relo_win(2850, 750, 0, false), t + 2);  // PENDING
+    CHECK(r3.zone_occupancy[1]);
+    CHECK(r3.targets[0].status == TargetStatus::PENDING);
+
+    // Collision: slot 0 reused by a far new occupant on the door entry overlay.
+    const ProcessingResult& r4 = e.tick(relo_win(2850, 3750, 5, true), t + 3);
+    CHECK(r4.zone_occupancy[1]);                              // bed still held (via slot 2)
+    CHECK(r4.zone_occupancy[2]);                              // new occupant instant-entry at door
+    CHECK(r4.targets[0].status == TargetStatus::ACTIVE);     // new occupant in slot 0
+    CHECK(r4.targets[2].status == TargetStatus::PENDING);    // parked bed target in slot 2
 }
