@@ -142,6 +142,34 @@ function reloTargets(
 	return [slot(t0), makeNullTarget(), makeNullTarget()];
 }
 
+function at3(
+	state: ZoneEngineState,
+	p: ZoneEngineParams,
+	slots: ({
+		x: number;
+		y: number;
+		signal: number;
+		onOverlay?: boolean;
+	} | null)[],
+	now: number,
+) {
+	const slot = (s: any) =>
+		s
+			? {
+					x: s.x,
+					y: s.y,
+					signal: s.signal,
+					status: "active",
+					onOverlay: s.onOverlay ?? false,
+				}
+			: makeNullTarget();
+	return runLocalZoneEngine(state, {
+		...p,
+		targets: [slot(slots[0]), slot(slots[1]), slot(slots[2])],
+		now,
+	});
+}
+
 describe("createZoneEngineState", () => {
 	it("returns correct initial state", () => {
 		const state = createZoneEngineState();
@@ -2424,5 +2452,82 @@ describe("pending-target relocation (firmware Step 0 parity)", () => {
 		expect(r4.occupancy[2]).toBe(true); // new occupant at door
 		expect(r4.targets[0].status).toBe("active");
 		expect(r4.targets[2].status).toBe("pending");
+	});
+
+	it("does not park a pending target re-acquired nearby", () => {
+		const state = createZoneEngineState();
+		const p = makeReloParams(true);
+		const at = (t0: any, now: number) =>
+			runLocalZoneEngine(state, { ...p, targets: reloTargets(t0), now });
+		at({ x: 2850, y: 750, signal: 5 }, 100);
+		at({ x: 2850, y: 750, signal: 5 }, 101);
+		at({ x: 2850, y: 750, signal: 0 }, 102); // PENDING
+		const r = at({ x: 2850, y: 750, signal: 2 }, 103); // re-acquired at bed
+		expect(r.occupancy[1]).toBe(true);
+		expect(r.targets[0].status).toBe("active");
+		expect(r.targets[2].status).toBe("inactive");
+	});
+
+	it("parks on far reuse alone when no entrance is configured", () => {
+		const state = createZoneEngineState();
+		const p = makeReloParams(false); // no overlay anywhere
+		const at = (t0: any, now: number) =>
+			runLocalZoneEngine(state, { ...p, targets: reloTargets(t0), now });
+		at({ x: 2850, y: 750, signal: 5 }, 100);
+		at({ x: 2850, y: 750, signal: 5 }, 101);
+		at({ x: 2850, y: 750, signal: 0 }, 102);
+		const r = at({ x: 2850, y: 3750, signal: 5, onOverlay: false }, 103);
+		expect(r.occupancy[1]).toBe(true);
+		expect(r.targets[2].status).toBe("pending");
+		expect(r.targets[0].status).toBe("active");
+	});
+
+	it("does not park when entrance configured but occupant is off-overlay", () => {
+		const state = createZoneEngineState();
+		const p = makeReloParams(true);
+		const at = (t0: any, now: number) =>
+			runLocalZoneEngine(state, { ...p, targets: reloTargets(t0), now });
+		at({ x: 2850, y: 750, signal: 5 }, 100);
+		at({ x: 2850, y: 750, signal: 5 }, 101);
+		at({ x: 2850, y: 750, signal: 0 }, 102);
+		const r = at({ x: 2850, y: 2550, signal: 5, onOverlay: false }, 103); // far, off-overlay
+		expect(r.targets[2].status).toBe("inactive");
+		expect(r.targets[0].status).toBe("active");
+	});
+
+	it("drops the held pending target when no free slot exists", () => {
+		const state = createZoneEngineState();
+		const p = makeReloParams(true);
+		at3(state, p, [{ x: 2850, y: 750, signal: 5 }, null, null], 100);
+		at3(state, p, [{ x: 2850, y: 750, signal: 5 }, null, null], 101);
+		at3(state, p, [{ x: 2850, y: 750, signal: 0 }, null, null], 102); // bed PENDING (slot 0)
+		const r = at3(
+			state,
+			p,
+			[
+				{ x: 2850, y: 3750, signal: 5, onOverlay: true }, // door
+				{ x: 2850, y: 3150, signal: 5 }, // [9,10]
+				{ x: 2850, y: 1950, signal: 5 }, // [9,6]
+			],
+			103,
+		);
+		expect(r.targets.some((t) => t.status === "pending")).toBe(false);
+	});
+
+	it("parked target times out on the original schedule", () => {
+		const state = createZoneEngineState();
+		const p = makeReloParams(true);
+		const at = (t0: any, now: number) =>
+			runLocalZoneEngine(state, { ...p, targets: reloTargets(t0), now });
+		at({ x: 2850, y: 750, signal: 5 }, 100);
+		at({ x: 2850, y: 750, signal: 5 }, 101);
+		at({ x: 2850, y: 750, signal: 0 }, 102); // pendingSince=102, clears at 107
+		at({ x: 2850, y: 3750, signal: 5, onOverlay: true }, 103); // park to slot 2
+		expect(
+			at({ x: 2850, y: 3750, signal: 5, onOverlay: true }, 106.9).occupancy[1],
+		).toBe(true);
+		const after = at({ x: 2850, y: 3750, signal: 5, onOverlay: true }, 107.1);
+		expect(after.occupancy[1]).toBe(false);
+		expect(after.targets[2].status).toBe("inactive");
 	});
 });
