@@ -297,7 +297,7 @@ void ZoneEngine::relocate_pending_targets_(const WindowOutput& window) {
         target_overlay_sticky_[i] = false;
         target_last_zone_[i] = -1;
         dismissed_cell_[i] = -1;
-        stuck_has_ref_[i] = false;
+        stuck_has_ref_[i] = false;  // stuck_ref_x_/y_ left stale; guard is stuck_has_ref_
         target_log_zone_[i] = -1;
         target_log_in_room_[i] = false;
 

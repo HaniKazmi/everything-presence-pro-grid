@@ -1412,4 +1412,80 @@ TEST_CASE("pending target relocates to free slot on far entrance-overlay reuse")
     CHECK(r4.zone_occupancy[2]);                              // new occupant instant-entry at door
     CHECK(r4.targets[0].status == TargetStatus::ACTIVE);     // new occupant in slot 0
     CHECK(r4.targets[2].status == TargetStatus::PENDING);    // parked bed target in slot 2
+    CHECK(r4.targets[2].x == doctest::Approx(2850.0f));      // parked at the bed's last position
+    CHECK(r4.targets[2].y == doctest::Approx(750.0f));
+}
+
+TEST_CASE("pending target re-acquired nearby is NOT parked") {
+    ZoneEngine e = make_relo_engine(/*with_entry=*/true);
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);
+    e.tick(relo_win(2850, 750, 5, false), t + 1);            // OCCUPIED
+    e.tick(relo_win(2850, 750, 0, false), t + 2);            // PENDING
+    // Re-acquired at the bed (dist 0) with signal >= renew.
+    const ProcessingResult& r = e.tick(relo_win(2850, 750, 2, false), t + 3);
+    CHECK(r.zone_occupancy[1]);                               // back to OCCUPIED
+    CHECK(r.targets[0].status == TargetStatus::ACTIVE);
+    CHECK(r.targets[2].status == TargetStatus::INACTIVE);    // nothing parked
+}
+
+TEST_CASE("no entrance configured: pending target parks on far reuse alone") {
+    ZoneEngine e = make_relo_engine(/*with_entry=*/false);  // no entry overlay anywhere
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);
+    e.tick(relo_win(2850, 750, 5, false), t + 1);            // bed OCCUPIED
+    e.tick(relo_win(2850, 750, 0, false), t + 2);            // bed PENDING
+    // Far new occupant at the door cell, NOT on overlay (none exist).
+    const ProcessingResult& r = e.tick(relo_win(2850, 3750, 5, false), t + 3);
+    CHECK(r.zone_occupancy[1]);                               // bed still held
+    CHECK(r.targets[2].status == TargetStatus::PENDING);     // parked despite no overlay
+    CHECK(r.targets[0].status == TargetStatus::ACTIVE);      // new occupant
+}
+
+TEST_CASE("entrance configured, occupant off-overlay: pending NOT parked") {
+    ZoneEngine e = make_relo_engine(/*with_entry=*/true);
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);
+    e.tick(relo_win(2850, 750, 5, false), t + 1);            // bed OCCUPIED
+    e.tick(relo_win(2850, 750, 0, false), t + 2);            // bed PENDING
+    // Far new occupant at a non-overlay corridor cell [9,8] -> (2850, 2550).
+    const ProcessingResult& r = e.tick(relo_win(2850, 2550, 5, false), t + 3);
+    CHECK(r.targets[2].status == TargetStatus::INACTIVE);    // nothing parked (entrance gate blocks)
+    CHECK(r.targets[0].status == TargetStatus::ACTIVE);      // new occupant took the slot (today's behaviour)
+}
+
+TEST_CASE("no free slot: held pending target is dropped (clean clobber)") {
+    ZoneEngine e = make_relo_engine(/*with_entry=*/true);
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);
+    e.tick(relo_win(2850, 750, 5, false), t + 1);            // bed (slot 0) OCCUPIED
+    e.tick(relo_win(2850, 750, 0, false), t + 2);            // bed PENDING (slot 0 held)
+
+    // Collision tick: slot 0 = far new occupant on overlay; slots 1 & 2 active.
+    WindowOutput wo{};
+    wo.total_frames = CANONICAL_FRAMES;
+    wo.targets[0] = {2850.0f, 3750.0f, 5, true, true};       // door, on_overlay
+    wo.targets[1] = {2850.0f, 3150.0f, 5, true, false};      // [9,10]
+    wo.targets[2] = {2850.0f, 1950.0f, 5, true, false};      // [9,6]
+    const ProcessingResult& r = e.tick(wo, t + 3);
+    // No slot is PENDING — the held target was dropped (no free slot to park).
+    CHECK(r.targets[0].status != TargetStatus::PENDING);
+    CHECK(r.targets[1].status != TargetStatus::PENDING);
+    CHECK(r.targets[2].status != TargetStatus::PENDING);
+}
+
+TEST_CASE("parked target times out on the original schedule, not extended") {
+    ZoneEngine e = make_relo_engine(/*with_entry=*/true);
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);
+    e.tick(relo_win(2850, 750, 5, false), t + 1);            // OCCUPIED
+    e.tick(relo_win(2850, 750, 0, false), t + 2);            // PENDING (pending_since = 102, timeout 5 -> clears at 107)
+    e.tick(relo_win(2850, 3750, 5, true), t + 3);            // park to slot 2 at t=103
+
+    // New occupant stays at the door; assert the bed (slot 2) clears at 107, not 108.
+    CHECK(e.tick(relo_win(2850, 3750, 5, true), 106.9f).zone_occupancy[1]);          // still held
+    CHECK(e.tick(relo_win(2850, 3750, 5, true), 106.9f).targets[2].status == TargetStatus::PENDING);
+    const ProcessingResult& after = e.tick(relo_win(2850, 3750, 5, true), 107.1f);
+    CHECK_FALSE(after.zone_occupancy[1]);                    // cleared on original schedule
+    CHECK(after.targets[2].status == TargetStatus::INACTIVE);
 }
