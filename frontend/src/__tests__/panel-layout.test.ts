@@ -254,6 +254,40 @@ describe("layout styles", () => {
 		expect(mediaIdx).toBeGreaterThan(-1);
 		expect(resetIdx).toBeGreaterThan(mediaIdx);
 	});
+
+	it("reserves the header height so the device picker can't collapse on the swap", () => {
+		// Root cause of the desktop live↔editor swap flicker: the .panel-header holds
+		// an <ha-select> whose 56px field renders asynchronously (the element is 0px
+		// tall until it upgrades). The swap rebuilds the header from scratch, so for
+		// the first few microtasks it is 0px — and epp-grid's _measureAvail() runs in
+		// that window, reading its viewport `top` 56px too high and latching an
+		// inflated available-height (innerHeight − top − reserve). The width-only
+		// ResizeObserver never re-measures it, so a height-bound grid renders oversized
+		// then snaps back: the flicker. A min-height reserve equal to the ha-select's
+		// steady height keeps `top` stable from first paint, so the measurement is
+		// correct immediately. (Desktop-only: mobile caps height to the viewport, not
+		// `top`.)
+		//
+		// CRITICAL: .panel-header is declared in BOTH panelStyles and headerStyles.
+		// At equal specificity the LAST sheet in the panel's `static styles` array
+		// wins (headerStyles, applied after panelStyles), so the reserve MUST live on
+		// that winning rule — putting it on the earlier one is silently overridden.
+		// Compose the real styles array in order and assert the FINAL bare
+		// ".panel-header {" rule (not ".panel-header ha-select") carries the reserve.
+		const styles = (
+			customElements.get("eppgrid-panel") as typeof HTMLElement & {
+				styles: { cssText: string }[];
+			}
+		).styles;
+		const allCss = styles.map((s) => s.cssText).join("\n");
+		const re = /\.panel-header\s*\{([^}]*)\}/g;
+		let m: RegExpExecArray | null;
+		let winning: string | null = null;
+		// biome-ignore lint/suspicious/noAssignInExpressions: standard regex exec loop
+		while ((m = re.exec(allCss)) !== null) winning = m[1];
+		expect(winning).not.toBeNull();
+		expect(winning!).toMatch(/min-height:\s*56px/);
+	});
 });
 
 describe("live overview layout structure", () => {

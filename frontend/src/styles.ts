@@ -282,6 +282,16 @@ export const headerStyles = css`
     font-weight: 500;
     margin-bottom: 16px;
     text-align: center;
+    /* Reserve the device picker's height so the header can't collapse to 0 while
+       ha-select upgrades. The select renders its 56px field asynchronously (it is
+       0px until the element is defined and first-renders), and the live<->editor
+       view swap rebuilds this header from scratch. Without the reserve the header
+       is briefly 0px tall, and epp-grid measures its viewport top 56px too high in
+       that window -> latches an inflated available-height -> a height-bound grid
+       renders oversized then snaps back (a visible flicker on desktop). 56px
+       matches the ha-select field height; pin it so the grid's top is stable from
+       the first paint and the height measurement is correct immediately. */
+    min-height: 56px;
   }
 
   .panel-header ha-select {
