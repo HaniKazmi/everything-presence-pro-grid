@@ -373,7 +373,7 @@ export const layoutStyles = css`
     background: var(--epp-surface, var(--card-background-color, #fff));
     border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
     border-radius: var(--epp-radius-lg, 16px);
-    padding: 16px;
+    padding: var(--epp-space-4, 16px);
   }
 
   .sidebar-title {
