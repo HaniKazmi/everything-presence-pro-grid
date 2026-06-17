@@ -116,6 +116,39 @@ def websocket_list_device_groups(
     )
 
 
+# -- shared member schemas ---------------------------------------------------
+
+_ZONE_GROUP_SCHEMA = vol.Schema(
+    {
+        vol.Required("id"): vol.All(str, vol.Length(min=1, max=64)),
+        vol.Required("name"): vol.All(str, vol.Length(min=1, max=128)),
+        vol.Required("members"): vol.All(
+            [
+                vol.Schema(
+                    {
+                        vol.Required("mac"): MAC_SCHEMA,
+                        # Manual merges cover named zones 1-7 only. Zone 0
+                        # (Rest of room) is combined implicitly by the
+                        # projection and is never a stored zone_group member.
+                        vol.Required("zone_index"): vol.All(int, vol.Range(min=1, max=7)),
+                    }
+                )
+            ],
+            vol.Length(min=0, max=16),
+        ),
+    }
+)
+
+_EXCLUDED_ZONE_SCHEMA = vol.Schema(
+    {
+        vol.Required("mac"): MAC_SCHEMA,
+        # Excludable passthrough zones are the named zones 1-7; zone 0 (Rest
+        # of room) is excluded via excluded_zone_groups ("rest_of_room").
+        vol.Required("zone_index"): vol.All(int, vol.Range(min=1, max=7)),
+    }
+)
+
+
 # -- create -----------------------------------------------------------------
 
 _CREATE_SCHEMA = {
@@ -126,6 +159,12 @@ _CREATE_SCHEMA = {
         vol.Length(min=1, max=MAX_SOURCES_PER_DEVICE_GROUP),
     ),
     vol.Optional("area_id"): vol.Any(None, vol.All(str, vol.Length(min=1, max=128))),
+    vol.Optional("zone_groups", default=list): vol.All(
+        [_ZONE_GROUP_SCHEMA], vol.Length(max=MAX_ZONE_GROUPS_PER_DEVICE_GROUP)
+    ),
+    vol.Optional("excluded_presence", default=list): [str],
+    vol.Optional("excluded_zones", default=list): [_EXCLUDED_ZONE_SCHEMA],
+    vol.Optional("excluded_zone_groups", default=list): [str],
 }
 
 
@@ -153,27 +192,6 @@ async def websocket_create_device_group(
 
 # -- update -----------------------------------------------------------------
 
-_ZONE_GROUP_SCHEMA = vol.Schema(
-    {
-        vol.Required("id"): vol.All(str, vol.Length(min=1, max=64)),
-        vol.Required("name"): vol.All(str, vol.Length(min=1, max=128)),
-        vol.Required("members"): vol.All(
-            [
-                vol.Schema(
-                    {
-                        vol.Required("mac"): MAC_SCHEMA,
-                        # Manual merges cover named zones 1-7 only. Zone 0
-                        # (Rest of room) is combined implicitly by the
-                        # projection and is never a stored zone_group member.
-                        vol.Required("zone_index"): vol.All(int, vol.Range(min=1, max=7)),
-                    }
-                )
-            ],
-            vol.Length(min=0, max=16),
-        ),
-    }
-)
-
 _UPDATE_SCHEMA = {
     vol.Required("type"): "eppgrid/update_device_group",
     vol.Required("group_id"): vol.All(str, vol.Length(min=1, max=64)),
@@ -184,6 +202,9 @@ _UPDATE_SCHEMA = {
     ),
     vol.Required("area_id"): vol.Any(None, vol.All(str, vol.Length(min=1, max=128))),
     vol.Required("zone_groups"): vol.All([_ZONE_GROUP_SCHEMA], vol.Length(max=MAX_ZONE_GROUPS_PER_DEVICE_GROUP)),
+    vol.Optional("excluded_presence", default=list): [str],
+    vol.Optional("excluded_zones", default=list): [_EXCLUDED_ZONE_SCHEMA],
+    vol.Optional("excluded_zone_groups", default=list): [str],
 }
 
 
