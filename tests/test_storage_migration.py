@@ -9,9 +9,10 @@ from custom_components.eppgrid.storage import STORAGE_VERSION
 from custom_components.eppgrid.storage import EPPGridStore
 
 
-def test_storage_version_is_three() -> None:
-    """Bumped to v3 to stamp assisted_clear_timeout for pre-existing installs."""
-    assert STORAGE_VERSION == 3
+def test_storage_version_is_four() -> None:
+    """Bumped to v4 to seed device-group exclusion fields and rewrite legacy
+    zone-0 (Rest-of-room) merges into the implicit combined Rest of Room."""
+    assert STORAGE_VERSION == 4
 
 
 async def test_migration_from_v1_adds_empty_device_groups(hass: HomeAssistant, hass_storage: dict) -> None:
@@ -141,3 +142,183 @@ async def test_save_round_trip_persists_device_groups(hass: HomeAssistant) -> No
     await store2.async_load()
     assert len(store2.device_groups) == 1
     assert store2.device_groups[0]["name"] == "Master Bedroom"
+
+
+async def test_migration_v3_to_v4_seeds_exclusion_fields(hass: HomeAssistant, hass_storage: dict) -> None:
+    """Every stored group gains empty exclusion sets (opt-out default => keeps
+    exposing exactly what it does today)."""
+    hass_storage[DOMAIN] = {
+        "version": 3,
+        "key": DOMAIN,
+        "data": {
+            "devices": {},
+            "configurations": {},
+            "device_groups": [
+                {
+                    "id": "g1",
+                    "name": "Bedroom",
+                    "area_id": None,
+                    "sources": ["AA:BB:CC:DD:EE:FF"],
+                    "zone_groups": [],
+                }
+            ],
+        },
+    }
+    store = EPPGridStore(hass)
+    await store.async_load()
+
+    g = store.device_groups[0]
+    assert g["excluded_presence"] == []
+    assert g["excluded_zones"] == []
+    assert g["excluded_zone_groups"] == []
+
+
+async def test_migration_v3_to_v4_drops_all_zero_zone_merge(hass: HomeAssistant, hass_storage: dict) -> None:
+    """A legacy manual Rest-of-room merge (all members zone_index==0) is dropped;
+    the implicit combined Rest of Room replaces it."""
+    hass_storage[DOMAIN] = {
+        "version": 3,
+        "key": DOMAIN,
+        "data": {
+            "devices": {},
+            "configurations": {},
+            "device_groups": [
+                {
+                    "id": "g1",
+                    "name": "Bedroom",
+                    "area_id": None,
+                    "sources": ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"],
+                    "zone_groups": [
+                        {
+                            "id": "zg_ror",
+                            "name": "Rest",
+                            "members": [
+                                {"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 0},
+                                {"mac": "11:22:33:44:55:66", "zone_index": 0},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+    store = EPPGridStore(hass)
+    await store.async_load()
+
+    assert store.device_groups[0]["zone_groups"] == []
+
+
+async def test_migration_v3_to_v4_strips_zone_zero_from_mixed_merge(hass: HomeAssistant, hass_storage: dict) -> None:
+    """A mixed merge keeps its zone>=1 members but drops the zone-0 member;
+    with two non-zero members remaining the group survives."""
+    hass_storage[DOMAIN] = {
+        "version": 3,
+        "key": DOMAIN,
+        "data": {
+            "devices": {},
+            "configurations": {},
+            "device_groups": [
+                {
+                    "id": "g1",
+                    "name": "Bedroom",
+                    "area_id": None,
+                    "sources": ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"],
+                    "zone_groups": [
+                        {
+                            "id": "zg1",
+                            "name": "Bed",
+                            "members": [
+                                {"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 0},
+                                {"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2},
+                                {"mac": "11:22:33:44:55:66", "zone_index": 3},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+    store = EPPGridStore(hass)
+    await store.async_load()
+
+    members = store.device_groups[0]["zone_groups"][0]["members"]
+    assert members == [
+        {"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2},
+        {"mac": "11:22:33:44:55:66", "zone_index": 3},
+    ]
+
+
+async def test_migration_v3_to_v4_drops_mixed_merge_with_under_two_remaining(
+    hass: HomeAssistant, hass_storage: dict
+) -> None:
+    """Stripping the zone-0 member from a mixed merge that leaves <2 real
+    members drops the whole group (a 1-member merge is meaningless)."""
+    hass_storage[DOMAIN] = {
+        "version": 3,
+        "key": DOMAIN,
+        "data": {
+            "devices": {},
+            "configurations": {},
+            "device_groups": [
+                {
+                    "id": "g1",
+                    "name": "Bedroom",
+                    "area_id": None,
+                    "sources": ["AA:BB:CC:DD:EE:FF"],
+                    "zone_groups": [
+                        {
+                            "id": "zg1",
+                            "name": "Bed",
+                            "members": [
+                                {"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 0},
+                                {"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+    store = EPPGridStore(hass)
+    await store.async_load()
+
+    assert store.device_groups[0]["zone_groups"] == []
+
+
+async def test_migration_v3_to_v4_leaves_non_ror_merge_untouched(hass: HomeAssistant, hass_storage: dict) -> None:
+    """A pure named-zone merge (no zone-0 members) is preserved verbatim."""
+    hass_storage[DOMAIN] = {
+        "version": 3,
+        "key": DOMAIN,
+        "data": {
+            "devices": {},
+            "configurations": {},
+            "device_groups": [
+                {
+                    "id": "g1",
+                    "name": "Bedroom",
+                    "area_id": None,
+                    "sources": ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"],
+                    "zone_groups": [
+                        {
+                            "id": "zg1",
+                            "name": "Bed",
+                            "members": [
+                                {"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2},
+                                {"mac": "11:22:33:44:55:66", "zone_index": 3},
+                            ],
+                        }
+                    ],
+                }
+            ],
+        },
+    }
+    store = EPPGridStore(hass)
+    await store.async_load()
+
+    g = store.device_groups[0]
+    assert g["zone_groups"][0]["members"] == [
+        {"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2},
+        {"mac": "11:22:33:44:55:66", "zone_index": 3},
+    ]
+    assert g["excluded_zone_groups"] == []
