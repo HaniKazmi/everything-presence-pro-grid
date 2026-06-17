@@ -280,6 +280,22 @@ describe("layout styles", () => {
 		expect(ctrlRule).toMatch(/min-height:\s*0/);
 	});
 
+	it("settings panel is height-bounded so the list scrolls + Save/Cancel pins", () => {
+		// Like the grid-hero panel, the settings panel (.panel--settings) is a bounded
+		// flex column so the settings view fills it — the accordion list scrolls inside
+		// .settings-scroll and Save/Cancel pins, instead of the page scrolling. Scoped
+		// to .panel--settings (not every plain panel) so wizard/loading keep natural flow.
+		const pcss = panelStyles.cssText;
+		const idx = pcss.indexOf(".panel--settings {");
+		expect(idx).toBeGreaterThan(-1);
+		const rule = pcss.slice(idx, pcss.indexOf("}", idx));
+		expect(rule).toMatch(/flex-direction:\s*column/);
+		expect(rule).toMatch(/min-height:\s*0/);
+		const svIdx = pcss.indexOf(".panel--settings > epp-settings-view");
+		const svRule = pcss.slice(svIdx, pcss.indexOf("}", svIdx));
+		expect(svRule).toMatch(/flex:\s*1/);
+	});
+
 	it("desktop frames the grid in an expansion-area card, reset on mobile", () => {
 		// .editor-shell .grid-container gets a themed surface + border on desktop
 		// (shows the area the grid can expand into; the log lines up with its left

@@ -50,12 +50,29 @@ export class EppDeviceGroupEditor extends LitElement {
 	static styles = [
 		chipStyles,
 		css`
-		:host { display: block; }
+		/* Fill the device-groups view's bounded .content and pin the Cancel/Save
+		   .actions bar to the bottom while the form scrolls inside .editor-scroll.
+		   Fill-height chain: :host -> ha-card -> .card-content -> .editor-scroll
+		   (flex columns). Applies at all widths (desktop + mobile). */
+		:host {
+			display: flex;
+			flex-direction: column;
+			flex: 1;
+			min-height: 0;
+		}
+		ha-card {
+			display: flex;
+			flex-direction: column;
+			flex: 1;
+			min-height: 0;
+		}
 		.card-content {
 			padding: var(--epp-space-4, 16px);
 			display: flex;
 			flex-direction: column;
 			gap: var(--epp-space-4, 16px);
+			flex: 1;
+			min-height: 0;
 		}
 		/* The form rows live in .editor-scroll, which carries the column layout +
 		   16px row gap that .card-content used to apply directly. On desktop
@@ -66,6 +83,9 @@ export class EppDeviceGroupEditor extends LitElement {
 			display: flex;
 			flex-direction: column;
 			gap: var(--epp-space-4, 16px);
+			flex: 1;
+			min-height: 0;
+			overflow-y: auto;
 		}
 		.field { display: block; }
 		ha-area-picker {
@@ -126,40 +146,9 @@ export class EppDeviceGroupEditor extends LitElement {
 			justify-content: space-between;
 			align-items: center;
 			margin-top: var(--epp-space-1, 4px);
+			flex-shrink: 0;
 		}
 
-		/* Mobile: pin the Cancel/Save .actions bar to the bottom of the screen and
-		   let the form body scroll inside .editor-scroll. The fill-height chain is
-		   :host -> ha-card -> .card-content (all flex columns filling the height
-		   handed down by the view), then .editor-scroll grows + scrolls while
-		   .actions stays put. .editor-scroll has NO desktop rule, so desktop layout
-		   is byte-identical. Placed AFTER the base rules so it wins on source order
-		   (mobile @media before base rules go silently dead). */
-		@media (max-width: 819px) {
-			:host {
-				display: flex;
-				flex-direction: column;
-				min-height: 0;
-			}
-			ha-card {
-				display: flex;
-				flex-direction: column;
-				flex: 1;
-				min-height: 0;
-			}
-			.card-content {
-				flex: 1;
-				min-height: 0;
-			}
-			.editor-scroll {
-				flex: 1;
-				min-height: 0;
-				overflow-y: auto;
-			}
-			.actions {
-				flex-shrink: 0;
-			}
-		}
 	`,
 	];
 

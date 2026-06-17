@@ -249,6 +249,24 @@ export const panelStyles = css`
     box-sizing: border-box;
   }
 
+  /* The settings panel is height-bounded (like the grid-hero panel) so the
+     settings view fills it: the accordion list scrolls inside .settings-scroll
+     while the Save/Cancel bar pins to the bottom, rather than the whole panel
+     growing and the page scrolling. Scoped to the settings panel (not every plain
+     panel) so the wizard/loading panels keep their natural flow. */
+  .panel--settings {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .tab-layout > .panel--settings {
+    overflow: hidden;
+  }
+  .panel--settings > epp-settings-view {
+    flex: 1;
+    min-height: 0;
+  }
+
   @media (max-width: 819px) {
     :host {
       --epp-control-height: 44px;
@@ -2879,7 +2897,7 @@ export class EPPGridPanel extends LitElement {
 
 	private _renderSettings(statusBanner: unknown = nothing) {
 		return html`
-      <div class="panel">
+      <div class="panel panel--settings">
         ${this._renderHeader()}
         ${statusBanner}
         <epp-settings-view

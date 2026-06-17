@@ -613,3 +613,27 @@ describe("epp-device-group-editor", () => {
 		}
 	});
 });
+
+describe("desktop scroll + pinned actions", () => {
+	it("bounds the editor at all widths so the form scrolls + Cancel/Save pins", () => {
+		// The form scrolls inside .editor-scroll while the Cancel/Save .actions bar
+		// pins to the bottom — fed by the device-groups view's bounded .content.
+		// Moved from a mobile-only @media to the base so it applies on desktop too.
+		const Ctor = customElements.get("epp-device-group-editor") as any;
+		const cssText = (Ctor.styles as { cssText?: string }[])
+			.map((s) => s.cssText ?? String(s))
+			.join("\n");
+		const scroll = cssText.slice(
+			cssText.indexOf(".editor-scroll {"),
+			cssText.indexOf("}", cssText.indexOf(".editor-scroll {")),
+		);
+		expect(scroll).toMatch(/overflow-y:\s*auto/);
+		expect(scroll).toMatch(/flex:\s*1/);
+		const actions = cssText.slice(
+			cssText.indexOf(".actions {"),
+			cssText.indexOf("}", cssText.indexOf(".actions {")),
+		);
+		expect(actions).toMatch(/flex-shrink:\s*0/);
+		expect(cssText).not.toContain("@media (max-width: 819px)");
+	});
+});

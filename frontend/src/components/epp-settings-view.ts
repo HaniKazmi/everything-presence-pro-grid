@@ -381,8 +381,14 @@ export class EppSettingsView extends LitElement {
 		toggleStyles,
 		settingControlStyles,
 		css`
+      /* Fill the panel height and pin the Save/Cancel bar to the bottom while the
+         accordion list scrolls inside .settings-scroll. Fill-height chain:
+         :host -> .settings-container -> .settings-scroll (flex columns), fed by the
+         bounded .panel--settings host. Applies at all widths (desktop + mobile). */
       :host {
-        display: block;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
       }
 
       .settings-container {
@@ -391,6 +397,16 @@ export class EppSettingsView extends LitElement {
         margin: 0 auto;
         padding: 0 16px;
         box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+      }
+
+      .settings-scroll {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
       }
 
       .setting-row ha-select {
@@ -408,33 +424,7 @@ export class EppSettingsView extends LitElement {
         padding: 12px;
         border-top: 1px solid var(--divider-color, #eee);
         margin-top: auto;
-      }
-
-      /* Mobile: pin the Save/Cancel bar to the bottom of the screen and let
-         the accordion list scroll inside .settings-scroll. Placed AFTER the
-         base .settings-container / .save-cancel-bar rules so it wins on source
-         order (mobile @media blocks placed before base rules go silently dead). */
-      @media (max-width: 819px) {
-        :host {
-          display: flex;
-          flex-direction: column;
-          min-height: 0;
-        }
-        .settings-container {
-          display: flex;
-          flex-direction: column;
-          flex: 1;
-          min-height: 0;
-          width: 100%;
-        }
-        .settings-scroll {
-          flex: 1;
-          min-height: 0;
-          overflow-y: auto;
-        }
-        .save-cancel-bar {
-          flex-shrink: 0;
-        }
+        flex-shrink: 0;
       }
     `,
 	];

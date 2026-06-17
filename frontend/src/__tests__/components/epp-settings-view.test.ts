@@ -2999,4 +2999,27 @@ describe("desktop max-width centering", () => {
 		expect(cssText).toContain("max-width: var(--epp-content-max");
 		expect(cssText).toContain("margin: 0 auto");
 	});
+
+	it("bounds the view at all widths so the list scrolls + Save/Cancel pins", () => {
+		// The accordion list scrolls inside .settings-scroll while the Save/Cancel
+		// bar pins to the bottom — fed by the bounded .panel--settings host. This
+		// moved from a mobile-only @media to the base so it applies on desktop too.
+		// Guarded via cssText (happy-dom has no layout).
+		const cssText = (EppSettingsView as any).styles
+			.map((s: { cssText?: string }) => s.cssText ?? String(s))
+			.join("\n");
+		const scroll = cssText.slice(
+			cssText.indexOf(".settings-scroll {"),
+			cssText.indexOf("}", cssText.indexOf(".settings-scroll {")),
+		);
+		expect(scroll).toMatch(/overflow-y:\s*auto/);
+		expect(scroll).toMatch(/flex:\s*1/);
+		const bar = cssText.slice(
+			cssText.indexOf(".save-cancel-bar {"),
+			cssText.indexOf("}", cssText.indexOf(".save-cancel-bar {")),
+		);
+		expect(bar).toMatch(/flex-shrink:\s*0/);
+		// Unconditional now — no mobile-only @media gating the scroll/pin.
+		expect(cssText).not.toContain("@media (max-width: 819px)");
+	});
 });
