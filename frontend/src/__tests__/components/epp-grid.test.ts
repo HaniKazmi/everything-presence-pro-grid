@@ -1506,4 +1506,28 @@ describe("epp-grid cell sizing (measured available width)", () => {
 			rafSpy.mockRestore();
 		}
 	});
+
+	it("re-measures on a window resize and detaches the handler when removed", async () => {
+		// The ResizeObserver only tracks the host's WIDTH, so a height-only viewport
+		// change (desktop vertical resize, mobile URL-bar collapse, devtools dock
+		// height) wouldn't otherwise re-measure the height cap. A window 'resize'
+		// hook closes that gap; it must detach on disconnect so a removed grid
+		// doesn't keep re-measuring.
+		const el = createGrid();
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const measureSpy = vi.spyOn(
+			el as unknown as { _measureAvail: () => void },
+			"_measureAvail",
+		);
+		window.dispatchEvent(new Event("resize"));
+		expect(measureSpy).toHaveBeenCalled();
+
+		// After removal the handler is detached: a stray resize must not re-measure.
+		document.body.removeChild(el);
+		measureSpy.mockClear();
+		window.dispatchEvent(new Event("resize"));
+		expect(measureSpy).not.toHaveBeenCalled();
+	});
 });

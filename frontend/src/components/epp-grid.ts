@@ -103,6 +103,14 @@ export class EppGrid extends LitElement {
 	/** Pending post-layout re-measure scheduled in firstUpdated (see below). */
 	private _settleRaf?: number;
 
+	// The ResizeObserver tracks the host's WIDTH only, so a height-only viewport
+	// change (desktop vertical window resize, mobile URL-bar collapse, devtools
+	// dock height) wouldn't re-measure the height cap. A window 'resize' hook
+	// closes that gap; it's detached on disconnect.
+	private _onResize = (): void => {
+		this._measureAvail();
+	};
+
 	/* v8 ignore start -- happy-dom has no real layout/ResizeObserver callback */
 	connectedCallback(): void {
 		super.connectedCallback();
@@ -114,11 +122,13 @@ export class EppGrid extends LitElement {
 			});
 			this._ro.observe(this);
 		}
+		window.addEventListener("resize", this._onResize);
 	}
 
 	disconnectedCallback(): void {
 		super.disconnectedCallback();
 		this._ro?.disconnect();
+		window.removeEventListener("resize", this._onResize);
 		if (this._settleRaf !== undefined) {
 			cancelAnimationFrame(this._settleRaf);
 			this._settleRaf = undefined;

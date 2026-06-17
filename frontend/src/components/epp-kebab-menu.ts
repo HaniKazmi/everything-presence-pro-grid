@@ -91,8 +91,8 @@ export class EppKebabMenu extends LitElement {
 	}
 
 	protected updated(): void {
-		// Position the fallback popover after it renders (native ha-button-menu
-		// positions itself). Runs synchronously before paint, so no flicker.
+		// Anchor the popover to the trigger after it renders. Runs synchronously
+		// before paint, so there's no flicker.
 		if (this._open) this._positionFallbackMenu();
 	}
 
