@@ -107,7 +107,7 @@ describe("DeviceGroupsController", () => {
 		expect(conn.subscribeMessage).toHaveBeenCalledTimes(2);
 	});
 
-	it("create() includes area_id when an area is provided", async () => {
+	it("create() sends the full payload including exclusions", async () => {
 		const conn = makeConnection();
 		conn.sendMessagePromise.mockResolvedValueOnce({
 			device_group: {
@@ -117,63 +117,76 @@ describe("DeviceGroupsController", () => {
 				zone_groups: [],
 				area_id: "living_room",
 				exposed_entities: { presence: [], zones: [] },
+				excluded_presence: [],
+				excluded_zones: [],
+				excluded_zone_groups: [],
 			},
 		});
 		const ctrl = new DeviceGroupsController(conn as unknown as never);
-		await ctrl.create("X", ["AA:BB:CC:DD:EE:FF"], "living_room");
-		expect(conn.sendMessagePromise).toHaveBeenCalledWith({
-			type: "eppgrid/create_device_group",
+		const result = await ctrl.create({
 			name: "X",
 			sources: ["AA:BB:CC:DD:EE:FF"],
 			area_id: "living_room",
+			zone_groups: [
+				{ id: "g1", name: "Bed", members: [{ mac: "AA:BB:CC:DD:EE:FF", zone_index: 2 }] },
+			],
+			excluded_presence: ["mmwave_presence"],
+			excluded_zones: [{ mac: "AA:BB:CC:DD:EE:FF", zone_index: 3 }],
+			excluded_zone_groups: ["rest_of_room"],
 		});
-	});
-
-	it("create() sends area_id:null when explicitly cleared", async () => {
-		const conn = makeConnection();
-		conn.sendMessagePromise.mockResolvedValueOnce({
-			device_group: {
-				id: "abc",
-				name: "X",
-				sources: [],
-				zone_groups: [],
-				area_id: null,
-				exposed_entities: { presence: [], zones: [] },
-			},
-		});
-		const ctrl = new DeviceGroupsController(conn as unknown as never);
-		await ctrl.create("X", ["AA:BB:CC:DD:EE:FF"], null);
-		expect(conn.sendMessagePromise).toHaveBeenCalledWith({
-			type: "eppgrid/create_device_group",
-			name: "X",
-			sources: ["AA:BB:CC:DD:EE:FF"],
-			area_id: null,
-		});
-	});
-
-	it("create() sends correct WS payload", async () => {
-		const conn = makeConnection();
-		conn.sendMessagePromise.mockResolvedValueOnce({
-			device_group: {
-				id: "abc",
-				name: "X",
-				sources: [],
-				zone_groups: [],
-				area_id: null,
-				exposed_entities: { presence: [], zones: [] },
-			},
-		});
-		const ctrl = new DeviceGroupsController(conn as unknown as never);
-		const result = await ctrl.create("X", ["AA:BB:CC:DD:EE:FF"]);
 		expect(result.id).toBe("abc");
 		expect(conn.sendMessagePromise).toHaveBeenCalledWith({
 			type: "eppgrid/create_device_group",
 			name: "X",
 			sources: ["AA:BB:CC:DD:EE:FF"],
+			area_id: "living_room",
+			zone_groups: [
+				{ id: "g1", name: "Bed", members: [{ mac: "AA:BB:CC:DD:EE:FF", zone_index: 2 }] },
+			],
+			excluded_presence: ["mmwave_presence"],
+			excluded_zones: [{ mac: "AA:BB:CC:DD:EE:FF", zone_index: 3 }],
+			excluded_zone_groups: ["rest_of_room"],
 		});
 	});
 
-	it("update() sends full payload with group_id (NOT id)", async () => {
+	it("create() sends area_id:null with empty zone_groups/exclusions", async () => {
+		const conn = makeConnection();
+		conn.sendMessagePromise.mockResolvedValueOnce({
+			device_group: {
+				id: "abc",
+				name: "X",
+				sources: [],
+				zone_groups: [],
+				area_id: null,
+				exposed_entities: { presence: [], zones: [] },
+				excluded_presence: [],
+				excluded_zones: [],
+				excluded_zone_groups: [],
+			},
+		});
+		const ctrl = new DeviceGroupsController(conn as unknown as never);
+		await ctrl.create({
+			name: "X",
+			sources: ["AA:BB:CC:DD:EE:FF"],
+			area_id: null,
+			zone_groups: [],
+			excluded_presence: [],
+			excluded_zones: [],
+			excluded_zone_groups: [],
+		});
+		expect(conn.sendMessagePromise).toHaveBeenCalledWith({
+			type: "eppgrid/create_device_group",
+			name: "X",
+			sources: ["AA:BB:CC:DD:EE:FF"],
+			area_id: null,
+			zone_groups: [],
+			excluded_presence: [],
+			excluded_zones: [],
+			excluded_zone_groups: [],
+		});
+	});
+
+	it("update() sends full payload with group_id (NOT id) including exclusions", async () => {
 		const conn = makeConnection();
 		conn.sendMessagePromise.mockResolvedValueOnce({
 			device_group: {
@@ -183,6 +196,9 @@ describe("DeviceGroupsController", () => {
 				zone_groups: [],
 				area_id: null,
 				exposed_entities: { presence: [], zones: [] },
+				excluded_presence: [],
+				excluded_zones: [],
+				excluded_zone_groups: [],
 			},
 		});
 		const ctrl = new DeviceGroupsController(conn as unknown as never);
@@ -192,6 +208,9 @@ describe("DeviceGroupsController", () => {
 			sources: ["AA:BB:CC:DD:EE:FF"],
 			area_id: null,
 			zone_groups: [],
+			excluded_presence: ["occupancy"],
+			excluded_zones: [{ mac: "AA:BB:CC:DD:EE:FF", zone_index: 4 }],
+			excluded_zone_groups: ["rest_of_room"],
 		});
 		expect(conn.sendMessagePromise).toHaveBeenCalledWith({
 			type: "eppgrid/update_device_group",
@@ -200,6 +219,9 @@ describe("DeviceGroupsController", () => {
 			sources: ["AA:BB:CC:DD:EE:FF"],
 			area_id: null,
 			zone_groups: [],
+			excluded_presence: ["occupancy"],
+			excluded_zones: [{ mac: "AA:BB:CC:DD:EE:FF", zone_index: 4 }],
+			excluded_zone_groups: ["rest_of_room"],
 		});
 	});
 

@@ -3,6 +3,7 @@ import type {
 	DeviceGroup,
 	DeviceGroupSource,
 	DeviceGroupZoneGroup,
+	DeviceGroupZoneMember,
 } from "../types.js";
 
 /**
@@ -76,19 +77,25 @@ export class DeviceGroupsController {
 		this._unsub = null;
 	}
 
-	async create(
-		name: string,
-		sources: string[],
-		areaId?: string | null,
-	): Promise<DeviceGroup> {
-		const payload: Record<string, unknown> = {
+	async create(args: {
+		name: string;
+		sources: string[];
+		area_id: string | null;
+		zone_groups: DeviceGroupZoneGroup[];
+		excluded_presence: string[];
+		excluded_zones: DeviceGroupZoneMember[];
+		excluded_zone_groups: string[];
+	}): Promise<DeviceGroup> {
+		const result = await this._conn.sendMessagePromise<CreateUpdateResult>({
 			type: "eppgrid/create_device_group",
-			name,
-			sources,
-		};
-		if (areaId !== undefined) payload.area_id = areaId;
-		const result =
-			await this._conn.sendMessagePromise<CreateUpdateResult>(payload);
+			name: args.name,
+			sources: args.sources,
+			area_id: args.area_id,
+			zone_groups: args.zone_groups,
+			excluded_presence: args.excluded_presence,
+			excluded_zones: args.excluded_zones,
+			excluded_zone_groups: args.excluded_zone_groups,
+		});
 		return result.device_group;
 	}
 
@@ -98,6 +105,9 @@ export class DeviceGroupsController {
 		sources: string[];
 		area_id: string | null;
 		zone_groups: DeviceGroupZoneGroup[];
+		excluded_presence: string[];
+		excluded_zones: DeviceGroupZoneMember[];
+		excluded_zone_groups: string[];
 	}): Promise<DeviceGroup> {
 		// NOTE: HA WS framework reserves top-level `id` for message envelope,
 		// so the backend schema uses `group_id`. The controller's API takes
@@ -109,6 +119,9 @@ export class DeviceGroupsController {
 			sources: args.sources,
 			area_id: args.area_id,
 			zone_groups: args.zone_groups,
+			excluded_presence: args.excluded_presence,
+			excluded_zones: args.excluded_zones,
+			excluded_zone_groups: args.excluded_zone_groups,
 		});
 		return result.device_group;
 	}
