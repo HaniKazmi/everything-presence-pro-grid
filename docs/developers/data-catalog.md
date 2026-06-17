@@ -668,8 +668,10 @@ definitions:
             {"mac": str, "zone_index": int},        # zone_index 1-7
             ...
         ],
-        "excluded_zone_groups": [str, ...],         # zone-group ids to suppress;
-                                                    # only ever ["rest_of_room"]
+        "excluded_zone_groups": [str, ...],         # zone-group ids to suppress; the
+                                                    # schema accepts any id, but the
+                                                    # editor only ever adds "rest_of_room"
+                                                    # (merged zones have no toggle)
     },
     ...                             # up to MAX_DEVICE_GROUPS (32)
 ]
