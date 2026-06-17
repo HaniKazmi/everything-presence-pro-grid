@@ -4,6 +4,7 @@ import {
 	deriveExposedEntities,
 	type ZoneState,
 } from "../lib/device-groups-projection.js";
+import { REST_OF_ROOM_ID, REST_OF_ROOM_NAME } from "../types.js";
 
 function source(
 	mac: string,
@@ -170,5 +171,143 @@ describe("deriveExposedEntities — zones", () => {
 		expect(result.zones).toEqual([
 			{ kind: "group", id: "g1", name: "Zone Bed", available: true },
 		]);
+	});
+});
+
+describe("deriveExposedEntities — exclusions", () => {
+	it("removes excluded presence slots from the union", () => {
+		const result = deriveExposedEntities(
+			[source("AA", "Left", ["occupancy", "static_presence"], [])],
+			[],
+			{ presence: ["static_presence"] },
+		);
+		expect(result.presence).toEqual(["occupancy"]);
+	});
+
+	it("removes an excluded passthrough zone by (mac, index)", () => {
+		const result = deriveExposedEntities(
+			[
+				source(
+					"AA",
+					"Left",
+					[],
+					[
+						{ index: 1, name: "Keep", enabled: true },
+						{ index: 2, name: "Drop", enabled: true },
+					],
+				),
+			],
+			[],
+			{ zones: [{ mac: "AA", zone_index: 2 }] },
+		);
+		expect(result.zones.map((z) => z.name)).toEqual(["Keep"]);
+	});
+
+	it("an excluded passthrough does not trigger collision prefixing on the survivor", () => {
+		// Two "Desk" zones would normally both get a source prefix; once one is
+		// excluded the remaining one is unique again and keeps its bare name.
+		const result = deriveExposedEntities(
+			[
+				source("AA", "Left", [], [{ index: 2, name: "Desk", enabled: true }]),
+				source("BB", "Right", [], [{ index: 3, name: "Desk", enabled: true }]),
+			],
+			[],
+			{ zones: [{ mac: "BB", zone_index: 3 }] },
+		);
+		expect(result.zones).toEqual([
+			{
+				kind: "passthrough",
+				mac: "AA",
+				zone_index: 2,
+				name: "Desk",
+				available: true,
+			},
+		]);
+	});
+
+	it("an excluded zone group is omitted and its members are NOT resurfaced", () => {
+		// Cross-phase contract: grouped_keys is built from ALL zone_groups, so an
+		// excluded group's members stay suppressed (they do not fall back to
+		// passthroughs). Matches the Python projection.
+		const result = deriveExposedEntities(
+			[source("AA", "Left", [], [{ index: 2, name: "Bed L", enabled: true }])],
+			[{ id: "g1", name: "Bed", members: [{ mac: "AA", zone_index: 2 }] }],
+			{ zoneGroups: ["g1"] },
+		);
+		expect(result.zones).toEqual([]);
+	});
+});
+
+describe("deriveExposedEntities — combined Rest of room", () => {
+	it("emits one RoR group (first) when any source has zone 0 enabled", () => {
+		const result = deriveExposedEntities(
+			[
+				source("AA", "Left", [], [
+					{ index: 0, name: "Rest of room", enabled: true },
+					{ index: 1, name: "Bed", enabled: true },
+				]),
+				source("BB", "Right", [], [
+					{ index: 0, name: "Rest of room", enabled: false },
+				]),
+			],
+			[],
+		);
+		expect(result.zones).toEqual([
+			{
+				kind: "group",
+				id: REST_OF_ROOM_ID,
+				name: REST_OF_ROOM_NAME,
+				available: true,
+			},
+			{
+				kind: "passthrough",
+				mac: "AA",
+				zone_index: 1,
+				name: "Bed",
+				available: true,
+			},
+		]);
+	});
+
+	it("RoR available=false when every source's zone 0 is disabled", () => {
+		const result = deriveExposedEntities(
+			[source("AA", "Left", [], [{ index: 0, name: "Rest", enabled: false }])],
+			[],
+		);
+		expect(result.zones).toEqual([
+			{
+				kind: "group",
+				id: REST_OF_ROOM_ID,
+				name: REST_OF_ROOM_NAME,
+				available: false,
+			},
+		]);
+	});
+
+	it("no RoR group when no source has a zone 0 at all", () => {
+		const result = deriveExposedEntities(
+			[source("AA", "Left", [], [{ index: 2, name: "Desk", enabled: true }])],
+			[],
+		);
+		expect(result.zones.some((z) => "id" in z && z.id === REST_OF_ROOM_ID)).toBe(
+			false,
+		);
+	});
+
+	it("RoR omitted when rest_of_room is in excluded.zoneGroups", () => {
+		const result = deriveExposedEntities(
+			[source("AA", "Left", [], [{ index: 0, name: "Rest", enabled: true }])],
+			[],
+			{ zoneGroups: [REST_OF_ROOM_ID] },
+		);
+		expect(result.zones).toEqual([]);
+	});
+
+	it("zone 0 is never a passthrough (only ever feeds RoR)", () => {
+		const result = deriveExposedEntities(
+			[source("AA", "Left", [], [{ index: 0, name: "Rest", enabled: true }])],
+			[],
+		);
+		expect(result.zones.every((z) => z.kind !== "passthrough")).toBe(true);
 	});
 });
