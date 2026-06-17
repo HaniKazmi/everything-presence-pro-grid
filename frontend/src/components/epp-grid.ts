@@ -100,6 +100,8 @@ export class EppGrid extends LitElement {
 	/** Measured available height for the grid (px); 0 = unmeasured. Desktop only. */
 	@state() private _availHeightPx = 0;
 	private _ro?: ResizeObserver;
+	/** Pending post-layout re-measure scheduled in firstUpdated (see below). */
+	private _settleRaf?: number;
 
 	/* v8 ignore start -- happy-dom has no real layout/ResizeObserver callback */
 	connectedCallback(): void {
@@ -117,6 +119,10 @@ export class EppGrid extends LitElement {
 	disconnectedCallback(): void {
 		super.disconnectedCallback();
 		this._ro?.disconnect();
+		if (this._settleRaf !== undefined) {
+			cancelAnimationFrame(this._settleRaf);
+			this._settleRaf = undefined;
+		}
 	}
 	/* v8 ignore stop */
 
@@ -130,6 +136,19 @@ export class EppGrid extends LitElement {
 	// the second pass sees |w - _availPx| < 1 and stops.
 	firstUpdated(): void {
 		this._measureAvail();
+		// Defense in depth: re-measure once after the next frame. A freshly-mounted
+		// grid can read its viewport `top` before an async-rendering sibling above it
+		// (e.g. the header's ha-select, which is 0px until it upgrades) has laid out,
+		// latching a stale available-height that the width-only ResizeObserver never
+		// corrects. One post-layout re-measure self-corrects it, bounding any such
+		// transient to <=1 frame. (The .panel-header CSS reserve prevents the known
+		// case; this guards future late-laying-out chrome above the grid.)
+		if (typeof requestAnimationFrame !== "undefined") {
+			this._settleRaf = requestAnimationFrame(() => {
+				this._settleRaf = undefined;
+				if (this.isConnected) this._measureAvail();
+			});
+		}
 	}
 	updated(): void {
 		this._measureAvail();

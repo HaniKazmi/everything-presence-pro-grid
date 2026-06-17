@@ -1468,4 +1468,42 @@ describe("epp-grid cell sizing (measured available width)", () => {
 
 		document.body.removeChild(el);
 	});
+
+	it("schedules a post-layout re-measure on mount (self-corrects async layout above the grid)", async () => {
+		// Defense in depth for the live↔editor flicker class: a freshly-mounted
+		// desktop grid can read its viewport `top` before an async-rendering sibling
+		// above it (e.g. the header's ha-select) has laid out, latching a stale
+		// available-height that the width-only ResizeObserver never corrects.
+		// firstUpdated() schedules ONE post-layout re-measure so any such transient
+		// self-corrects within a frame instead of persisting. (The .panel-header CSS
+		// reserve prevents the known case; this guards future late-laying-out chrome.)
+		let rafCb: FrameRequestCallback | null = null;
+		const rafSpy = vi
+			.spyOn(globalThis, "requestAnimationFrame")
+			.mockImplementation((cb: FrameRequestCallback) => {
+				rafCb = cb;
+				return 1;
+			});
+		try {
+			const el = createGrid();
+			document.body.appendChild(el);
+			await el.updateComplete;
+
+			// firstUpdated scheduled the post-layout re-measure...
+			expect(rafSpy).toHaveBeenCalled();
+			expect(typeof rafCb).toBe("function");
+
+			// ...and when the frame fires it re-measures.
+			const measureSpy = vi.spyOn(
+				el as unknown as { _measureAvail: () => void },
+				"_measureAvail",
+			);
+			(rafCb as unknown as FrameRequestCallback)(0);
+			expect(measureSpy).toHaveBeenCalled();
+
+			document.body.removeChild(el);
+		} finally {
+			rafSpy.mockRestore();
+		}
+	});
 });
