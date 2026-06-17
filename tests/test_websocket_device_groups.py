@@ -449,3 +449,41 @@ class TestSubscribe:
         events = [m for m in msgs if m.get("type") == "event"]
         assert events, "expected a subscription event after create"
         assert len(events[0]["event"]["device_groups"]) == 1
+
+
+class TestSerialize:
+    async def test_serialize_group_surfaces_exclusions_and_prunes_exposed(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        """The serialized group must echo the exclusion fields, and an excluded
+        presence slot must not appear in exposed_entities.presence."""
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "Baseline",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
+        baseline = (await client.receive_json())["result"]["device_group"]
+        assert "occupancy" in baseline["exposed_entities"]["presence"]
+        assert baseline["excluded_presence"] == []
+        assert baseline["excluded_zones"] == []
+        assert baseline["excluded_zone_groups"] == []
+
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "Excluded",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+                "excluded_presence": ["occupancy"],
+                "excluded_zone_groups": ["rest_of_room"],
+            }
+        )
+        excluded = (await client.receive_json())["result"]["device_group"]
+        assert excluded["excluded_presence"] == ["occupancy"]
+        assert excluded["excluded_zone_groups"] == ["rest_of_room"]
+        assert "occupancy" not in excluded["exposed_entities"]["presence"]

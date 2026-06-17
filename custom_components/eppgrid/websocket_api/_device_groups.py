@@ -86,13 +86,25 @@ def _candidate_sources(hass: HomeAssistant, manager: Any) -> list[dict[str, Any]
 def _serialize_group(hass: HomeAssistant, group: dict[str, Any], manager: Any) -> dict[str, Any]:
     """Return the full WS payload for a device group, with exposed_entities."""
     sources = _build_sources(hass, group["sources"], manager)
+    excluded_presence = group.get("excluded_presence", [])
+    excluded_zones = group.get("excluded_zones", [])
+    excluded_zone_groups = group.get("excluded_zone_groups", [])
     return {
         "id": group["id"],
         "name": group["name"],
         "area_id": group["area_id"],
         "sources": [_serialize_source(s, manager) for s in sources],
         "zone_groups": group["zone_groups"],
-        "exposed_entities": derive_exposed_entities(sources, group["zone_groups"]),
+        "excluded_presence": excluded_presence,
+        "excluded_zones": excluded_zones,
+        "excluded_zone_groups": excluded_zone_groups,
+        "exposed_entities": derive_exposed_entities(
+            sources,
+            group["zone_groups"],
+            excluded_presence=excluded_presence,
+            excluded_zones=excluded_zones,
+            excluded_zone_groups=excluded_zone_groups,
+        ),
     }
 
 
