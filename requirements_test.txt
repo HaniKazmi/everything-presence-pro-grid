@@ -6,3 +6,8 @@ pytest-socket
 ruff
 mypy
 voluptuous-stubs
+# aioesphomeapi's timezone.py imports tzlocal/tzdata (declared deps as of 45.x).
+# The CI installs HA first, so `pip install aioesphomeapi>=29.0.0` is a no-op that
+# never pulls these; HA itself doesn't need tzlocal, so add them explicitly here.
+tzlocal
+tzdata
