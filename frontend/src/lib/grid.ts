@@ -21,6 +21,47 @@ export const GRID_CELL_COUNT = GRID_COLS * GRID_ROWS;
 export const GRID_CELL_MM = 300; // each cell represents 300mm x 300mm
 export const MAX_RANGE = 6000;
 
+/**
+ * Largest integer cell size (px) that keeps a visCols×visRows grid within the
+ * maxGridPx ceiling, the per-cell `maxCellPx` cap, AND the available container
+ * width/height.
+ *
+ * - width-fit  = `availWidthPx > 0` ? floor(availWidthPx / visCols) : ceiling
+ *   (`availWidthPx <= 0` means "unmeasured" → fall back to the ceiling so the
+ *   desktop look is unchanged).
+ * - height-fit = `availHeightPx > 0` ? floor(availHeightPx / visRows) : Infinity
+ *   (`availHeightPx <= 0` / omitted means "no height cap", so desktop callers
+ *   that pass 0 are unaffected).
+ *
+ * The cell is the largest integer ≥1 that fits both budgets and the cap:
+ * `max(1, min(width-fit, height-fit, maxCellPx))`.
+ */
+export function fitCellPx(
+	maxGridPx: number,
+	availWidthPx: number,
+	availHeightPx: number,
+	visCols: number,
+	visRows: number,
+	maxCellPx = 32,
+): number {
+	const ceiling = Math.min(
+		Math.floor(maxGridPx / visCols),
+		Math.floor(maxGridPx / visRows),
+		maxCellPx,
+	);
+	// width-fit always respects the maxGridPx/maxCellPx ceiling; when unmeasured
+	// the ceiling IS the width budget (old fallback).
+	const widthFit =
+		availWidthPx > 0
+			? Math.min(ceiling, Math.floor(availWidthPx / visCols))
+			: ceiling;
+	const heightFit =
+		availHeightPx > 0
+			? Math.floor(availHeightPx / visRows)
+			: Number.POSITIVE_INFINITY;
+	return Math.max(1, Math.min(widthFit, heightFit, maxCellPx));
+}
+
 export const cellIsInside = (v: number): boolean => (v & CELL_ROOM_BIT) !== 0;
 export const cellZone = (v: number): number => (v >> CELL_ZONE_SHIFT) & 0x07;
 export const cellSetInside = (v: number, inside: boolean): number =>

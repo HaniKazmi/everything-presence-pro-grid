@@ -272,6 +272,20 @@ export const chipStyles = css`
   }
 `;
 
+/** Common chrome for the Save/Cancel footer bar shared by the editor sidebar
+ *  (panel), the settings view, and the device-group editor. These three had
+ *  already drifted once (the markup was unified in `save-cancel-bar.ts`); this
+ *  lifts the shared CSS core so it can't drift again. Consumers keep their own
+ *  deltas (padding, margins, background, flex-shrink) locally. */
+export const saveCancelBarStyles = css`
+  .save-cancel-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+  }
+`;
+
 export const headerStyles = css`
   .panel-header {
     display: flex;
@@ -282,6 +296,14 @@ export const headerStyles = css`
     font-weight: 500;
     margin-bottom: 16px;
     text-align: center;
+    /* Reserve the device picker's 56px height (the ha-select field) so the header
+       can't collapse to 0 while ha-select upgrades async — that briefly shifts the
+       grid up, inflating its height measurement and flickering the live<->editor
+       swap. Intentionally unscoped (not desktop-only): harmless on mobile, where the
+       grid sizes off the viewport height, not the header's top. Must stay on this
+       (cascade-winning) .panel-header rule; see the root cause + cascade guard in
+       panel-layout.test.ts. */
+    min-height: 56px;
   }
 
   .panel-header ha-select {

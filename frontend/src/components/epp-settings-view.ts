@@ -10,7 +10,12 @@ import {
 	SETTINGS_FIELD_MAP,
 } from "../lib/settings-defaults.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
-import { buttonStyles, settingStyles, toggleStyles } from "../styles.js";
+import {
+	buttonStyles,
+	saveCancelBarStyles,
+	settingStyles,
+	toggleStyles,
+} from "../styles.js";
 import "./epp-info-tip.js";
 import "../ui/epp-card.js";
 import "../ui/epp-toggle.js";
@@ -380,17 +385,34 @@ export class EppSettingsView extends LitElement {
 		settingStyles,
 		toggleStyles,
 		settingControlStyles,
+		saveCancelBarStyles,
 		css`
+      /* Fill the panel height and pin the Save/Cancel bar to the bottom while the
+         accordion list scrolls inside .settings-scroll. Fill-height chain:
+         :host -> .settings-container -> .settings-scroll (flex columns), fed by the
+         bounded .panel--settings host. Applies at all widths (desktop + mobile). */
       :host {
-        display: block;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
       }
 
       .settings-container {
-        width: 560px;
-        max-width: 100%;
+        max-width: var(--epp-content-max, 720px);
+        width: 100%;
         margin: 0 auto;
         padding: 0 16px;
         box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0;
+      }
+
+      .settings-scroll {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
       }
 
       .setting-row ha-select {
@@ -403,11 +425,14 @@ export class EppSettingsView extends LitElement {
       }
 
       .save-cancel-bar {
-        display: flex;
-        justify-content: space-between;
-        padding: 12px;
-        border-top: 1px solid var(--divider-color, #eee);
+        /* Shared chrome (display/justify/align/border-top) is in saveCancelBarStyles. */
+        padding: var(--epp-space-3, 12px);
         margin-top: auto;
+        flex-shrink: 0;
+        /* Sit on the surface (white) so the bar matches the editor sidebar +
+           device-group editor bars, which sit on their white sheet/card. Without
+           this the settings bar showed the grey page behind it. */
+        background: var(--epp-surface, var(--card-background-color, #fff));
       }
     `,
 	];
@@ -443,6 +468,7 @@ export class EppSettingsView extends LitElement {
 
 		return html`
       <div class="settings-container">
+        <div class="settings-scroll">
         <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 500;">${this.localize("settings.title")}</h2>
         ${sections.map((s) => {
 					const open = this.openAccordions.has(s.id);
@@ -465,6 +491,7 @@ export class EppSettingsView extends LitElement {
             </div>
           `;
 				})}
+        </div>
         ${this.renderSaveCancelButtons()}
       </div>
     `;

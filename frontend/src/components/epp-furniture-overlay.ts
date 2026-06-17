@@ -117,20 +117,45 @@ export class EppFurnitureOverlay extends LitElement {
 		.furn-handle-se { bottom: -11px; right: -11px; }
 		.furn-handle-sw { bottom: -11px; left: -11px; }
 
+		/* Transparent >=44px centered touch hit area on each interactive handle.
+		   Uses ::after (the visible nub uses ::before on .furn-handle, and is the
+		   element's own circle on the rotate/delete handles). Does not change any
+		   handle geometry/offset or the drag/rotate/delete math. */
+		@media (max-width: 819px) {
+			.furn-handle::after,
+			.furn-rotate-handle::after,
+			.furn-delete-btn::after {
+				content: "";
+				position: absolute;
+				top: 50%;
+				left: 50%;
+				width: 44px;
+				height: 44px;
+				transform: translate(-50%, -50%);
+				/* transparent — just enlarges the touch hit target */
+			}
+		}
+
 		.furn-rotate-stem {
 			position: absolute;
-			top: -32px;
+			top: -38px;
 			left: 50%;
 			transform: translateX(-50%);
 			width: 2px;
-			height: 32px;
+			height: 38px;
 			background: var(--epp-accent, var(--primary-color, #03a9f4));
 			pointer-events: none;
 		}
 
+		/* z-index: 3 keeps the rotate/delete buttons (and their mobile 44px
+		   ::after hit-areas) above the resize handles (z-index: 2) — otherwise
+		   the NE resize handle's hit-area paints on top of the delete button and
+		   swallows taps on the visible X. Delete is pushed further out diagonally
+		   and rotate lifted higher so their visible discs no longer overlap each
+		   other or the NE corner handle on small items. */
 		.furn-rotate-handle {
 			position: absolute;
-			top: -48px;
+			top: -54px;
 			left: 50%;
 			transform: translateX(-50%);
 			width: 20px;
@@ -145,12 +170,13 @@ export class EppFurnitureOverlay extends LitElement {
 			pointer-events: auto;
 			color: var(--epp-accent-text, #fff);
 			touch-action: none;
+			z-index: 3;
 		}
 
 		.furn-delete-btn {
 			position: absolute;
-			top: -24px;
-			right: -4px;
+			top: -34px;
+			right: -16px;
 			width: 20px;
 			height: 20px;
 			background: var(--epp-danger, var(--error-color, #f44336));
@@ -162,6 +188,8 @@ export class EppFurnitureOverlay extends LitElement {
 			cursor: pointer;
 			pointer-events: auto;
 			color: var(--epp-accent-text, #fff);
+			touch-action: none;
+			z-index: 3;
 		}
 	`;
 

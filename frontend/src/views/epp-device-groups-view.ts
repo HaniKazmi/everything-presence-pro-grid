@@ -18,9 +18,17 @@ export class EppDeviceGroupsView extends LitElement {
 	static styles = [
 		chipStyles,
 		css`
-		:host { display: block; padding: 16px; }
+		/* A bounded flex column at all widths: lets EDITOR mode (which reuses
+		   .content) fill the height and pin its Cancel/Save. The per-width @media
+		   blocks below only tune .content's width cap. */
+		:host {
+			display: flex;
+			flex-direction: column;
+			min-height: 0;
+			padding: 16px;
+		}
 		.content {
-			max-width: 600px;
+			max-width: var(--epp-content-max, 720px);
 			margin: 0 auto;
 		}
 		.card-header {
@@ -32,6 +40,11 @@ export class EppDeviceGroupsView extends LitElement {
 		}
 		.card-content {
 			padding: var(--epp-space-4, 16px);
+			display: flex;
+			flex-direction: column;
+			gap: var(--epp-space-3, 12px);
+		}
+		.group-list {
 			display: flex;
 			flex-direction: column;
 			gap: var(--epp-space-3, 12px);
@@ -84,6 +97,47 @@ export class EppDeviceGroupsView extends LitElement {
 		}
 		epp-card { display: block; }
 		epp-kebab-menu { flex-shrink: 0; margin: -6px -8px -6px 0; }
+
+		/* Mobile: fill the panel height so the editor's Save/Cancel bar can pin to
+		   the bottom of the screen while its body scrolls. :host and the .content
+		   wrapper become a flex column that fills the height handed down by the
+		   panel (.tab-layout > epp-device-groups-view), letting the editor inside
+		   establish its own scroll/pin regions. .content drops its 600px reading
+		   cap and goes full-width — full-width is fine on a phone. The list mode
+		   reuses the same .content, but its single ha-card simply sits at the top
+		   and the view scrolls naturally (overflow inherited from .tab-layout), so
+		   a long list still scrolls rather than clipping. Placed AFTER the base
+		   rules so it wins on source order (mobile @media before base rules go
+		   silently dead). */
+		@media (max-width: 819px) {
+			.content {
+				flex: 1;
+				min-height: 0;
+				display: flex;
+				flex-direction: column;
+				width: 100%;
+				max-width: none;
+			}
+		}
+
+		/* Desktop: a content-sized card on the grey page (matching the Installed
+		   Devices / flasher view), NOT a full-height white sheet. The card sizes to
+		   its content and the whole view scrolls if the group list is long; the list
+		   is deliberately NOT given its own overflow scroll cap — the whole view
+		   scrolling is enough (and the kebab's fixed-position popover escapes any
+		   overflow ancestor anyway). .content stays a bounded flex column so EDITOR
+		   mode (which reuses it) can fill the height and pin its Cancel/Save; in list
+		   mode the card sits at the top of that column with grey below. */
+		@media (min-width: 820px) {
+			.content {
+				flex: 1;
+				min-height: 0;
+				display: flex;
+				flex-direction: column;
+				width: 100%;
+				box-sizing: border-box;
+			}
+		}
 	`,
 	];
 
@@ -153,11 +207,13 @@ export class EppDeviceGroupsView extends LitElement {
 				<ha-card>
 					<div class="card-header">Device Groups</div>
 					<div class="card-content">
-						${
-							this._groups.length === 0
-								? html`<p class="empty">No device groups yet.</p>`
-								: this._groups.map((g) => this._renderGroupCard(g))
-						}
+						<div class="group-list">
+							${
+								this._groups.length === 0
+									? html`<p class="empty">No device groups yet.</p>`
+									: this._groups.map((g) => this._renderGroupCard(g))
+							}
+						</div>
 						<div class="footer">
 							<epp-button
 								variant="primary"

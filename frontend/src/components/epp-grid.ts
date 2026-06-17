@@ -1,5 +1,5 @@
 import { css, html, LitElement, nothing, type PropertyValues } from "lit";
-import { property } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 import { MAX_TARGETS, TARGET_COLORS } from "../constants.js";
 import { mapTargetToGridCell, targetCellIndex } from "../lib/coordinates.js";
 import type { FurnitureItem } from "../lib/furniture.js";
@@ -10,6 +10,7 @@ import {
 	cellIsInside,
 	cellOverlay,
 	cellZone,
+	fitCellPx,
 	GRID_CELL_COUNT,
 	GRID_COLS,
 	GRID_ROWS,
@@ -44,6 +45,18 @@ const OVERLAY_STRIPE_CSS: Record<number, string> = {
 	[CELL_OVERLAY_SUPPRESS]: `background-image: ${overlayStripeGradient(CELL_OVERLAY_SUPPRESS, 5)};`,
 };
 
+// Minimum measured height (px) to use the desktop height-fit path. If the
+// panel sits low on a short viewport, the computed available height can be a
+// small positive (e.g. 26px), which collapses fitCellPx toward 1px. Below this
+// floor we treat the height as unmeasured (0) so the grid falls back to
+// width-fit and the page can scroll instead of collapsing the cells.
+const DESKTOP_MIN_HEIGHT_PX = 200;
+
+// Space (px) reserved below the grid on desktop for the dimensions caption +
+// the detection-log toggle, so a height-bounded grid doesn't push them off the
+// bottom of the viewport.
+const DESKTOP_HEIGHT_RESERVE_PX = 130;
+
 export class EppGrid extends LitElement {
 	@property({ attribute: false }) grid: Uint8Array = new Uint8Array(0);
 	@property({ attribute: false }) zoneConfigs: (ZoneConfig | null)[] = [];
@@ -66,6 +79,11 @@ export class EppGrid extends LitElement {
 	@property({ type: Number }) maxRangeMm = MAX_RANGE;
 	/** Maximum pixel size for the grid (both call sites currently pass 480) */
 	@property({ type: Number }) maxGridPx = 480;
+	/**
+	 * Mobile-only: cap the grid height to half the viewport so the controls
+	 * panel below it always has room. Desktop leaves this false → no height cap.
+	 */
+	@property({ type: Boolean }) capHeightToHalfViewport = false;
 	/** Map of target index → dismissed cell index (ephemeral, not persisted) */
 	@property({ attribute: false }) dismissedTargets: Map<number, number> =
 		new Map();
@@ -77,15 +95,111 @@ export class EppGrid extends LitElement {
 		maxRow: number;
 	} | null = null;
 
+	/** Measured content width of the host (px); 0 = unmeasured (e.g. unit tests). */
+	@state() private _availPx = 0;
+	/** Measured available height for the grid (px); 0 = unmeasured. Desktop only. */
+	@state() private _availHeightPx = 0;
+	private _ro?: ResizeObserver;
+	/** Pending post-layout re-measure scheduled in firstUpdated (see below). */
+	private _settleRaf?: number;
+
+	// The ResizeObserver tracks the host's WIDTH only, so a height-only viewport
+	// change (desktop vertical window resize, mobile URL-bar collapse, devtools
+	// dock height) wouldn't re-measure the height cap. A window 'resize' hook
+	// closes that gap; it's detached on disconnect.
+	private _onResize = (): void => {
+		this._measureAvail();
+	};
+
+	/* v8 ignore start -- happy-dom has no real layout/ResizeObserver callback */
+	connectedCallback(): void {
+		super.connectedCallback();
+		if (typeof ResizeObserver !== "undefined") {
+			this._ro = new ResizeObserver((entries) => {
+				const w = entries[0]?.contentRect.width ?? 0;
+				if (w && Math.abs(w - this._availPx) >= 1)
+					this._availPx = Math.floor(w);
+			});
+			this._ro.observe(this);
+		}
+		window.addEventListener("resize", this._onResize);
+	}
+
+	disconnectedCallback(): void {
+		super.disconnectedCallback();
+		this._ro?.disconnect();
+		window.removeEventListener("resize", this._onResize);
+		if (this._settleRaf !== undefined) {
+			cancelAnimationFrame(this._settleRaf);
+			this._settleRaf = undefined;
+		}
+	}
+	/* v8 ignore stop */
+
+	/* v8 ignore start -- happy-dom has no layout (clientWidth 0); measured visually */
+	// Deterministic, synchronous width measurement that doesn't depend on the
+	// ResizeObserver. In the HA companion webview the observer doesn't deliver a
+	// usable callback, leaving _availPx at 0 → fitCellPx snaps to the ceiling cell
+	// size and overflows. The host's own clientWidth tracks the constrained parent
+	// (`:host { display: block }`), so reading it here fits the grid to the viewport.
+	// Converges in 2 renders: clientWidth stays constant regardless of cell size, so
+	// the second pass sees |w - _availPx| < 1 and stops.
+	firstUpdated(): void {
+		this._measureAvail();
+		// Defense in depth: re-measure once after the next frame. A freshly-mounted
+		// grid can read its viewport `top` before an async-rendering sibling above it
+		// (e.g. the header's ha-select, which is 0px until it upgrades) has laid out,
+		// latching a stale available-height that the width-only ResizeObserver never
+		// corrects. One post-layout re-measure self-corrects it, bounding any such
+		// transient to <=1 frame. (The .panel-header CSS reserve prevents the known
+		// case; this guards future late-laying-out chrome above the grid.)
+		if (typeof requestAnimationFrame !== "undefined") {
+			this._settleRaf = requestAnimationFrame(() => {
+				this._settleRaf = undefined;
+				if (this.isConnected) this._measureAvail();
+			});
+		}
+	}
+	updated(): void {
+		this._measureAvail();
+	}
+	private _measureAvail(): void {
+		const w = this.clientWidth;
+		if (w && Math.abs(w - this._availPx) >= 1) this._availPx = w;
+		// Desktop only: bound the grid by the space from its top to the viewport
+		// bottom so a tall room can't overflow. Mobile uses capHeightToHalfViewport.
+		if (!this.capHeightToHalfViewport) {
+			const top = this.getBoundingClientRect().top;
+			const avail = Math.floor(
+				window.innerHeight - top - DESKTOP_HEIGHT_RESERVE_PX,
+			);
+			if (avail > 0 && Math.abs(avail - this._availHeightPx) >= 1)
+				this._availHeightPx = avail;
+		}
+	}
+	/* v8 ignore stop */
+
 	static styles = css`
 		:host {
 			display: block;
+			/* Centre the inline-block .grid-targets-wrapper horizontally within
+			   the host. The host fills its container width (display:block), so
+			   without this the inline-block grid hugs the LEFT edge whenever the
+			   grid is narrower than its region (tall/narrow rooms, or any room
+			   narrower than the column). The furniture/target overlays are
+			   absolutely positioned relative to .grid-targets-wrapper (which is
+			   position:relative), so centring the wrapper moves the whole
+			   positioning context together — overlay math is unaffected. */
+			text-align: center;
 		}
 
 		.grid-targets-wrapper {
 			position: relative;
 			display: inline-block;
 			vertical-align: top;
+			/* Reset text-align inside the wrapper so the centred host doesn't
+			   leak into the grid-dimensions caption / cell content. */
+			text-align: left;
 		}
 
 		:host(:not([editable])) .grid-targets-wrapper {
@@ -213,10 +327,44 @@ export class EppGrid extends LitElement {
 		const maxRow = noRoom ? GRID_ROWS - 1 : bounds.maxRow;
 		const visCols = maxCol - minCol + 1;
 		const visRows = maxRow - minRow + 1;
-		const cellPx = Math.min(
-			Math.floor(this.maxGridPx / visCols),
-			Math.floor(this.maxGridPx / visRows),
-			32,
+		// The grid adds a 2px border (×2) + (visCols-1)×1px gaps on top of the
+		// cells; subtract that from the measured width so the grid fits exactly.
+		const gridChromePx = this._availPx > 0 ? 4 + (visCols - 1) : 0;
+		// Desktop allows a larger grid + bigger cells than the 480/32 mobile-era caps.
+		const isDesktop = !this.capHeightToHalfViewport;
+		const effMaxGridPx = isDesktop ? 960 : this.maxGridPx;
+		const effMaxCellPx = isDesktop ? 48 : 32;
+		// Mobile only: cap the grid to a fraction of the viewport height so the
+		// controls panel below it keeps a fair share. 0.45 (not 0.5) because the
+		// tab bar + device dropdown sit above the panel, so 50% of the viewport
+		// would be ~55-60% of the usable area below them. The width ResizeObserver
+		// re-renders on viewport resize, refreshing this budget. happy-dom has
+		// innerHeight defined but no layout, so reading it is safe; the cap is
+		// exercised only behind the capHeightToHalfViewport flag.
+		/* v8 ignore next -- window.innerHeight read has no layout effect under happy-dom */
+		const availHeightPx = this.capHeightToHalfViewport
+			? window.innerHeight * 0.45
+			: this._availHeightPx >= DESKTOP_MIN_HEIGHT_PX
+				? this._availHeightPx
+				: 0;
+		// Vertical chrome mirrors the width chrome: 2px border (×2) + (visRows-1)
+		// ×1px gaps. Subtract it so the cells fit the height budget exactly.
+		const gridChromeHpx = availHeightPx > 0 ? 4 + (visRows - 1) : 0;
+		const cellPx = fitCellPx(
+			effMaxGridPx,
+			// When measured, clamp to ≥1px so a "measured but tiny" width (chrome
+			// exceeds the available px in an extreme-narrow/transient layout) still
+			// shrinks. A negative value would read as "unmeasured" in fitCellPx and
+			// snap to the ceiling — overflowing instead of shrinking. The unmeasured
+			// branch keeps passing _availPx unchanged so fitCellPx's own fallback
+			// applies when _availPx <= 0.
+			this._availPx > 0
+				? Math.max(1, this._availPx - gridChromePx)
+				: this._availPx,
+			availHeightPx > 0 ? Math.max(1, availHeightPx - gridChromeHpx) : 0,
+			visCols,
+			visRows,
+			effMaxCellPx,
 		);
 
 		return html`

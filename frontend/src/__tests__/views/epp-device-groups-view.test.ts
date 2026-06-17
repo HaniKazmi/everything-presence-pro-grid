@@ -551,3 +551,44 @@ describe("epp-device-groups-view", () => {
 		expect(Object.keys(editor.sourcesByMac).sort()).toEqual(["AA", "ZZ"]);
 	});
 });
+
+describe("desktop max-width centering", () => {
+	it("device groups content caps width via --epp-content-max token and centers on desktop", () => {
+		const DeviceGroupsViewClass = customElements.get(
+			"epp-device-groups-view",
+		) as any;
+		const cssText = (DeviceGroupsViewClass as any).styles
+			.map((s: { cssText?: string }) => s.cssText ?? String(s))
+			.join("\n");
+		expect(cssText).toContain("max-width: var(--epp-content-max");
+		expect(cssText).toContain("margin: 0 auto");
+	});
+
+	it("desktop is a content-sized card on grey, with the list NOT in an overflow container", () => {
+		// Desktop shows a content-sized card on the grey page (matching the flasher /
+		// Installed Devices), NOT a full-height white sheet (no flex:1 on ha-card).
+		// The group list is deliberately NOT given its own overflow-scroll cap — the
+		// whole view scrolls if the list is long (and the kebab's fixed-position
+		// popover escapes overflow ancestors anyway). Guarded via cssText since
+		// happy-dom has no layout.
+		const DeviceGroupsViewClass = customElements.get(
+			"epp-device-groups-view",
+		) as any;
+		const cssText = (DeviceGroupsViewClass as any).styles
+			.map((s: { cssText?: string }) => s.cssText ?? String(s))
+			.join("\n");
+		const desktop = cssText.slice(cssText.indexOf("@media (min-width: 820px)"));
+		expect(desktop).toContain("@media (min-width: 820px)");
+		// Card is content-sized (no flex:1 fill) and the list is not an overflow box.
+		expect(desktop).not.toMatch(/ha-card\s*\{[^}]*flex:\s*1/);
+		expect(desktop).not.toMatch(/\.group-list\s*\{[^}]*overflow-y:\s*auto/);
+		expect(cssText).not.toMatch(/\.group-list\s*\{[^}]*max-height:/);
+		// .content stays a bounded flex column so the editor mode can still fill + pin.
+		const contentIdx = desktop.indexOf(".content");
+		const contentRule = desktop.slice(
+			contentIdx,
+			desktop.indexOf("}", contentIdx),
+		);
+		expect(contentRule).toMatch(/flex:\s*1/);
+	});
+});

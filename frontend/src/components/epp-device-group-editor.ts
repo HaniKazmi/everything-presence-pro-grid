@@ -8,7 +8,7 @@ import "../ui/epp-toggle.js";
 import "./epp-zone-merge-list.js";
 import { exposedSensorChips } from "../lib/device-groups-labels.js";
 import { deriveExposedEntities } from "../lib/device-groups-projection.js";
-import { chipStyles } from "../styles.js";
+import { chipStyles, saveCancelBarStyles } from "../styles.js";
 import type {
 	DeviceGroup,
 	DeviceGroupSource,
@@ -49,13 +49,43 @@ function canon(d: EditorDraft): string {
 export class EppDeviceGroupEditor extends LitElement {
 	static styles = [
 		chipStyles,
+		saveCancelBarStyles,
 		css`
-		:host { display: block; }
+		/* Fill the device-groups view's bounded .content and pin the Cancel/Save
+		   .save-cancel-bar to the bottom while the form scrolls inside .editor-scroll.
+		   Fill-height chain: :host -> ha-card -> .card-content -> .editor-scroll
+		   (flex columns). Applies at all widths (desktop + mobile). */
+		:host {
+			display: flex;
+			flex-direction: column;
+			flex: 1;
+			min-height: 0;
+		}
+		ha-card {
+			display: flex;
+			flex-direction: column;
+			flex: 1;
+			min-height: 0;
+		}
 		.card-content {
 			padding: var(--epp-space-4, 16px);
 			display: flex;
 			flex-direction: column;
+			flex: 1;
+			min-height: 0;
+		}
+		/* The form rows live in .editor-scroll, which carries the column layout +
+		   16px row gap that .card-content used to apply directly (before .card-content
+		   became the fill-height flex parent for the scroll region + pinned actions).
+		   .editor-scroll fills the card and scrolls; the .save-cancel-bar footer pins
+		   below it with its own top divider. */
+		.editor-scroll {
+			display: flex;
+			flex-direction: column;
 			gap: var(--epp-space-4, 16px);
+			flex: 1;
+			min-height: 0;
+			overflow-y: auto;
 		}
 		.field { display: block; }
 		ha-area-picker {
@@ -110,13 +140,18 @@ export class EppDeviceGroupEditor extends LitElement {
 		}
 		.missing-warning ha-icon { --mdc-icon-size: 18px; }
 		.chips { display: flex; flex-wrap: wrap; gap: var(--epp-space-1, 4px); }
-		.actions {
-			display: flex;
+		.save-cancel-bar {
+			/* Shared chrome (display/justify/align/border-top) is in saveCancelBarStyles.
+			   Consistent footer with the editor sidebar / settings Save/Cancel bars:
+			   a transparent footer with a 1px top divider. Negative margins break it
+			   out of .card-content's 16px padding so the line spans the card width;
+			   the buttons re-inset via padding. */
 			gap: var(--epp-space-2, 8px);
-			justify-content: space-between;
-			align-items: center;
-			margin-top: var(--epp-space-1, 4px);
+			flex-shrink: 0;
+			margin: 0 calc(-1 * var(--epp-space-4, 16px)) calc(-1 * var(--epp-space-4, 16px));
+			padding: var(--epp-space-3, 12px) var(--epp-space-4, 16px);
 		}
+
 	`,
 	];
 
@@ -190,49 +225,51 @@ export class EppDeviceGroupEditor extends LitElement {
 		return html`
 			<ha-card>
 				<div class="card-content">
-					<div class="field">${this._renderNameField()}</div>
-					<div class="field">
-						<ha-area-picker
-							.hass=${this.hass}
-							.value=${this._draft.area_id ?? ""}
-							@value-changed=${(e: CustomEvent) => {
-								e.stopPropagation();
-								this._update({ area_id: (e.detail.value as string) || null });
-							}}
-						></ha-area-picker>
-					</div>
-
-					<div class="section">
-						<h3>Source devices</h3>
-						<div class="source-box">
-							${this.availableDevices.map((d) => this._renderSourceRow(d))}
-							${missing.map((s) => this._renderMissingSourceRow(s))}
+					<div class="editor-scroll">
+						<div class="field">${this._renderNameField()}</div>
+						<div class="field">
+							<ha-area-picker
+								.hass=${this.hass}
+								.value=${this._draft.area_id ?? ""}
+								@value-changed=${(e: CustomEvent) => {
+									e.stopPropagation();
+									this._update({ area_id: (e.detail.value as string) || null });
+								}}
+							></ha-area-picker>
 						</div>
-						${
-							missing.length
-								? html`<div class="missing-warning" data-testid="missing-warning">
-										<ha-icon icon="mdi:alert"></ha-icon>
-										Some source devices no longer exist. Turn them off and save
-										to remove them.
-									</div>`
-								: nothing
-						}
+
+						<div class="section">
+							<h3>Source devices</h3>
+							<div class="source-box">
+								${this.availableDevices.map((d) => this._renderSourceRow(d))}
+								${missing.map((s) => this._renderMissingSourceRow(s))}
+							</div>
+							${
+								missing.length
+									? html`<div class="missing-warning" data-testid="missing-warning">
+											<ha-icon icon="mdi:alert"></ha-icon>
+											Some source devices no longer exist. Turn them off and save
+											to remove them.
+										</div>`
+									: nothing
+							}
+						</div>
+
+						<div class="section">
+							<epp-zone-merge-list
+								.sources=${this._draftSources()}
+								.zoneGroups=${this._draft.zone_groups}
+								@zone-groups-changed=${(e: CustomEvent) => {
+									e.stopPropagation();
+									this._update({ zone_groups: e.detail.zone_groups });
+								}}
+							></epp-zone-merge-list>
+						</div>
+
+						${this._renderSensorsPreview()}
 					</div>
 
-					<div class="section">
-						<epp-zone-merge-list
-							.sources=${this._draftSources()}
-							.zoneGroups=${this._draft.zone_groups}
-							@zone-groups-changed=${(e: CustomEvent) => {
-								e.stopPropagation();
-								this._update({ zone_groups: e.detail.zone_groups });
-							}}
-						></epp-zone-merge-list>
-					</div>
-
-					${this._renderSensorsPreview()}
-
-					<div class="actions">
+					<div class="save-cancel-bar">
 						<epp-button variant="text" @click=${this._cancel}>Cancel</epp-button>
 						<epp-button
 							variant="primary"

@@ -15,6 +15,7 @@ import {
 	type FurnitureSticker,
 	isFurnitureOutsideGrid,
 	removeFurnitureItem,
+	snapRotation,
 	updateFurnitureItem,
 } from "../lib/furniture.js";
 import {
@@ -267,7 +268,10 @@ export class GridStateController implements ReactiveController {
 		};
 		this.host._zoneConfigs = configs as unknown as ZoneSlots;
 		this.host._activeZone = firstEmpty; // slot index = 1-based zone number
-		this.host._dirty = true;
+		// Adding an empty zone draws no cells, so it must NOT mark the editor
+		// dirty (no premature Save/Cancel bar). Dirty comes from actually drawing
+		// cells (paint flow) or editing a zone's config (name/type) — both set
+		// _dirty elsewhere.
 		// Zone configs changed → full engine reset (firmware set_zones
 		// semantics: every ZoneRuntime back to CLEAR).
 		this.host._zoneEngineZoneConfigChanged();
@@ -489,10 +493,12 @@ export class GridStateController implements ReactiveController {
 				) *
 				(180 / Math.PI);
 			this.updateFurniture(ds.id, {
-				rotation: computeFurnitureRotation(
-					ds.origRot,
-					ds.startAngle ?? 0,
-					currentAngle,
+				rotation: snapRotation(
+					computeFurnitureRotation(
+						ds.origRot,
+						ds.startAngle ?? 0,
+						currentAngle,
+					),
 				),
 			});
 		}

@@ -58,6 +58,7 @@ import {
 	SETTINGS_FIELD_MAP,
 } from "./lib/settings-defaults.js";
 import { persistSelectedMac } from "./lib/storage.js";
+import { tablistKeydownIndex } from "./lib/tablist-nav.js";
 import {
 	DEFAULT_SIDEBAR_TAB,
 	parseViewHash,
@@ -77,7 +78,12 @@ import {
 	ensureObserversAttached,
 	installPanelMountGuard,
 } from "./panel-mount-guard.js";
-import { buttonStyles, dialogStyles, headerStyles } from "./styles.js";
+import {
+	buttonStyles,
+	dialogStyles,
+	headerStyles,
+	saveCancelBarStyles,
+} from "./styles.js";
 import type { DeviceInfo, RawTarget, Target } from "./types.js";
 import { tokens } from "./ui/tokens.js";
 
@@ -185,15 +191,162 @@ const hostStyles = css`
     background: var(--primary-background-color, #fafafa);
     color: var(--primary-text-color, #212121);
     font-family: var(--ha-font-family-body, "Roboto", sans-serif);
+    /* Own the desktop scroll on the panel host and ALWAYS reserve the
+       scrollbar gutter (scrollbar-gutter only applies on a scroll container,
+       hence overflow-y:auto). Selecting a detection zone grows the sidebar
+       content past the viewport, toggling a vertical scrollbar; without a
+       reserved gutter that toggle shrinks the content width by the scrollbar,
+       and the margin:auto-centred .panel (and the grid inside it) shifts
+       horizontally. Reserving the gutter keeps the layout width constant so
+       the grid stays put. (Mobile re-owns its own scroll via .panel
+       overflow:hidden in the @media block below.) */
+    overflow-y: auto;
+    scrollbar-gutter: stable;
   }
 `;
 
-const panelStyles = css`
+export const panelStyles = css`
   .panel {
     padding: 24px;
     max-width: 1100px;
     margin: 0 auto;
     font-size: 14px;
+  }
+
+  /* Grid-hero views (editor + live overview) fill the available width instead
+     of the 1100px centered reading column. CRITICAL: drop the auto side margins
+     — auto margins on a flex item (the panel is a child of the flex-column
+     .tab-layout) disable align-items:stretch, so the panel shrink-wraps to its
+     content and the grid never gets the width to flex into. */
+  .panel.panel--grid {
+    max-width: none;
+    margin: 0;
+    align-self: stretch;
+    /* Bound the grid-hero panel to the viewport (it's flex:1 of the full-height
+       .tab-layout) and make it a flex column so the sidebar sheet scrolls
+       internally — its body scrolls and Save/Cancel pin to the bottom — instead
+       of the whole panel growing and the page scrolling when the zone list /
+       furniture browser is tall. The header stays fixed; the editor-shell fills
+       the rest. Mirrors what the mobile .panel column already does. */
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  /* Own the scroll inside the sheet, not the panel: beat the lower-down
+     .tab-layout > :not(.tab-bar) { overflow: auto } at the same (0,2,0)
+     specificity by adding a class (0,3,0) so order no longer matters. */
+  .tab-layout > .panel.panel--grid {
+    overflow: hidden;
+  }
+  .panel--grid > .panel-header {
+    flex-shrink: 0;
+  }
+
+  /* Non-grid panels (settings, wizard, loading, empty-state) fill the host width
+     so they don't shrink-wrap to content. As a flex item of the column .tab-layout
+     the auto side margins above disable align-items:stretch, so without this the
+     panel sizes to its widest content — settings visibly jumped narrow→wide as an
+     accordion's controls appeared/disappeared. width:100% pins it to the host width
+     (box-sizing:border-box folds the 24px padding in rather than overflowing); the
+     inner reading column (e.g. .settings-container max-width) then stays a stable
+     fixed width. Grid-hero (.panel--grid) is excluded — it fills via align-self. */
+  .panel:not(.panel--grid) {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* The settings panel is height-bounded (like the grid-hero panel) so the
+     settings view fills it: the accordion list scrolls inside .settings-scroll
+     while the Save/Cancel bar pins to the bottom, rather than the whole panel
+     growing and the page scrolling. Scoped to the settings panel (not every plain
+     panel) so the wizard/loading panels keep their natural flow. */
+  .panel--settings {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .tab-layout > .panel--settings {
+    overflow: hidden;
+  }
+  /* The settings area below the header: the settings view fills it, and a
+     connection/protocol status banner (.protocol-fullpage) overlays it — covering
+     and disabling it — while the view stays mounted (preserving edit state). */
+  .panel--settings .settings-stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .settings-stage > epp-settings-view {
+    flex: 1;
+    min-height: 0;
+  }
+  .settings-stage > .protocol-fullpage {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    border-radius: 0;
+    z-index: 5;
+  }
+
+  @media (max-width: 819px) {
+    :host {
+      --epp-control-height: 44px;
+      /* Mobile re-owns its scroll inside .panel (overflow:hidden below), so
+         the host neither scrolls nor needs a reserved gutter — drop both so a
+         phone doesn't show a wasted gutter strip down the edge. */
+      overflow: hidden;
+      scrollbar-gutter: auto;
+    }
+    .panel {
+      /* Constrain .panel to the panel-host width (which HA sizes to the
+         viewport). Without a cap, .panel grows to the grid's content width
+         (~maxGridPx) and the page scrolls horizontally on a narrow phone.
+         Use max-width:100% (of the host) + box-sizing:border-box rather than
+         100vw: 100vw is scrollbar-inflated (≈16px wider than the real content
+         area when a vertical scrollbar is present), and border-box folds the
+         12px×2 padding INTO the cap instead of adding it on top — so the grid's
+         measured host width is the true content width and it fits exactly.
+         min-width:0 also drops the flex min-content floor (:host is
+         display:flex; .panel is its flex item). (Mobile @media only — desktop
+         layout is byte-identical.) */
+      max-width: 100%;
+      /* Always fill the host width (not just cap it): as a flex item of :host,
+         .panel would otherwise size to its content's width (flex-basis:auto),
+         so the live view's width visibly jumped when the wide debug log opened
+         /closed. width:100% pins it to the host width regardless of content. */
+      width: 100%;
+      box-sizing: border-box;
+      /* Drop the BOTTOM padding on mobile so the inline controls sheet reaches
+         the viewport bottom (no gap below it). The 12px bottom padding
+         otherwise leaves a strip between the sheet's pinned Save/Cancel
+         actions and the screen edge. Square bottom corners flush at the edge
+         are expected. */
+      padding: var(--epp-space-3, 12px) var(--epp-space-3, 12px) 0;
+      min-width: 0;
+      /* Full-height flex column so the editor's controls panel fills the space
+         below the grid down to the viewport bottom (nothing extends past it).
+         height:100% resolves against :host (which is height:100%). Clipping our
+         own overflow makes the inner regions (sheet body / sidebar) scroll
+         instead of the page. (Mobile @media only — desktop is byte-identical.) */
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      min-height: 0;
+      overflow: hidden;
+    }
+    .panel-header ha-select {
+      width: 100%;
+    }
+    /* The device-groups view lives directly under .tab-layout (not .panel), so
+       it already gets flex:1 + overflow:auto from the .tab-layout > :not(.tab-bar)
+       rule. Add min-height:0 so its internal flex column can establish a
+       bottom-pinned Save/Cancel bar with the editor body scrolling instead of
+       the whole view. (Mobile @media only — desktop is byte-identical.) */
+    .tab-layout > epp-device-groups-view {
+      min-height: 0;
+    }
   }
 
   .controller-error-banner {
@@ -265,12 +418,6 @@ const protocolFullpageStyles = css`
 
 // Exported so panel-layout.test.ts can introspect .cssText for regression checks.
 export const layoutStyles = css`
-  .editor-layout {
-    display: flex;
-    gap: 24px;
-    align-items: flex-start;
-  }
-
   .grid-column {
     min-width: 0;
     max-width: min-content;
@@ -282,26 +429,15 @@ export const layoutStyles = css`
     overflow: visible;
   }
 
-  .sidebar-scroll {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-  }
-
-  .zone-sidebar {
-    width: 240px;
-    flex-shrink: 0;
-    background: var(--card-background-color, #fff);
-    border-left: 1px solid var(--divider-color, #e0e0e0);
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    overflow: visible;
-  }
-
-  .zone-sidebar.scrollable {
-    max-height: 70vh;
+  /* Desktop editor/live: frame the grid in a full-width "expansion area" card.
+     The grid centres within it, the white surface shows the space the grid can
+     use, and the detection log below lines up with the card's left edge. Reset
+     on mobile (the grid fills the screen there — no card). */
+  .editor-shell .grid-container {
+    background: var(--epp-surface, var(--card-background-color, #fff));
+    border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+    border-radius: var(--epp-radius-lg, 16px);
+    padding: var(--epp-space-4, 16px);
   }
 
   .sidebar-title {
@@ -309,6 +445,119 @@ export const layoutStyles = css`
     font-weight: 600;
     padding: 10px 12px 8px;
     color: var(--primary-text-color, #212121);
+  }
+
+  /* Unified editor shell: CSS grid on desktop — grid column takes the remaining
+     space, the controls panel a fixed 360px track. A grid TRACK (vs a flex
+     item) is reserved by the container regardless of whether the controls
+     element is momentarily present, so the grid column's width stays stable
+     across the editor↔live swap (no "jump bigger then back" on save). The 1fr
+     uses minmax(0,…) so the column can shrink below its content. */
+  .editor-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    /* Fill the panel height below the header (flex:1) and let the single row fill
+       the shell (grid-template-rows) so the tracks are bounded; min-height:0 lets
+       them shrink and scroll internally rather than the shell growing the page. */
+    grid-template-rows: minmax(0, 1fr);
+    gap: 24px;
+    align-items: stretch;
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .editor-shell > .grid-column {
+    min-width: 0;
+    max-width: none;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .editor-shell > .editor-controls,
+  .editor-shell > .live-controls {
+    /* Pin the controls panel to a fixed width so the grid column reliably gets
+       all the remaining width. min-width:0 is essential: without it a flex
+       item's automatic minimum size is its content's MIN-CONTENT width, which
+       overrides flex-basis/max-width — the editor's zone form has a wide
+       min-content, so the sidebar refused to shrink and squashed the grid. With
+       min-width:0 the form wraps/scrolls within the fixed width instead. */
+    flex: 0 0 360px;
+    max-width: 360px;
+    min-width: 0;
+    /* Allow the sheet to shrink below its content height so its own body scrolls
+       (Save/Cancel stay pinned) instead of stretching the row. */
+    min-height: 0;
+  }
+
+  /* Sidebar-tab switcher — rendered in the epp-sheet peek at every breakpoint. */
+  .sidebar-tabs {
+    display: flex;
+    gap: 4px;
+  }
+
+  .sidebar-tabs .sidebar-tab {
+    flex: 1;
+    appearance: none;
+    border: none;
+    background: transparent;
+    padding: 8px 4px;
+    border-radius: var(--epp-radius-md, 8px);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--secondary-text-color, #727272);
+    cursor: pointer;
+  }
+
+  .sidebar-tabs .sidebar-tab.active {
+    background: var(--secondary-background-color, #f5f5f5);
+    color: var(--primary-color, #03a9f4);
+  }
+  /* Manual activation lets focus diverge from selection while arrowing, so the
+     focused-but-not-selected tab needs a visible ring distinct from .active. */
+  .sidebar-tabs .sidebar-tab:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: -2px;
+  }
+
+  @media (max-width: 819px) {
+    /* Unified editor shell: stacks to a column on mobile (grid top, sheet below
+       filling height). The grid column is fixed-height (flex:0 0 auto) and the
+       inline <epp-sheet> fills the rest and owns its own scroll. */
+    .editor-shell {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+    .editor-shell > .grid-column {
+      flex: 0 0 auto;
+      max-width: 100%;
+    }
+    .editor-shell > .editor-controls,
+    .editor-shell > .live-controls {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-width: none;
+    }
+    /* No expansion-area card on mobile — the grid fills the screen. */
+    .editor-shell .grid-container {
+      background: none;
+      border: none;
+      padding: 0;
+    }
+    /* The hand-rolled sub-tabs aren't epp-* primitives, so they don't pick up
+       the panel's mobile control height on their own. Size them to it (44px
+       here) so they match every other mobile control and meet the touch-target
+       goal, and centre the label at that height. */
+    .sidebar-tabs .sidebar-tab {
+      min-height: var(--epp-control-height);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
   }
 `;
 
@@ -473,6 +722,46 @@ export class EPPGridPanel extends LitElement {
 	} | null = null;
 	@state() _saving = false;
 	@state() _dirty = false;
+	// Mobile/responsive: below 820px the editor renders the grid full-width
+	// with the sidebar controls in a bottom sheet (epp-sheet); at/above 820px
+	// the desktop side-by-side layout is used unchanged. Driven by matchMedia
+	// wired in connectedCallback (defaults false so the desktop layout — and
+	// every editor render test, which runs with happy-dom's matches:false — is
+	// the byte-identical existing markup).
+	@state() private _isMobile = false;
+	// True while a text field inside the mobile editor is focused (zone name,
+	// number inputs). The soft keyboard then covers the bottom of the screen, so
+	// the pinned Save/Cancel bar is hidden to keep the edited field visible; it
+	// returns on blur. Mobile-only concern (no soft keyboard on desktop).
+	@state() private _editorTextFocused = false;
+	private _onEditorFocusIn = (e: FocusEvent): void => {
+		const el = (e.composedPath?.()[0] ?? e.target) as HTMLElement | null;
+		if (!el) return;
+		const tag = el.tagName;
+		// Text-entry controls raise the soft keyboard; non-text (buttons,
+		// checkbox/radio/range/file/color) and selects (native picker) do not.
+		const isTextEntry =
+			tag === "TEXTAREA" ||
+			(tag === "INPUT" &&
+				![
+					"button",
+					"checkbox",
+					"radio",
+					"range",
+					"submit",
+					"reset",
+					"color",
+					"file",
+				].includes((el as HTMLInputElement).type));
+		if (isTextEntry) this._editorTextFocused = true;
+	};
+	private _onEditorFocusOut = (): void => {
+		this._editorTextFocused = false;
+	};
+	private _mql?: MediaQueryList;
+	private _onMql = (e: MediaQueryListEvent | MediaQueryList) => {
+		this._isMobile = e.matches;
+	};
 	// Failed grid-controller op (applyLayout/saveSettings/save/load
 	// configuration) — rendered as a dismissible banner; the op name doubles
 	// as the `errors.*` translation-key suffix. Cleared when a new op starts
@@ -613,6 +902,11 @@ export class EPPGridPanel extends LitElement {
 		// beforeunload / hashchange / history interception are owned by
 		// _navGuard (hostConnected ran in super.connectedCallback() above).
 		window.addEventListener("keydown", this._onKeyDown);
+		// Mobile breakpoint: editor switches to the bottom-sheet layout below
+		// 820px. Seed the flag from the current match, then track changes.
+		this._mql = window.matchMedia("(max-width: 819px)");
+		this._isMobile = this._mql.matches;
+		this._mql.addEventListener("change", this._onMql);
 	}
 
 	disconnectedCallback(): void {
@@ -626,6 +920,7 @@ export class EPPGridPanel extends LitElement {
 		// beforeunload / hashchange / history-interception teardown is owned
 		// by _navGuard (hostDisconnected ran in super.disconnectedCallback()).
 		window.removeEventListener("keydown", this._onKeyDown);
+		this._mql?.removeEventListener("change", this._onMql);
 	}
 
 	private _attachConnectionListeners(conn: any): void {
@@ -663,6 +958,20 @@ export class EPPGridPanel extends LitElement {
 		// here so no caller has to remember.
 		if (changed.has("_view") && this._view !== "editor") {
 			this._sidebarTab = DEFAULT_SIDEBAR_TAB;
+		}
+		// `_editorTextFocused` (hides the mobile Save/Cancel bar while a text
+		// field is focused) is only meaningful in the mobile editor. Leaving the
+		// editor view entirely, or crossing to the ≥820px (desktop) breakpoint
+		// while an input is focused, may not fire a focusout on `.editor-shell`
+		// (e.g. a breakpoint change re-evaluates `_isMobile` without any DOM
+		// focus event) — so clear it whenever we're not in the mobile editor,
+		// otherwise a stale `true` would keep the bar hidden on re-entry (with
+		// nothing focused) and block Save.
+		if (
+			(changed.has("_view") || changed.has("_isMobile")) &&
+			(this._view !== "editor" || !this._isMobile)
+		) {
+			this._editorTextFocused = false;
 		}
 		if (changed.has("_view") || changed.has("_sidebarTab")) {
 			this._navGuard.syncHashFromState();
@@ -1449,6 +1758,7 @@ export class EPPGridPanel extends LitElement {
 		dialogStyles,
 		buttonStyles,
 		headerStyles,
+		saveCancelBarStyles,
 		protocolFullpageStyles,
 		layoutStyles,
 		liveMenuStyles,
@@ -1489,10 +1799,8 @@ export class EPPGridPanel extends LitElement {
     }
 
     .save-cancel-bar {
-      display: flex;
-      justify-content: space-between;
-      padding: 12px;
-      border-top: 1px solid var(--divider-color, #eee);
+      /* Shared chrome (display/justify/align/border-top) is in saveCancelBarStyles. */
+      padding: var(--epp-space-3, 12px);
       margin-top: auto;
     }
 
@@ -1628,6 +1936,49 @@ export class EPPGridPanel extends LitElement {
     .tab.active {
       opacity: 1;
       border-bottom-color: var(--app-header-text-color, white);
+    }
+
+    .tab-icon,
+    .tab-label-short {
+      display: none;
+    }
+
+    @media (max-width: 819px) {
+      .tab-bar {
+        flex-wrap: nowrap;
+        padding: 0 var(--epp-space-2, 8px);
+      }
+      .epp-logo {
+        display: none;
+      }
+      .tab {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 2px;
+        padding: var(--epp-space-2, 8px) var(--epp-space-1, 4px);
+        font-size: var(--epp-font-xs, 12px);
+      }
+      .tab-icon {
+        display: block;
+        --mdc-icon-size: 22px;
+      }
+      .tab-label-full {
+        display: none;
+      }
+      .tab-label-short {
+        display: inline;
+      }
+      .tab-help {
+        padding: var(--epp-space-2, 8px);
+        align-self: center;
+      }
+      .debug-log-container {
+        /* ~2 log entries (≈4 wrapped lines) before it scrolls — keeps the log
+           from shoving the rest of the panel down on a phone. */
+        max-height: 76px;
+      }
     }
 
     .tab-help {
@@ -1767,13 +2118,19 @@ export class EPPGridPanel extends LitElement {
 			<div class="tab-bar">
 				${EPP_LOGO}
 				<button class="tab ${this._panelTab === "config" ? "active" : ""}"
+					aria-current=${this._panelTab === "config" ? "page" : nothing}
 					@click=${() =>
 						this._navGuard.guardNavigation(() => {
 							void this._flasherCtrl.resetUsbState();
 							this._panelTab = "config";
 							this._loadDevices();
-						})}>${this._localize("tabs.device_configuration")}</button>
+						})}>
+					<ha-icon class="tab-icon" icon="mdi:cog-outline"></ha-icon>
+					<span class="tab-label-full">${this._localize("tabs.device_configuration")}</span>
+					<span class="tab-label-short">${this._localize("tabs.device_configuration_short")}</span>
+				</button>
 				<button class="tab ${this._panelTab === "flasher" ? "active" : ""}"
+					aria-current=${this._panelTab === "flasher" ? "page" : nothing}
 					@click=${() =>
 						this._navGuard.guardNavigation(() => {
 							void this._flasherCtrl.resetUsbState();
@@ -1782,13 +2139,22 @@ export class EPPGridPanel extends LitElement {
 								this._flasherCtrl.hass = this.hass;
 								this._flasherCtrl.subscribeDeviceList();
 							}
-						})}>${this._localize("tabs.flash_firmware")}</button>
+						})}>
+					<ha-icon class="tab-icon" icon="mdi:flash"></ha-icon>
+					<span class="tab-label-full">${this._localize("tabs.flash_firmware")}</span>
+					<span class="tab-label-short">${this._localize("tabs.flash_firmware_short")}</span>
+				</button>
 				<button class="tab ${this._panelTab === "device-groups" ? "active" : ""}"
+					aria-current=${this._panelTab === "device-groups" ? "page" : nothing}
 					@click=${() =>
 						this._navGuard.guardNavigation(() => {
 							void this._flasherCtrl.resetUsbState();
 							this._panelTab = "device-groups";
-						})}>${this._localize("tabs.device_groups")}</button>
+						})}>
+					<ha-icon class="tab-icon" icon="mdi:devices"></ha-icon>
+					<span class="tab-label-full">${this._localize("tabs.device_groups")}</span>
+					<span class="tab-label-short">${this._localize("tabs.device_groups_short")}</span>
+				</button>
 				<a class="tab-help"
 					href=${getHelpUrl({
 						panelTab: this._panelTab,
@@ -2336,6 +2702,7 @@ export class EPPGridPanel extends LitElement {
 				.targetPrevXY=${this._zoneEngineState.targetPrevXY}
 				.localize=${this._localize}
 				.maxGridPx=${480}
+				?capHeightToHalfViewport=${this._isMobile}
 				.maxRangeMm=${this._computeMaxRangeMm()}
 				@furniture-select=${(e: CustomEvent) => {
 					this._selectedFurnitureId = e.detail;
@@ -2508,14 +2875,14 @@ export class EPPGridPanel extends LitElement {
           ></epp-wizard>`;
 
 		return html`
-      <div class="panel" @click=${(e: MouseEvent) => {
+      <div class="panel panel--grid" @click=${(e: MouseEvent) => {
 				if (!(e.target instanceof Element)) return;
 				if (this._targetMenu && !e.target.closest(".target-menu")) {
 					this._closeTargetMenu();
 				}
 			}}>
         ${this._renderHeader()}
-        <div class="editor-layout">
+        <div class="editor-shell">
           <div class="grid-column">
             <div class="grid-container" style="position: relative;">
               ${gridContent}
@@ -2523,32 +2890,30 @@ export class EPPGridPanel extends LitElement {
             </div>
             ${this._perspective ? this._renderBackendDebugLog() : nothing}
           </div>
-          <div class="zone-sidebar">
-            <div class="sidebar-header">
+          <epp-sheet inline open class="live-controls">
+            <div slot="peek" class="sidebar-header">
               <span class="sidebar-title" style="margin-right: auto;">${this._localize("sidebar.live_overview")}</span>
               <epp-kebab-menu
                 .items=${this._liveMenuItems()}
                 @item-select=${this._onLiveMenuSelect}
               ></epp-kebab-menu>
             </div>
-            <div class="sidebar-scroll">
-              <epp-live-sidebar
-                .sensorState=${this._sensorState}
-                .zoneState=${this._zoneState}
-                .zoneConfigs=${this._namedZones()}
-                .hasPerspective=${this._perspective != null}
-                .localize=${this._localize}
-                @view-change=${(e: CustomEvent) => {
-									this._navGuard.guardNavigation(() =>
-										this._applyView({
-											view: e.detail.view,
-											sidebarTab: e.detail.sidebarTab ?? this._sidebarTab,
-										}),
-									);
-								}}
-              ></epp-live-sidebar>
-            </div>
-          </div>
+            <epp-live-sidebar
+              .sensorState=${this._sensorState}
+              .zoneState=${this._zoneState}
+              .zoneConfigs=${this._namedZones()}
+              .hasPerspective=${this._perspective != null}
+              .localize=${this._localize}
+              @view-change=${(e: CustomEvent) => {
+								this._navGuard.guardNavigation(() =>
+									this._applyView({
+										view: e.detail.view,
+										sidebarTab: e.detail.sidebarTab ?? this._sidebarTab,
+									}),
+								);
+							}}
+            ></epp-live-sidebar>
+          </epp-sheet>
         </div>
       </div>
     `;
@@ -2565,10 +2930,11 @@ export class EPPGridPanel extends LitElement {
 
 	private _renderSettings(statusBanner: unknown = nothing) {
 		return html`
-      <div class="panel">
+      <div class="panel panel--settings">
         ${this._renderHeader()}
-        ${statusBanner}
+        <div class="settings-stage">
         <epp-settings-view
+          ?inert=${statusBanner !== nothing}
           .sensorState=${this._sensorState}
           .targetAutoDistance=${this._targetAutoDistance}
           .targetMaxDistance=${this._targetMaxDistance}
@@ -2617,6 +2983,13 @@ export class EPPGridPanel extends LitElement {
           @save=${(e: CustomEvent) => this._saveSettings(e.detail)}
           @cancel=${() => this._cancelSettings()}
         ></epp-settings-view>
+        ${
+					/* The connection/protocol status banner overlays the settings view
+					   (covering + disabling it) while keeping it mounted so the in-progress
+					   edit state is preserved — see the inSettingsEdit branch in render(). */
+					statusBanner
+				}
+        </div>
       </div>
     `;
 	}
@@ -2651,28 +3024,11 @@ export class EPPGridPanel extends LitElement {
 		// `editorSensorState = { ...this._sensorState, occupancy, mmwave }`
 		// and pass it explicitly — never mutate `this._sensorState`.
 
-		return html`
-      <div class="panel" @click=${(e: Event) => {
-				const el = e.target as HTMLElement;
-				if (!el.closest(".grid") && !el.closest(".zone-sidebar")) {
-					if (!this._justPainted) this._activeZone = null;
-				}
-			}}>
-        ${this._renderHeader()}
-        <div class="editor-layout">
-          <div class="grid-column">
-            <div class="grid-container" @click=${(e: Event) => {
-							const onFurniture = e
-								.composedPath()
-								.some(
-									(el) =>
-										el instanceof HTMLElement &&
-										el.classList.contains("furniture-item"),
-								);
-							if (!onFurniture) {
-								this._selectedFurnitureId = null;
-							}
-						}}>
+		// The <epp-grid> element is identical between the desktop and mobile
+		// layouts — extract it once so both branches bind it verbatim. (The
+		// `.grid-container` wrapper + its furniture-deselect @click are kept per
+		// branch because their surrounding column differs.)
+		const gridTemplate = html`
               <epp-grid
                 .grid=${this._grid}
                 .zoneConfigs=${this._namedZones()}
@@ -2689,6 +3045,7 @@ export class EPPGridPanel extends LitElement {
                 .targetPrevXY=${this._zoneEngineState.targetPrevXY}
                 .localize=${this._localize}
                 .maxGridPx=${480}
+                ?capHeightToHalfViewport=${this._isMobile}
                 .maxRangeMm=${this._editorMaxRangeMm()}
                 .frozenBounds=${this._frozenBounds}
                 .dismissedTargets=${this._dismissedTargets}
@@ -2717,22 +3074,80 @@ export class EPPGridPanel extends LitElement {
                 @target-undismissed=${(e: CustomEvent) => {
 									this._handleTargetUndismissed(e.detail.targetIndex);
 								}}
-              ></epp-grid>
+              ></epp-grid>`;
+
+		// Furniture-deselect handler for the grid-container wrapper — clicking
+		// off a furniture item clears the selection. Shared verbatim by both
+		// branches' wrappers.
+		const onGridContainerClick = (e: Event) => {
+			// `<epp-sheet>` (class `editor-controls`) is a sibling of `.grid-column`
+			// inside `.editor-shell` at every breakpoint — it is never a descendant
+			// of `.grid-container`, so a sheet click never reaches this handler.
+			// The active-zone-preserving exemption lives in `onPanelClick`.
+			// This handler only clears furniture selection.
+			const onFurniture = e
+				.composedPath()
+				.some(
+					(el) =>
+						el instanceof HTMLElement &&
+						el.classList.contains("furniture-item"),
+				);
+			if (!onFurniture) {
+				this._selectedFurnitureId = null;
+			}
+		};
+
+		// activeZone-deselect handler for the .panel wrapper — clicking outside
+		// the grid and sidebar deselects the active zone (unless we just
+		// painted). Shared verbatim by both branches' panel wrappers.
+		// We match `.grid-container` (the light-DOM wrapper around <epp-grid>),
+		// NOT `.grid` (which lives in <epp-grid>'s shadow DOM): a grid-cell click
+		// retargets to the <epp-grid> host at this panel-level handler, so a
+		// `.grid` check is always null for grid taps and would wrongly deselect.
+		const onPanelClick = (e: Event) => {
+			const el = e.target as HTMLElement;
+			if (!el.closest(".grid-container") && !el.closest("epp-sheet")) {
+				if (!this._justPainted) this._activeZone = null;
+			}
+		};
+
+		const actions = html`<div slot="actions">${this._renderSaveCancelButtons()}</div>`;
+		// Desktop always shows the Save/Cancel bar; mobile hides it while clean or
+		// while a text field is focused (the soft keyboard would cover the field).
+		const footer =
+			!this._isMobile || (this._dirty && !this._editorTextFocused)
+				? actions
+				: nothing;
+
+		return html`
+      <div class="panel panel--grid" @click=${onPanelClick}>
+        ${this._renderHeader()}
+        <div class="editor-shell" @focusin=${this._onEditorFocusIn} @focusout=${this._onEditorFocusOut}>
+          <div class="grid-column">
+            <div class="grid-container" @click=${onGridContainerClick}>
+              ${gridTemplate}
             </div>
-            ${this._sidebarTab === "zones" || this._sidebarTab === "overlays" ? this._renderDebugLog() : nothing}
+            ${!this._isMobile && (this._sidebarTab === "zones" || this._sidebarTab === "overlays") ? this._renderDebugLog() : nothing}
           </div>
-          <div class="zone-sidebar scrollable">
-            <div class="sidebar-title">${
-							this._sidebarTab === "furniture"
-								? this._localize("sidebar.furniture")
-								: this._sidebarTab === "overlays"
-									? this._localize("sidebar.overlays")
-									: this._localize("sidebar.detection_zones")
-						}</div>
-            <div class="sidebar-scroll">
-            ${
-							this._sidebarTab === "zones"
-								? html`<epp-zone-sidebar
+          <epp-sheet inline open class="editor-controls">
+            <div slot="peek">${this._renderSidebarTabs()}</div>
+            ${this._renderSidebarContent()}
+            ${footer}
+          </epp-sheet>
+        </div>
+      </div>
+    `;
+	}
+
+	/**
+	 * The `_sidebarTab`-conditional sidebar component block
+	 * (zones/overlays/furniture). Extracted from `_renderEditor` so the unified
+	 * `epp-sheet` body renders it verbatim at every breakpoint —
+	 * the bindings are unchanged from the original inline markup.
+	 */
+	private _renderSidebarContent() {
+		return this._sidebarTab === "zones"
+			? html`<epp-zone-sidebar
                     .zoneConfigs=${this._namedZones()}
                     .activeZone=${this._activeZone}
                     .zone0=${this._zoneConfigs[0]}
@@ -2772,8 +3187,8 @@ export class EPPGridPanel extends LitElement {
 											this._zoneEngineZoneConfigChanged();
 										}}
                   ></epp-zone-sidebar>`
-								: this._sidebarTab === "overlays"
-									? html`<epp-overlay-sidebar
+			: this._sidebarTab === "overlays"
+				? html`<epp-overlay-sidebar
                     .overlayMode=${this._overlayMode}
                     .localize=${this._localize}
                     @overlay-select=${(
@@ -2782,7 +3197,7 @@ export class EPPGridPanel extends LitElement {
 											this._overlayMode = e.detail.mode;
 										}}
                   ></epp-overlay-sidebar>`
-									: html`<epp-furniture-sidebar
+				: html`<epp-furniture-sidebar
                     .furniture=${this._furniture}
                     .selectedFurnitureId=${this._selectedFurnitureId}
                     .hass=${this.hass}
@@ -2813,15 +3228,63 @@ export class EPPGridPanel extends LitElement {
                     @dirty=${() => {
 											this._dirty = true;
 										}}
-                  ></epp-furniture-sidebar>`
-						}
-            </div>
-            ${this._renderSaveCancelButtons()}
-          </div>
-        </div>
+                  ></epp-furniture-sidebar>`;
+	}
+
+	/**
+	 * Editor sidebar-tab switcher (zones / overlays / furniture). The desktop
+	 * editor has no inline switcher — the sub-tab is chosen from the live
+	 * overview's kebab on the way into the editor — so this is the switcher the
+	 * mobile bottom-sheet peek needs to let the user change sub-tab without
+	 * leaving the editor. It writes `_sidebarTab` via the existing `_applyView`
+	 * path (same state-write the kebab uses), keeping `_overlayMode` in sync.
+	 * Rendered in the sheet peek only (mobile); always shown there so the bar
+	 * is consistent regardless of which sub-tab is active.
+	 */
+	private _renderSidebarTabs() {
+		const tabs: { id: SidebarTab; label: string }[] = [
+			{ id: "zones", label: this._localize("menu.detection_zones") },
+			{ id: "overlays", label: this._localize("menu.overlays") },
+			{ id: "furniture", label: this._localize("menu.furniture") },
+		];
+		return html`
+      <div
+        class="sidebar-tabs"
+        role="tablist"
+        @keydown=${this._onSidebarTabsKeydown}
+      >
+        ${tabs.map(
+					(t) => html`<button
+            class="sidebar-tab ${this._sidebarTab === t.id ? "active" : ""}"
+            role="tab"
+            aria-selected=${this._sidebarTab === t.id ? "true" : "false"}
+            tabindex=${this._sidebarTab === t.id ? "0" : "-1"}
+            @click=${(e: Event) => {
+							// Keep the tab-switch self-contained (don't let it bubble to the
+							// panel-level click handler / influence zone selection).
+							e.stopPropagation();
+							this._applyView({ view: "editor", sidebarTab: t.id });
+						}}
+          >${t.label}</button>`,
+				)}
       </div>
     `;
 	}
+
+	// Roving-tabindex keyboard nav for the sub-tab row (WAI-ARIA tablist). Arrows
+	// / Home / End move FOCUS between tabs (current = the focused tab via e.target,
+	// so repeated arrows walk the row); the native <button> click on Enter/Space/
+	// click does the actual switch — manual activation, so we never activate here.
+	private _onSidebarTabsKeydown = (e: KeyboardEvent): void => {
+		const list = e.currentTarget as HTMLElement;
+		const buttons = [...list.querySelectorAll<HTMLElement>(".sidebar-tab")];
+		const current = buttons.indexOf(e.target as HTMLElement);
+		if (current === -1) return;
+		const next = tablistKeydownIndex(e, current, buttons.length);
+		if (next === null) return;
+		e.preventDefault();
+		buttons[next]?.focus();
+	};
 
 	/** Run local zone engine replica — delegated to TargetController. */
 	private _runLocalZoneEngine(): ZoneEngineResult {

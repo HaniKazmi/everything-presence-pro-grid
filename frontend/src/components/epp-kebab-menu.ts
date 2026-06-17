@@ -1,6 +1,6 @@
-import { mdiDotsVertical } from "@mdi/js";
 import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
+import { DocumentListenerGroup } from "../lib/document-listeners.js";
 import "../ui/epp-icon-button.js";
 
 export interface KebabItem {
@@ -24,9 +24,13 @@ function isDivider(e: KebabEntry): e is KebabDivider {
 }
 
 /**
- * Small kebab (⋮) overflow menu. Uses HA's native `ha-button-menu` +
- * `ha-list-item` when registered (the panel case), and falls back to a
- * self-contained popover on older HA / under happy-dom unit tests.
+ * Small kebab (⋮) overflow menu — a self-contained popover that depends on no
+ * native HA menu element. HA removed `ha-button-menu` in 2026.02 (the
+ * `mwc-*` → webawesome migration) and the modern replacements churn across
+ * versions, so a self-contained widget stays stable across HA releases. The
+ * only HA element it touches is the eagerly-registered `ha-icon`. The popover is
+ * `position:fixed` and JS-anchored to the trigger (see `_positionFallbackMenu`)
+ * so it stays reachable on short viewports.
  *
  * Emits `item-select` CustomEvent<{ id: string }>.
  */
@@ -34,11 +38,20 @@ export class EppKebabMenu extends LitElement {
 	static styles = css`
 		:host { position: relative; display: inline-flex; }
 		.menu {
-			position: absolute;
-			top: 100%;
-			right: 0;
+			/* position:fixed + JS anchoring (see _positionFallbackMenu): the popover
+			   escapes any overflow/clip ancestor, flips above the trigger when there's
+			   more room there, and caps its height to the viewport with its own scroll
+			   — so the full menu is reachable on mobile / short viewports. top/left are
+			   set inline by JS. */
+			position: fixed;
+			top: 0;
+			left: 0;
 			z-index: 20;
 			min-width: 160px;
+			/* So the JS max-height cap (which uses the available viewport space) bounds
+			   the border box — padding + border included — and the popover never spills
+			   a few px past the edge. */
+			box-sizing: border-box;
 			padding: var(--epp-space-1, 4px) 0;
 			background: var(--epp-surface, var(--card-background-color, #fff));
 			border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
@@ -67,7 +80,6 @@ export class EppKebabMenu extends LitElement {
 			border: none;
 			border-top: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
 		}
-		ha-list-item.danger { color: var(--epp-danger, var(--error-color, #f44336)); }
 	`;
 
 	@property({ attribute: false }) items: KebabEntry[] = [];
@@ -76,67 +88,52 @@ export class EppKebabMenu extends LitElement {
 
 	disconnectedCallback(): void {
 		super.disconnectedCallback();
-		this._detachOutside();
+		this._dismiss.detach();
 	}
+
+	protected updated(): void {
+		// Anchor the popover to the trigger after it renders. Runs synchronously
+		// before paint, so there's no flicker.
+		if (this._open) this._positionFallbackMenu();
+	}
+
+	private _onReposition = (): void => {
+		if (this._open) this._positionFallbackMenu();
+	};
+
+	// Anchor the fixed popover to the trigger, flipping above it when there's more
+	// room there, and cap its height to the available viewport space (it scrolls)
+	// so every item is reachable on a phone or a short desktop window.
+	/* v8 ignore start -- happy-dom has no layout; exercised visually */
+	private _positionFallbackMenu(): void {
+		const menu = this.renderRoot.querySelector(".menu") as HTMLElement | null;
+		const trigger = this.renderRoot.querySelector(
+			'[data-testid="kebab-trigger"]',
+		) as HTMLElement | null;
+		if (!menu || !trigger) return;
+		const t = trigger.getBoundingClientRect();
+		const margin = 8;
+		const menuW = menu.offsetWidth || 160;
+		const fullH = menu.scrollHeight;
+		const below = window.innerHeight - t.bottom - margin;
+		const above = t.top - margin;
+		const openUp = fullH > below && above > below;
+		const maxH = Math.max(96, openUp ? above : below);
+		const left = Math.max(
+			margin,
+			Math.min(t.right - menuW, window.innerWidth - menuW - margin),
+		);
+		const top = openUp
+			? Math.max(margin, t.top - Math.min(fullH, maxH))
+			: t.bottom;
+		menu.style.top = `${top}px`;
+		menu.style.left = `${left}px`;
+		menu.style.maxHeight = `${maxH}px`;
+		menu.style.overflowY = "auto";
+	}
+	/* v8 ignore stop */
 
 	render() {
-		if (customElements.get("ha-button-menu")) {
-			return this._renderNative();
-		}
-		return this._renderFallback();
-	}
-
-	private _renderNative() {
-		return html`
-			<ha-button-menu
-				fixed
-				@action=${this._onNativeAction}
-				@closed=${(e: Event) => e.stopPropagation()}
-			>
-				<ha-icon-button
-					slot="trigger"
-					data-testid="kebab-trigger"
-					.path=${mdiDotsVertical}
-				></ha-icon-button>
-				${this.items.map((entry) =>
-					isDivider(entry)
-						? html`<li
-								divider
-								role="separator"
-								data-testid="kebab-divider"
-							></li>`
-						: html`<ha-list-item
-								data-testid="kebab-item"
-								data-id=${entry.id}
-								graphic=${entry.icon ? "icon" : nothing}
-								class=${entry.danger ? "danger" : ""}
-							>
-								${
-									entry.icon
-										? html`<ha-icon
-												slot="graphic"
-												icon=${entry.icon}
-											></ha-icon>`
-										: nothing
-								}
-								${entry.label}
-							</ha-list-item>`,
-				)}
-			</ha-button-menu>
-		`;
-	}
-
-	// ha-button-menu's `action.index` counts only its focusable list items
-	// (ha-list-item), so map it against the selectable entries — dividers,
-	// which are plain <li>, are excluded.
-	private _onNativeAction(e: CustomEvent<{ index: number }>) {
-		e.stopPropagation();
-		const selectable = this.items.filter((x): x is KebabItem => !isDivider(x));
-		const item = selectable[e.detail.index];
-		if (item) this._emit(item.id);
-	}
-
-	private _renderFallback() {
 		return html`
 			<epp-icon-button
 				data-testid="kebab-trigger"
@@ -168,13 +165,13 @@ export class EppKebabMenu extends LitElement {
 
 	private _toggle() {
 		this._open = !this._open;
-		if (this._open) this._attachOutside();
-		else this._detachOutside();
+		if (this._open) this._dismiss.attach();
+		else this._dismiss.detach();
 	}
 
 	private _emit(id: string) {
 		this._open = false;
-		this._detachOutside();
+		this._dismiss.detach();
 		this.dispatchEvent(
 			new CustomEvent("item-select", {
 				detail: { id },
@@ -189,16 +186,43 @@ export class EppKebabMenu extends LitElement {
 		// trigger's own click can toggle without this handler racing it closed.
 		if (e.composedPath().includes(this)) return;
 		this._open = false;
-		this._detachOutside();
+		this._dismiss.detach();
 	};
 
-	private _attachOutside() {
-		document.addEventListener("pointerdown", this._onOutside, true);
-	}
+	private _onKeydown = (e: Event): void => {
+		if ((e as KeyboardEvent).key === "Escape") {
+			this._open = false;
+			this._dismiss.detach();
+		}
+	};
 
-	private _detachOutside() {
-		document.removeEventListener("pointerdown", this._onOutside, true);
-	}
+	// Global dismiss listeners, active only while the popover is open. Declared
+	// after the handler fields it references (DocumentListenerGroup throws if a
+	// listener is undefined at construction). Unlike sibling popovers, scroll/
+	// resize REPOSITION the popover rather than close it — the kebab stays
+	// anchored to its trigger. Capture phase so an inner scroll container still
+	// reaches the handler.
+	private _dismiss = new DocumentListenerGroup([
+		{
+			target: document,
+			type: "pointerdown",
+			listener: this._onOutside,
+			options: true,
+		},
+		{
+			target: document,
+			type: "keydown",
+			listener: this._onKeydown,
+			options: true,
+		},
+		{
+			target: window,
+			type: "scroll",
+			listener: this._onReposition,
+			options: true,
+		},
+		{ target: window, type: "resize", listener: this._onReposition },
+	]);
 }
 
 if (!customElements.get("epp-kebab-menu")) {

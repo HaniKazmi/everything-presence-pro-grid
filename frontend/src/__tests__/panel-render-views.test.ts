@@ -1,4 +1,4 @@
-import { nothing, render } from "lit";
+import { html, nothing, render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
@@ -8,6 +8,7 @@ import "../components/epp-furniture-sidebar.js";
 import "../components/epp-settings-view.js";
 import "../components/epp-wizard.js";
 import "../components/epp-grid.js";
+import "../ui/epp-sheet.js";
 import type { EppFurnitureSidebar } from "../components/epp-furniture-sidebar.js";
 import type { EppGrid } from "../components/epp-grid.js";
 import type { EppSettingsView } from "../components/epp-settings-view.js";
@@ -258,6 +259,296 @@ describe("render() dispatches to correct view", () => {
 		expect(grid.editable).toBe(false);
 	});
 
+	it("renders editor in a bottom sheet when _isMobile is true", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		const c = renderTo(a._renderEditor());
+		// Unified editor-shell with epp-sheet present for both mobile and desktop.
+		const sheet = c.querySelector("epp-sheet");
+		expect(sheet).not.toBeNull();
+		expect(c.querySelector(".editor-shell")).not.toBeNull();
+		expect(c.querySelector(".editor-layout")).toBeNull();
+		expect(c.querySelector(".zone-sidebar")).toBeNull();
+		// Grid in the grid-column grid-container.
+		const grid = c.querySelector(
+			".editor-shell .grid-container epp-grid",
+		) as any;
+		expect(grid).not.toBeNull();
+		expect(grid.editable).toBe(true);
+		// Sidebar content (zones tab is the default) slotted into the sheet.
+		expect(sheet!.querySelector("epp-zone-sidebar")).not.toBeNull();
+		// Sub-tab switcher in the sheet peek.
+		const tabs = sheet!.querySelectorAll(".sidebar-tabs .sidebar-tab");
+		expect(tabs.length).toBe(3);
+	});
+
+	it("renders the unified editor-shell with epp-sheet for desktop layout", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		// _isMobile defaults to false (happy-dom matchMedia matches:false).
+		a._grid = initGridFromRoom(3000, 4000);
+		const c = renderTo(a._renderEditor());
+		// Both desktop and mobile now use .editor-shell + epp-sheet.
+		expect(c.querySelector(".editor-shell")).not.toBeNull();
+		expect(c.querySelector("epp-sheet")).not.toBeNull();
+		// The editor is a grid-hero view: its panel opts into full width.
+		expect(c.querySelector(".panel.panel--grid")).not.toBeNull();
+		// Old two-branch classes are gone.
+		expect(c.querySelector(".editor-layout")).toBeNull();
+		expect(c.querySelector(".editor-mobile")).toBeNull();
+		// Sidebar tabs in the sheet peek on desktop too.
+		const sheet = c.querySelector("epp-sheet")!;
+		expect(sheet.querySelector('[slot="peek"] .sidebar-tabs')).not.toBeNull();
+	});
+
+	it("switches sub-tab from the mobile sheet peek without leaving the editor", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		const c = renderTo(a._renderEditor());
+		const furnitureTab = [
+			...c.querySelectorAll<HTMLButtonElement>(".sidebar-tabs .sidebar-tab"),
+		].find((b) => b.getAttribute("aria-selected") === "false");
+		expect(furnitureTab).not.toBeUndefined();
+		furnitureTab!.click();
+		expect(a._view).toBe("editor");
+		expect(a._sidebarTab).not.toBe("zones");
+	});
+
+	it("renders the editor save bar in the sheet actions only when dirty", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		// Clean: no actions slot content.
+		a._dirty = false;
+		let c = renderTo(a._renderEditor());
+		expect(c.querySelector('epp-sheet [slot="actions"]')).toBeNull();
+		// Dirty: save bar present in the actions slot.
+		a._dirty = true;
+		c = renderTo(a._renderEditor());
+		expect(
+			c.querySelector('epp-sheet [slot="actions"] .save-cancel-bar'),
+		).not.toBeNull();
+	});
+
+	it("hides the editor save bar while a text field is being edited", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		a._dirty = true;
+		// Editing a zone name focuses a text input → the soft keyboard rises and
+		// the pinned Save/Cancel bar would cover the field. It hides while a text
+		// field is focused so the field stays visible, then returns on blur.
+		a._editorTextFocused = true;
+		let c = renderTo(a._renderEditor());
+		expect(c.querySelector('epp-sheet [slot="actions"]')).toBeNull();
+		a._editorTextFocused = false;
+		c = renderTo(a._renderEditor());
+		expect(
+			c.querySelector('epp-sheet [slot="actions"] .save-cancel-bar'),
+		).not.toBeNull();
+	});
+
+	it("tracks text-field focus in the editor (focusin text input → true, focusout → false, non-text → false)", () => {
+		const a = createPanel() as any;
+		const input = document.createElement("input");
+		input.type = "text";
+		a._onEditorFocusIn({
+			composedPath: () => [input],
+		} as unknown as FocusEvent);
+		expect(a._editorTextFocused).toBe(true);
+		a._onEditorFocusOut();
+		expect(a._editorTextFocused).toBe(false);
+		const btn = document.createElement("button");
+		a._onEditorFocusIn({ composedPath: () => [btn] } as unknown as FocusEvent);
+		expect(a._editorTextFocused).toBe(false);
+	});
+
+	it("clears _editorTextFocused when leaving the editor (focusout may not fire on unmount)", () => {
+		const a = createPanel() as any;
+		a._isMobile = true;
+		a._view = "live"; // now outside the editor
+		a._editorTextFocused = true;
+		a.willUpdate(new Map([["_view", "editor"]]));
+		expect(a._editorTextFocused).toBe(false);
+	});
+
+	it("clears _editorTextFocused when the layout leaves mobile (rotate to desktop)", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = false; // rotated to a desktop-width layout
+		a._editorTextFocused = true;
+		a.willUpdate(new Map([["_isMobile", true]]));
+		expect(a._editorTextFocused).toBe(false);
+	});
+
+	it("keeps _editorTextFocused on unrelated updates inside the mobile editor", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = true;
+		a._editorTextFocused = true;
+		a.willUpdate(new Map([["_dirty", false]]));
+		expect(a._editorTextFocused).toBe(true);
+	});
+
+	it("renders the mobile editor sheet always-open (inline, visible under the grid)", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		const c = renderTo(a._renderEditor());
+		const sheet = c.querySelector("epp-sheet") as HTMLElement;
+		// The sheet can no longer collapse (the handle is a non-interactive grab
+		// indicator), so it renders always-open via the `open` attribute, and
+		// inline (sits directly under the grid, not fixed to the viewport bottom).
+		expect(sheet.hasAttribute("open")).toBe(true);
+		expect(sheet.hasAttribute("inline")).toBe(true);
+	});
+
+	it("keeps the active zone selected when tapping inside the mobile sheet", () => {
+		// Regression: on mobile the editor controls live inside <epp-sheet>
+		// (slotted), not in a .zone-sidebar. The panel-level @click handler must
+		// exempt epp-sheet so a tap that selects a zone (or hits the Room button)
+		// in the sheet doesn't immediately clear _activeZone on the same click.
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		const c = renderTo(a._renderEditor());
+		const sheet = c.querySelector("epp-sheet") as HTMLElement;
+		expect(sheet).not.toBeNull();
+		// User has a zone selected (e.g. just tapped a zone row in the sheet).
+		a._activeZone = 2;
+		a._justPainted = false;
+		// A click originating inside the sheet bubbles up to the .panel handler.
+		const target =
+			(sheet.querySelector("epp-zone-sidebar") as HTMLElement) ?? sheet;
+		target.dispatchEvent(
+			new MouseEvent("click", { bubbles: true, composed: true }),
+		);
+		// Active zone must survive — the sheet is exempted in onPanelClick.
+		expect(a._activeZone).toBe(2);
+	});
+
+	it("keeps the active zone selected when tapping the grid", () => {
+		// Regression (Bug 2): `.grid` lives in <epp-grid>'s shadow DOM, so a
+		// grid-cell click retargets to the <epp-grid> host at the panel handler.
+		// `el.closest(".grid")` was therefore always null for grid taps → the
+		// active zone was cleared on the first tap (on touch, the synthesized
+		// click fires after _justPainted has been reset). The handler must match
+		// the light-DOM `.grid-container` wrapper instead so the deselect is
+		// correctly skipped and painting keeps working.
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		const c = renderTo(a._renderEditor());
+		// Unified editor-shell: grid lives in .editor-shell .grid-container.
+		const grid = c.querySelector(
+			".editor-shell .grid-container epp-grid",
+		) as HTMLElement;
+		expect(grid).not.toBeNull();
+		// User has a zone selected and we are NOT in the just-painted window.
+		a._activeZone = 2;
+		a._justPainted = false;
+		// A retargeted grid click reaches the .panel handler with the <epp-grid>
+		// host as its target.
+		grid.dispatchEvent(
+			new MouseEvent("click", { bubbles: true, composed: true }),
+		);
+		// Active zone must survive — the grid-container is exempted.
+		expect(a._activeZone).toBe(2);
+	});
+
+	it("clears the active zone when tapping the bare panel background", () => {
+		// Companion to the grid-tap regression above: a genuine outside click —
+		// one whose target is neither in `.grid-container`/`.zone-sidebar` nor
+		// `epp-sheet` — must still deselect the active zone.
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		const c = renderTo(a._renderEditor());
+		const panel = c.querySelector(".panel") as HTMLElement;
+		expect(panel).not.toBeNull();
+		a._activeZone = 2;
+		a._justPainted = false;
+		// Click directly on the bare .panel background (not inside any exempt
+		// region) bubbles to the handler and must clear the selection.
+		panel.dispatchEvent(
+			new MouseEvent("click", { bubbles: true, composed: true }),
+		);
+		expect(a._activeZone).toBeNull();
+	});
+
+	it("editor renders one epp-sheet with the sidebar tabs in its peek (desktop)", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = false;
+		a._grid = initGridFromRoom(3000, 4000);
+		a._dirty = false;
+		const c = renderTo(a._renderEditor());
+		const sheet = c.querySelector("epp-sheet");
+		expect(sheet).not.toBeNull();
+		expect(sheet!.querySelector('[slot="peek"] .sidebar-tabs')).not.toBeNull();
+	});
+
+	it("desktop editor shows the Save/Cancel bar even when clean", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = false;
+		a._grid = initGridFromRoom(3000, 4000);
+		a._dirty = false;
+		const c = renderTo(a._renderEditor());
+		expect(c.querySelector('[slot="actions"] .save-cancel-bar')).not.toBeNull();
+	});
+
+	it("mobile editor hides the Save/Cancel bar when clean", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		a._dirty = false;
+		const c = renderTo(a._renderEditor());
+		expect(c.querySelector('[slot="actions"]')).toBeNull();
+	});
+
+	it("editor debug log renders on desktop but not mobile (zones tab)", () => {
+		// Desktop: with the log expanded, .debug-log-container must be present
+		const desk = createPanel() as any;
+		desk._view = "editor";
+		desk._isMobile = false;
+		desk._grid = initGridFromRoom(3000, 4000);
+		desk._sidebarTab = "zones";
+		desk._showDebugLog = true; // expand the log so .debug-log-container renders
+		const cd = renderTo(desk._renderEditor());
+		expect(cd.querySelector(".debug-log-container")).not.toBeNull();
+
+		// Mobile: _renderDebugLog() must not be called at all — no container
+		const mob = createPanel() as any;
+		mob._view = "editor";
+		mob._isMobile = true;
+		mob._grid = initGridFromRoom(3000, 4000);
+		mob._sidebarTab = "zones";
+		mob._showDebugLog = true; // would produce the element if called — must NOT
+		const cm = renderTo(mob._renderEditor());
+		expect(cm.querySelector(".debug-log-container")).toBeNull();
+	});
+
+	it("flips _isMobile when the media query change fires", () => {
+		const a = createPanel() as any;
+		// _onMql mirrors MediaQueryListEvent.matches onto _isMobile.
+		a._onMql({ matches: true } as MediaQueryListEvent);
+		expect(a._isMobile).toBe(true);
+		a._onMql({ matches: false } as MediaQueryListEvent);
+		expect(a._isMobile).toBe(false);
+	});
+
 	it("renders delete calibration dialog", () => {
 		const a = createPanel() as any;
 		a._view = "live";
@@ -442,6 +733,26 @@ describe("render() preserves settings view across transient device states", () =
 		const str = JSON.stringify(result);
 
 		expect(str).toContain("epp-settings-view");
+	});
+
+	it("makes the settings view inert while a status banner overlays it", () => {
+		// The banner overlay covers + DISABLES the still-mounted settings view.
+		// The opaque overlay only blocks pointer input (and only if the theme keeps
+		// it opaque); `inert` also blocks keyboard focus/tabbing into the obscured
+		// form, so the "disabled" claim holds for real. Edit state is preserved
+		// (the view stays mounted); inert lifts when the banner clears.
+		const a = createPanel() as any;
+		const withBanner = renderTo(
+			a._renderSettings(html`<div class="protocol-fullpage"></div>`),
+		);
+		const covered = withBanner.querySelector("epp-settings-view");
+		expect(covered).not.toBeNull();
+		expect(covered!.hasAttribute("inert")).toBe(true);
+		// No banner (default arg `nothing`) -> the view is fully interactive.
+		const noBanner = renderTo(a._renderSettings());
+		expect(
+			noBanner.querySelector("epp-settings-view")!.hasAttribute("inert"),
+		).toBe(false);
 	});
 
 	it("falls back to the full-page HA-reconnecting banner when not in settings view", () => {
@@ -682,6 +993,8 @@ describe("_renderLiveOverview", () => {
 		expect(c.querySelector("epp-grid")).not.toBeNull();
 		expect(c.querySelector("epp-live-sidebar")).not.toBeNull();
 		expect(c.querySelector("epp-wizard")).toBeNull();
+		// The live overview is a grid-hero view: its panel opts into full width.
+		expect(c.querySelector(".panel.panel--grid")).not.toBeNull();
 	});
 
 	it("renders live overview without perspective (uncalibrated)", () => {
@@ -721,6 +1034,18 @@ describe("_renderLiveOverview", () => {
 		// Editor entries and delete-calibration are hidden without a
 		// calibration: settings + calibration + backup + restore remain.
 		expect(ids).toEqual(["settings", "calibration", "backup", "restore"]);
+	});
+
+	it("live overview uses the shared card shell: kebab in peek, no save footer", async () => {
+		const a = createPanel() as any;
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		a._grid = initGridFromRoom(3000, 4000);
+		a._isMobile = false;
+		const c = renderTo(a._renderLiveOverview());
+		const sheet = c.querySelector("epp-sheet.live-controls");
+		expect(sheet).not.toBeNull();
+		expect(sheet!.querySelector('[slot="peek"] epp-kebab-menu')).not.toBeNull();
+		expect(sheet!.querySelector('[slot="actions"]')).toBeNull(); // read-only
 	});
 });
 
@@ -1563,5 +1888,60 @@ describe("epp-furniture-sidebar renders via component", () => {
 			"epp-dialog[open] .wizard-btn-primary",
 		) as HTMLButtonElement;
 		expect(add.disabled).toBe(true);
+	});
+});
+
+describe("tab switchers — keyboard a11y", () => {
+	it("sidebar sub-tabs use roving tabindex (only the selected tab is a tab stop)", () => {
+		const a = createPanel() as any;
+		a._sidebarTab = "overlays";
+		const c = renderTo(a._renderSidebarTabs());
+		const tabs = [...c.querySelectorAll(".sidebar-tab")] as HTMLElement[];
+		expect(tabs.map((t) => t.getAttribute("tabindex"))).toEqual([
+			"-1",
+			"0",
+			"-1",
+		]);
+	});
+
+	it("ArrowRight moves focus along the sub-tabs without switching (manual activation)", () => {
+		const a = createPanel() as any;
+		a._sidebarTab = "zones";
+		const applySpy = vi.spyOn(
+			a as { _applyView: (...args: unknown[]) => void },
+			"_applyView",
+		);
+		const c = renderTo(a._renderSidebarTabs());
+		const tabs = [...c.querySelectorAll(".sidebar-tab")] as HTMLElement[];
+		tabs[0].focus();
+		tabs[0].dispatchEvent(
+			new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+		);
+		// Focus moved to the next tab...
+		expect(document.activeElement).toBe(tabs[1]);
+		// ...but selection did NOT change — arrows move focus only (manual activation).
+		expect(applySpy).not.toHaveBeenCalled();
+		expect(a._sidebarTab).toBe("zones");
+	});
+
+	it("ArrowLeft wraps from the first sub-tab to the last", () => {
+		const a = createPanel() as any;
+		a._sidebarTab = "zones";
+		const c = renderTo(a._renderSidebarTabs());
+		const tabs = [...c.querySelectorAll(".sidebar-tab")] as HTMLElement[];
+		tabs[0].focus();
+		tabs[0].dispatchEvent(
+			new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }),
+		);
+		expect(document.activeElement).toBe(tabs[2]);
+	});
+
+	it("marks the active top-bar tab with aria-current=page (and only that one)", () => {
+		const a = createPanel() as any;
+		a._panelTab = "flasher";
+		const c = renderTo(a._renderTabBar());
+		const current = c.querySelectorAll('.tab[aria-current="page"]');
+		expect(current.length).toBe(1);
+		expect(current[0].textContent).toContain("flash");
 	});
 });

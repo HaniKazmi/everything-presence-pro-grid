@@ -1386,3 +1386,148 @@ describe("epp-grid target dot keying (per-target identity)", () => {
 		document.body.removeChild(el);
 	});
 });
+
+describe("epp-grid cell sizing (measured available width)", () => {
+	// Number of repeated columns in `grid-template-columns: repeat(N, Xpx)`.
+	const visColsOf = (grid: HTMLElement): number => {
+		const m = grid.style.gridTemplateColumns.match(/repeat\((\d+),/);
+		return m ? Number(m[1]) : 0;
+	};
+	// The per-cell px from `repeat(N, Xpx)`.
+	const cellPxOf = (grid: HTMLElement): number => {
+		const m = grid.style.gridTemplateColumns.match(/repeat\(\d+,\s*(\d+)px\)/);
+		return m ? Number(m[1]) : 0;
+	};
+
+	it("shrinks the grid when measured available width is tinier than the grid chrome", async () => {
+		const el = createGrid();
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const grid = el.shadowRoot!.querySelector(".grid") as HTMLElement;
+		const visCols = visColsOf(grid);
+		expect(visCols).toBeGreaterThan(0);
+
+		// Grid chrome is 4px (2px border ×2) + (visCols-1)px gaps. Pick a measured
+		// available width SMALLER than that chrome so `availPx - chrome` is < 0.
+		const gridChromePx = 4 + (visCols - 1);
+		const tinyAvail = Math.max(1, gridChromePx - 5);
+		expect(tinyAvail).toBeLessThan(gridChromePx);
+
+		// `_availPx` is a private @state; set it directly (happy-dom has no real
+		// ResizeObserver) and force a re-render.
+		(el as unknown as { _availPx: number })._availPx = tinyAvail;
+		(el as unknown as { requestUpdate: () => void }).requestUpdate();
+		await el.updateComplete;
+
+		// With a measured-but-tiny width the grid must SHRINK, not snap to the
+		// 48px desktop maxCell ceiling and overflow.
+		const cellPx = cellPxOf(grid);
+		expect(cellPx).toBeGreaterThan(0);
+		expect(cellPx).toBeLessThan(32);
+
+		document.body.removeChild(el);
+	});
+
+	it("uses the ceiling cell size when the width is unmeasured", async () => {
+		// Unmeasured (_availPx === 0, the default in tests) keeps the desktop
+		// look: the cell snaps to the desktop maxCell ceiling (48px), not 1px.
+		const el = createGrid();
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const grid = el.shadowRoot!.querySelector(".grid") as HTMLElement;
+		expect(cellPxOf(grid)).toBe(48);
+
+		document.body.removeChild(el);
+	});
+
+	it("fits the cells to a generous measured width without exceeding the ceiling", async () => {
+		// Use a shallow room so the desktop height-fit path isn't the binding
+		// constraint under happy-dom's short 768px viewport (which would cap a
+		// deep room below the ceiling). This isolates width-fitting against the
+		// 48px ceiling — the case that matters on a real, taller desktop viewport.
+		const el = createGrid({
+			grid: initGridFromRoom(3000, 2000),
+			roomDepth: 2000,
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const grid = el.shadowRoot!.querySelector(".grid") as HTMLElement;
+		const visCols = visColsOf(grid);
+
+		// A wide-enough measured width must leave the cell at the 48px desktop ceiling
+		// (unchanged from the unmeasured desktop look).
+		const wide = 48 * visCols + (4 + (visCols - 1)) + 100;
+		(el as unknown as { _availPx: number })._availPx = wide;
+		(el as unknown as { requestUpdate: () => void }).requestUpdate();
+		await el.updateComplete;
+
+		expect(cellPxOf(grid)).toBe(48);
+
+		document.body.removeChild(el);
+	});
+
+	it("schedules a post-layout re-measure on mount (self-corrects async layout above the grid)", async () => {
+		// Defense in depth for the live↔editor flicker class: a freshly-mounted
+		// desktop grid can read its viewport `top` before an async-rendering sibling
+		// above it (e.g. the header's ha-select) has laid out, latching a stale
+		// available-height that the width-only ResizeObserver never corrects.
+		// firstUpdated() schedules ONE post-layout re-measure so any such transient
+		// self-corrects within a frame instead of persisting. (The .panel-header CSS
+		// reserve prevents the known case; this guards future late-laying-out chrome.)
+		let rafCb: FrameRequestCallback | null = null;
+		const rafSpy = vi
+			.spyOn(globalThis, "requestAnimationFrame")
+			.mockImplementation((cb: FrameRequestCallback) => {
+				rafCb = cb;
+				return 1;
+			});
+		try {
+			const el = createGrid();
+			document.body.appendChild(el);
+			await el.updateComplete;
+
+			// firstUpdated scheduled the post-layout re-measure...
+			expect(rafSpy).toHaveBeenCalled();
+			expect(typeof rafCb).toBe("function");
+
+			// ...and when the frame fires it re-measures.
+			const measureSpy = vi.spyOn(
+				el as unknown as { _measureAvail: () => void },
+				"_measureAvail",
+			);
+			(rafCb as unknown as FrameRequestCallback)(0);
+			expect(measureSpy).toHaveBeenCalled();
+
+			document.body.removeChild(el);
+		} finally {
+			rafSpy.mockRestore();
+		}
+	});
+
+	it("re-measures on a window resize and detaches the handler when removed", async () => {
+		// The ResizeObserver only tracks the host's WIDTH, so a height-only viewport
+		// change (desktop vertical resize, mobile URL-bar collapse, devtools dock
+		// height) wouldn't otherwise re-measure the height cap. A window 'resize'
+		// hook closes that gap; it must detach on disconnect so a removed grid
+		// doesn't keep re-measuring.
+		const el = createGrid();
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const measureSpy = vi.spyOn(
+			el as unknown as { _measureAvail: () => void },
+			"_measureAvail",
+		);
+		window.dispatchEvent(new Event("resize"));
+		expect(measureSpy).toHaveBeenCalled();
+
+		// After removal the handler is detached: a stray resize must not re-measure.
+		document.body.removeChild(el);
+		measureSpy.mockClear();
+		window.dispatchEvent(new Event("resize"));
+		expect(measureSpy).not.toHaveBeenCalled();
+	});
+});

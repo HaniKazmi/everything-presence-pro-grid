@@ -47,7 +47,7 @@ const flasherStyles = css`
   }
 
   .flasher-content {
-    max-width: 600px;
+    max-width: var(--epp-content-max, 720px);
     margin: 0 auto;
     display: flex;
     flex-direction: column;
@@ -70,6 +70,10 @@ const flasherStyles = css`
     display: flex;
     flex-direction: column;
     gap: var(--epp-space-2, 8px);
+    /* Cap the list so a long roster of devices scrolls inside the card instead
+       of growing the page and pushing the USB Connection section off-screen. */
+    max-height: 40vh;
+    overflow-y: auto;
   }
 
   .device-row {

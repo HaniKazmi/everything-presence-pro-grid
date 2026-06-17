@@ -138,6 +138,26 @@ describe("epp-kebab-menu", () => {
 		).toBeNull();
 	});
 
+	it("closes the menu when Escape is pressed", async () => {
+		const el = await fixture(ITEMS);
+		(
+			el.shadowRoot!.querySelector(
+				'[data-testid="kebab-trigger"]',
+			) as HTMLElement
+		).click();
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector('[data-testid="kebab-item"]'),
+		).not.toBeNull();
+		document.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+		);
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector('[data-testid="kebab-item"]'),
+		).toBeNull();
+	});
+
 	it("closes the menu when the trigger is clicked a second time", async () => {
 		const el = await fixture(ITEMS);
 		const trigger = el.shadowRoot!.querySelector(
@@ -173,53 +193,91 @@ describe("epp-kebab-menu", () => {
 		expect(fired).toBe(false);
 	});
 
-	// Keep last: registering HA elements is global for the test environment.
-	// Exercises the native ha-button-menu branch; every test above covers the
-	// hand-rolled fallback.
-	it("uses ha-button-menu + ha-list-item and emits on @action when registered", async () => {
-		for (const name of ["ha-button-menu", "ha-icon-button", "ha-list-item"]) {
-			if (!customElements.get(name)) {
-				customElements.define(name, class extends HTMLElement {});
-			}
-		}
-		const el = await fixture([
-			{ id: "edit", label: "Edit", icon: "mdi:pencil" },
-			{ divider: true },
-			{ id: "delete", label: "Delete", danger: true },
-		]);
-		const menu = el.shadowRoot!.querySelector("ha-button-menu");
-		expect(menu).not.toBeNull();
-		// two selectable list items + an icon on the first + a separator
-		expect(el.shadowRoot!.querySelectorAll("ha-list-item").length).toBe(2);
-		expect(el.shadowRoot!.querySelector("ha-icon")).not.toBeNull();
+	it("keeps the open popover anchored when the window scrolls or resizes", async () => {
+		const el = await fixture(ITEMS);
+		(
+			el.shadowRoot!.querySelector(
+				'[data-testid="kebab-trigger"]',
+			) as HTMLElement
+		).click();
+		await el.updateComplete;
+		// While open, scroll/resize must re-anchor the popover without throwing,
+		// and the menu must stay open.
+		window.dispatchEvent(new Event("scroll"));
+		window.dispatchEvent(new Event("resize"));
+		await el.updateComplete;
+		expect(el.shadowRoot!.querySelector(".menu")).not.toBeNull();
+	});
+
+	it("ignores a pointerdown that originates inside the menu (stays open)", async () => {
+		const el = await fixture(ITEMS);
+		const trigger = el.shadowRoot!.querySelector(
+			'[data-testid="kebab-trigger"]',
+		) as HTMLElement;
+		trigger.click();
+		await el.updateComplete;
 		expect(
-			el.shadowRoot!.querySelector('[data-testid="kebab-divider"]'),
+			el.shadowRoot!.querySelector('[data-testid="kebab-item"]'),
 		).not.toBeNull();
-		const detail = new Promise<{ id: string }>((resolve) => {
-			el.addEventListener("item-select", (e) =>
-				resolve((e as CustomEvent).detail),
-			);
-		});
-		// HA fires `action` with the chosen item index.
-		// An out-of-range index (e.g. menu closed without a pick) must not emit.
-		menu!.dispatchEvent(
-			new CustomEvent("action", {
-				detail: { index: 99 },
-				bubbles: true,
-				composed: true,
-			}),
+		// A pointerdown whose composed path includes the kebab is ours — the
+		// outside handler must early-return and leave the menu open.
+		trigger.dispatchEvent(
+			new Event("pointerdown", { bubbles: true, composed: true }),
 		);
-		// A `closed` event from the menu is swallowed (no throw).
-		menu!.dispatchEvent(
-			new CustomEvent("closed", { bubbles: true, composed: true }),
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector('[data-testid="kebab-item"]'),
+		).not.toBeNull();
+	});
+
+	// HA removed `ha-button-menu` in 2026.02 and our HA floor (hacs.json) is
+	// 2026.5.0, so the kebab must NEVER depend on a native HA menu — it always
+	// renders its own self-contained popover. Defining `ha-button-menu` must not
+	// change that. (Keep last: registering an HA element is global for the test
+	// environment.)
+	it("renders its self-contained popover even when ha-button-menu is defined", async () => {
+		if (!customElements.get("ha-button-menu")) {
+			customElements.define("ha-button-menu", class extends HTMLElement {});
+		}
+		const el = await fixture(ITEMS);
+		// No native menu element is used, only our own trigger.
+		expect(el.shadowRoot!.querySelector("ha-button-menu")).toBeNull();
+		expect(
+			el.shadowRoot!.querySelector(
+				"epp-icon-button[data-testid='kebab-trigger']",
+			),
+		).not.toBeNull();
+		// It still opens its own popover with the items.
+		(
+			el.shadowRoot!.querySelector(
+				'[data-testid="kebab-trigger"]',
+			) as HTMLElement
+		).click();
+		await el.updateComplete;
+		expect(el.shadowRoot!.querySelector(".menu")).not.toBeNull();
+		expect(
+			el.shadowRoot!.querySelectorAll('[data-testid="kebab-item"]').length,
+		).toBe(2);
+	});
+
+	it("fallback popover is fixed-positioned so it stays reachable on short viewports", () => {
+		// The fallback .menu is position:fixed + JS-anchored to the trigger
+		// (_positionFallbackMenu) so it escapes overflow/clip ancestors, flips above
+		// the trigger when there's more room, and caps to the viewport with its own
+		// scroll. happy-dom has no layout, so guard the CSS contract here; the
+		// positioning behaviour itself is verified in-browser. Must NOT regress to
+		// position:absolute (which opened straight down, off the bottom of the page).
+		const cssText = (
+			customElements.get("epp-kebab-menu") as unknown as {
+				styles: { cssText: string };
+			}
+		).styles.cssText;
+		const menuRule = cssText.slice(
+			cssText.indexOf(".menu {"),
+			cssText.indexOf("}", cssText.indexOf(".menu {")),
 		);
-		menu!.dispatchEvent(
-			new CustomEvent("action", {
-				detail: { index: 1 },
-				bubbles: true,
-				composed: true,
-			}),
-		);
-		expect((await detail).id).toBe("delete");
+		expect(menuRule).toMatch(/position:\s*fixed/);
+		expect(menuRule).not.toMatch(/position:\s*absolute/);
+		expect(menuRule).toMatch(/box-sizing:\s*border-box/);
 	});
 });
