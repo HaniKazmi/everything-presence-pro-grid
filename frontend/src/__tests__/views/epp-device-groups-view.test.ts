@@ -22,6 +22,9 @@ function makeGroup(over: Partial<DeviceGroup> = {}): DeviceGroup {
 			presence: ["occupancy"],
 			zones: [{ kind: "group", id: "z1", name: "Bed", available: true }],
 		},
+		excluded_presence: [],
+		excluded_zones: [],
+		excluded_zone_groups: [],
 		...over,
 	};
 }

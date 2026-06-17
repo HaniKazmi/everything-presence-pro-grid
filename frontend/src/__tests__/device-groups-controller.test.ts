@@ -128,7 +128,11 @@ describe("DeviceGroupsController", () => {
 			sources: ["AA:BB:CC:DD:EE:FF"],
 			area_id: "living_room",
 			zone_groups: [
-				{ id: "g1", name: "Bed", members: [{ mac: "AA:BB:CC:DD:EE:FF", zone_index: 2 }] },
+				{
+					id: "g1",
+					name: "Bed",
+					members: [{ mac: "AA:BB:CC:DD:EE:FF", zone_index: 2 }],
+				},
 			],
 			excluded_presence: ["mmwave_presence"],
 			excluded_zones: [{ mac: "AA:BB:CC:DD:EE:FF", zone_index: 3 }],
@@ -141,7 +145,11 @@ describe("DeviceGroupsController", () => {
 			sources: ["AA:BB:CC:DD:EE:FF"],
 			area_id: "living_room",
 			zone_groups: [
-				{ id: "g1", name: "Bed", members: [{ mac: "AA:BB:CC:DD:EE:FF", zone_index: 2 }] },
+				{
+					id: "g1",
+					name: "Bed",
+					members: [{ mac: "AA:BB:CC:DD:EE:FF", zone_index: 2 }],
+				},
 			],
 			excluded_presence: ["mmwave_presence"],
 			excluded_zones: [{ mac: "AA:BB:CC:DD:EE:FF", zone_index: 3 }],

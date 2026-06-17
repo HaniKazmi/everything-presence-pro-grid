@@ -242,13 +242,21 @@ describe("deriveExposedEntities — combined Rest of room", () => {
 	it("emits one RoR group (first) when any source has zone 0 enabled", () => {
 		const result = deriveExposedEntities(
 			[
-				source("AA", "Left", [], [
-					{ index: 0, name: "Rest of room", enabled: true },
-					{ index: 1, name: "Bed", enabled: true },
-				]),
-				source("BB", "Right", [], [
-					{ index: 0, name: "Rest of room", enabled: false },
-				]),
+				source(
+					"AA",
+					"Left",
+					[],
+					[
+						{ index: 0, name: "Rest of room", enabled: true },
+						{ index: 1, name: "Bed", enabled: true },
+					],
+				),
+				source(
+					"BB",
+					"Right",
+					[],
+					[{ index: 0, name: "Rest of room", enabled: false }],
+				),
 			],
 			[],
 		);
@@ -289,9 +297,9 @@ describe("deriveExposedEntities — combined Rest of room", () => {
 			[source("AA", "Left", [], [{ index: 2, name: "Desk", enabled: true }])],
 			[],
 		);
-		expect(result.zones.some((z) => "id" in z && z.id === REST_OF_ROOM_ID)).toBe(
-			false,
-		);
+		expect(
+			result.zones.some((z) => "id" in z && z.id === REST_OF_ROOM_ID),
+		).toBe(false);
 	});
 
 	it("RoR omitted when rest_of_room is in excluded.zoneGroups", () => {
