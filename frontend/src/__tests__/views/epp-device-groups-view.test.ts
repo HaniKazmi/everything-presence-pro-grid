@@ -564,12 +564,13 @@ describe("desktop max-width centering", () => {
 		expect(cssText).toContain("margin: 0 auto");
 	});
 
-	it("scrolls the groups list under the fixed heading on desktop (capped, on grey)", () => {
+	it("desktop is a content-sized card on grey, with the list NOT in an overflow container", () => {
 		// Desktop shows a content-sized card on the grey page (matching the flasher /
-		// Installed Devices), NOT a full-height white sheet. The group list scrolls
-		// inside .group-list (capped via max-height, like the flasher's .device-list)
-		// under the fixed "Device Groups" card-header. Guarded via cssText since
-		// happy-dom has no layout; the cap lives in the min-width:820px block.
+		// Installed Devices), NOT a full-height white sheet (no flex:1 on ha-card).
+		// CRITICAL: the group list is deliberately NOT capped/overflow — a scroll
+		// container would clip a kebab menu opening from a group card (the kebab's
+		// fallback popover is absolutely positioned). The view scrolls as a whole if
+		// the list is long. Guarded via cssText since happy-dom has no layout.
 		const DeviceGroupsViewClass = customElements.get(
 			"epp-device-groups-view",
 		) as any;
@@ -578,12 +579,16 @@ describe("desktop max-width centering", () => {
 			.join("\n");
 		const desktop = cssText.slice(cssText.indexOf("@media (min-width: 820px)"));
 		expect(desktop).toContain("@media (min-width: 820px)");
-		const listIdx = desktop.indexOf(".group-list");
-		expect(listIdx).toBeGreaterThan(-1);
-		const listRule = desktop.slice(listIdx, desktop.indexOf("}", listIdx));
-		expect(listRule).toMatch(/overflow-y:\s*auto/);
-		expect(listRule).toMatch(/max-height:/);
-		// The card itself no longer fills the full height (no flex:1 on ha-card).
+		// Card is content-sized (no flex:1 fill) and the list is not an overflow box.
 		expect(desktop).not.toMatch(/ha-card\s*\{[^}]*flex:\s*1/);
+		expect(desktop).not.toMatch(/\.group-list\s*\{[^}]*overflow-y:\s*auto/);
+		expect(cssText).not.toMatch(/\.group-list\s*\{[^}]*max-height:/);
+		// .content stays a bounded flex column so the editor mode can still fill + pin.
+		const contentIdx = desktop.indexOf(".content");
+		const contentRule = desktop.slice(
+			contentIdx,
+			desktop.indexOf("}", contentIdx),
+		);
+		expect(contentRule).toMatch(/flex:\s*1/);
 	});
 });

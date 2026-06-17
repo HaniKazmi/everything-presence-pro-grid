@@ -118,12 +118,14 @@ export class EppDeviceGroupsView extends LitElement {
 		}
 
 		/* Desktop: a content-sized card on the grey page (matching the Installed
-		   Devices / flasher view), NOT a full-height white sheet. The group list
-		   scrolls inside .group-list (capped, like the flasher's .device-list) under
-		   the fixed "Device Groups" header, with the Add button below it. :host and
-		   .content stay a bounded flex column so the EDITOR mode (which reuses
-		   .content) can fill the height and pin its Cancel/Save; in list mode the
-		   card just sits at the top of that column with grey below. */
+		   Devices / flasher view), NOT a full-height white sheet. The card sizes to
+		   its content and the whole view scrolls if the group list is long — the
+		   list is deliberately NOT capped/overflow here: a kebab menu opening from a
+		   group card would be clipped by an overflow scroll container (the kebab's
+		   fallback popover is absolutely positioned). :host and .content stay a
+		   bounded flex column so the EDITOR mode (which reuses .content) can fill the
+		   height and pin its Cancel/Save; in list mode the card sits at the top of
+		   that column with grey below. */
 		@media (min-width: 820px) {
 			:host {
 				display: flex;
@@ -137,10 +139,6 @@ export class EppDeviceGroupsView extends LitElement {
 				flex-direction: column;
 				width: 100%;
 				box-sizing: border-box;
-			}
-			.group-list {
-				max-height: 40vh;
-				overflow-y: auto;
 			}
 		}
 	`,

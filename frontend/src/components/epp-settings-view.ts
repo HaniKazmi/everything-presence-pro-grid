@@ -424,6 +424,10 @@ export class EppSettingsView extends LitElement {
         align-items: center;
         padding: var(--epp-space-3, 12px);
         border-top: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+        /* Sit on the surface (white) so the bar matches the editor sidebar +
+           device-group editor bars, which sit on their white sheet/card. Without
+           this the settings bar showed the grey page behind it. */
+        background: var(--epp-surface, var(--card-background-color, #fff));
         margin-top: auto;
         flex-shrink: 0;
       }
