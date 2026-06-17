@@ -177,9 +177,14 @@ async def _register_frontend_resources(hass: HomeAssistant) -> str:
     fetch (an integration reload re-registers the panel at the new path).
 
     Each hash's prefix is registered once per HA process (old hashes' prefixes
-    linger harmlessly until restart). The content at a hashed path never
-    changes, so it is served with immutable cache headers. No base
-    `/eppgrid_static` mapping is registered, so the hashed prefixes can't
+    linger harmlessly until restart). The hash is the bundle's content hash and
+    the panel is always re-registered at the current hash, so a client is only
+    ever pointed at a URL whose content is fixed for that hash — hence immutable
+    cache headers. (All hash prefixes map to the same directory, so an old hash
+    path would in fact serve whatever bundle is on disk now; that's harmless
+    because the panel never points a client back at a superseded hash, and
+    production deploys via an HA restart that clears the lingering prefixes.) No
+    base `/eppgrid_static` mapping is registered, so the hashed prefixes can't
     collide with it in the aiohttp router.
     """
     js_path = os.path.join(FRONTEND_DIR, "eppgrid-panel.js")
