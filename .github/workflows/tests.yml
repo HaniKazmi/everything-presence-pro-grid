@@ -24,19 +24,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install HA
+      - name: Install dependencies
         run: |
           if [ "${{ matrix.ha-version }}" = "dev" ]; then
             pip install git+https://github.com/home-assistant/core.git
+            pip install "aioesphomeapi>=29.0.0"
+            pip install -r requirements_test.txt
           elif [ "${{ matrix.ha-version }}" = "stable" ]; then
             pip install homeassistant
+            pip install "aioesphomeapi>=29.0.0"
+            pip install -r requirements_test.txt
           else
-            pip install homeassistant==${{ matrix.ha-version }}
+            # Declared-floor channel: resolve HA + aioesphomeapi + test deps in ONE
+            # pip pass with HA pinned to the floor, so aioesphomeapi and transitive
+            # deps (cryptography, zeroconf, …) backtrack to versions compatible with
+            # that HA. Separate installs would force the latest aioesphomeapi (which
+            # conflicts with the floor's pinned cryptography/zeroconf) and let the
+            # unpinned phcc in requirements_test.txt silently upgrade HA off the floor.
+            echo "homeassistant==${{ matrix.ha-version }}" > /tmp/ha-constraint.txt
+            pip install "homeassistant==${{ matrix.ha-version }}" "aioesphomeapi>=29.0.0" \
+              -r requirements_test.txt -c /tmp/ha-constraint.txt
           fi
-      - name: Install integration requirements
-        run: pip install aioesphomeapi>=29.0.0
-      - name: Install test dependencies
-        run: pip install -r requirements_test.txt
       - name: Ruff lint
         run: ruff check custom_components/ tests/ firmware/
       - name: Ruff format
