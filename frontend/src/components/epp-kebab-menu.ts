@@ -34,11 +34,20 @@ export class EppKebabMenu extends LitElement {
 	static styles = css`
 		:host { position: relative; display: inline-flex; }
 		.menu {
-			position: absolute;
-			top: 100%;
-			right: 0;
+			/* position:fixed + JS anchoring (see _positionFallbackMenu): the popover
+			   escapes any overflow/clip ancestor, flips above the trigger when there's
+			   more room there, and caps its height to the viewport with its own scroll
+			   — so the full menu is reachable on mobile / short viewports. top/left are
+			   set inline by JS. */
+			position: fixed;
+			top: 0;
+			left: 0;
 			z-index: 20;
 			min-width: 160px;
+			/* So the JS max-height cap (which uses the available viewport space) bounds
+			   the border box — padding + border included — and the popover never spills
+			   a few px past the edge. */
+			box-sizing: border-box;
 			padding: var(--epp-space-1, 4px) 0;
 			background: var(--epp-surface, var(--card-background-color, #fff));
 			border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
@@ -78,6 +87,48 @@ export class EppKebabMenu extends LitElement {
 		super.disconnectedCallback();
 		this._detachOutside();
 	}
+
+	protected updated(): void {
+		// Position the fallback popover after it renders (native ha-button-menu
+		// positions itself). Runs synchronously before paint, so no flicker.
+		if (this._open) this._positionFallbackMenu();
+	}
+
+	private _onReposition = (): void => {
+		if (this._open) this._positionFallbackMenu();
+	};
+
+	// Anchor the fixed popover to the trigger, flipping above it when there's more
+	// room there, and cap its height to the available viewport space (it scrolls)
+	// so every item is reachable on a phone or a short desktop window.
+	/* v8 ignore start -- happy-dom has no layout; exercised visually */
+	private _positionFallbackMenu(): void {
+		const menu = this.renderRoot.querySelector(".menu") as HTMLElement | null;
+		const trigger = this.renderRoot.querySelector(
+			'[data-testid="kebab-trigger"]',
+		) as HTMLElement | null;
+		if (!menu || !trigger) return;
+		const t = trigger.getBoundingClientRect();
+		const margin = 8;
+		const menuW = menu.offsetWidth || 160;
+		const fullH = menu.scrollHeight;
+		const below = window.innerHeight - t.bottom - margin;
+		const above = t.top - margin;
+		const openUp = fullH > below && above > below;
+		const maxH = Math.max(96, openUp ? above : below);
+		const left = Math.max(
+			margin,
+			Math.min(t.right - menuW, window.innerWidth - menuW - margin),
+		);
+		const top = openUp
+			? Math.max(margin, t.top - Math.min(fullH, maxH))
+			: t.bottom;
+		menu.style.top = `${top}px`;
+		menu.style.left = `${left}px`;
+		menu.style.maxHeight = `${maxH}px`;
+		menu.style.overflowY = "auto";
+	}
+	/* v8 ignore stop */
 
 	render() {
 		if (customElements.get("ha-button-menu")) {
@@ -194,10 +245,16 @@ export class EppKebabMenu extends LitElement {
 
 	private _attachOutside() {
 		document.addEventListener("pointerdown", this._onOutside, true);
+		// Keep the fixed popover anchored when an ancestor scrolls or the window
+		// resizes (capture catches scrolls on any scroll container).
+		window.addEventListener("scroll", this._onReposition, true);
+		window.addEventListener("resize", this._onReposition);
 	}
 
 	private _detachOutside() {
 		document.removeEventListener("pointerdown", this._onOutside, true);
+		window.removeEventListener("scroll", this._onReposition, true);
+		window.removeEventListener("resize", this._onReposition);
 	}
 }
 

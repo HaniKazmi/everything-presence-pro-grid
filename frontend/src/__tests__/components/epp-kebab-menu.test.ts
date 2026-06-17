@@ -222,4 +222,25 @@ describe("epp-kebab-menu", () => {
 		);
 		expect((await detail).id).toBe("delete");
 	});
+
+	it("fallback popover is fixed-positioned so it stays reachable on short viewports", () => {
+		// The fallback .menu is position:fixed + JS-anchored to the trigger
+		// (_positionFallbackMenu) so it escapes overflow/clip ancestors, flips above
+		// the trigger when there's more room, and caps to the viewport with its own
+		// scroll. happy-dom has no layout, so guard the CSS contract here; the
+		// positioning behaviour itself is verified in-browser. Must NOT regress to
+		// position:absolute (which opened straight down, off the bottom of the page).
+		const cssText = (
+			customElements.get("epp-kebab-menu") as unknown as {
+				styles: { cssText: string };
+			}
+		).styles.cssText;
+		const menuRule = cssText.slice(
+			cssText.indexOf(".menu {"),
+			cssText.indexOf("}", cssText.indexOf(".menu {")),
+		);
+		expect(menuRule).toMatch(/position:\s*fixed/);
+		expect(menuRule).not.toMatch(/position:\s*absolute/);
+		expect(menuRule).toMatch(/box-sizing:\s*border-box/);
+	});
 });
