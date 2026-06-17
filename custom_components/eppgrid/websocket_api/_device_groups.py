@@ -229,6 +229,9 @@ async def websocket_update_device_group(
             sources=msg["sources"],
             area_id=msg["area_id"],
             zone_groups=msg["zone_groups"],
+            excluded_presence=msg["excluded_presence"],
+            excluded_zones=msg["excluded_zones"],
+            excluded_zone_groups=msg["excluded_zone_groups"],
         )
     except KeyError:
         connection.send_error(msg["id"], "not_found", "device group not found")
