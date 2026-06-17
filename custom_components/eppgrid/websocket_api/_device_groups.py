@@ -162,8 +162,10 @@ _ZONE_GROUP_SCHEMA = vol.Schema(
                 vol.Schema(
                     {
                         vol.Required("mac"): MAC_SCHEMA,
-                        # zone 0 is the "rest of room" zone; 1-7 are named zones.
-                        vol.Required("zone_index"): vol.All(int, vol.Range(min=0, max=7)),
+                        # Manual merges cover named zones 1-7 only. Zone 0
+                        # (Rest of room) is combined implicitly by the
+                        # projection and is never a stored zone_group member.
+                        vol.Required("zone_index"): vol.All(int, vol.Range(min=1, max=7)),
                     }
                 )
             ],

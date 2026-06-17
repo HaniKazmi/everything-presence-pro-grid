@@ -138,14 +138,15 @@ class TestUpdate:
         assert msg["result"]["device_group"]["name"] == "New"
         assert msg["result"]["device_group"]["sources"][0]["mac"] == "AA:BB:CC:DD:EE:FF"
 
-    async def test_update_accepts_zone_0_rest_of_room_member(
+    async def test_update_rejects_zone_0_in_zone_group_member(
         self,
         hass: HomeAssistant,
         setup_with_sources: None,
         hass_ws_client: WebSocketGenerator,
     ) -> None:
-        """A merged zone may include zone 0 (rest of room) — zone_index 0 must
-        pass schema validation."""
+        """Manual merges are zones 1-7 only; Rest of room (zone 0) is now an
+        implicit combined group synthesised by the projection, never a stored
+        zone_group member. zone_index 0 must fail schema validation."""
         client = await hass_ws_client(hass)
         await client.send_json_auto_id(
             {
@@ -173,8 +174,8 @@ class TestUpdate:
             }
         )
         msg = await client.receive_json()
-        assert msg["success"] is True
-        assert msg["result"]["device_group"]["zone_groups"][0]["members"][0]["zone_index"] == 0
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "invalid_format"
 
 
 class TestDelete:
