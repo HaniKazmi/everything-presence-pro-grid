@@ -42,5 +42,12 @@ def _to_sources(raw: list[dict]) -> list[SourceState]:
 
 @pytest.mark.parametrize("scenario", _SCENARIOS, ids=[s["name"] for s in _SCENARIOS])
 def test_projection_parity(scenario: dict) -> None:
-    result = derive_exposed_entities(_to_sources(scenario["sources"]), scenario["zone_groups"])
+    excluded = scenario.get("excluded", {})
+    result = derive_exposed_entities(
+        _to_sources(scenario["sources"]),
+        scenario["zone_groups"],
+        excluded_presence=excluded.get("presence", []),
+        excluded_zones=excluded.get("zones", []),
+        excluded_zone_groups=excluded.get("zoneGroups", []),
+    )
     assert result == scenario["expected"]

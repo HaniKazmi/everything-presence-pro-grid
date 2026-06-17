@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from ..const import MAX_DEVICE_GROUPS
 from ..const import MAX_SOURCES_PER_DEVICE_GROUP
 from ..const import MAX_ZONE_GROUPS_PER_DEVICE_GROUP
+from ..const import REST_OF_ROOM_ID
 from ..storage import EPPGridStore
 from ._aggregator import Aggregator
 
@@ -228,6 +229,10 @@ class DeviceGroupManager:
         for zg in zone_groups:
             if not zg.get("id") or not zg.get("name"):
                 raise ValueError("zone group needs id and name")
+            if zg["id"] == REST_OF_ROOM_ID:
+                raise ValueError(
+                    f"zone group id '{REST_OF_ROOM_ID}' is reserved for the implicit combined Rest of Room"
+                )
             for m in zg.get("members", []):
                 if "mac" not in m or "zone_index" not in m:
                     raise ValueError("zone group member needs mac and zone_index")

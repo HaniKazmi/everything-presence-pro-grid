@@ -264,3 +264,25 @@ class TestFullPayload:
                 sources=["AA:BB:CC:DD:EE:FF"],
                 zone_groups=[{"id": "zg1", "name": "RoR", "members": [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 0}]}],
             )
+
+    async def test_reserved_rest_of_room_id_rejected_on_create(self, manager: DeviceGroupManager) -> None:
+        """A zone_group with id 'rest_of_room' collides with the synthesised combined
+        Rest of Room and must be rejected."""
+        with pytest.raises(ValueError, match="rest_of_room"):
+            await manager.async_create(
+                name="A",
+                sources=["AA:BB:CC:DD:EE:FF"],
+                zone_groups=[{"id": "rest_of_room", "name": "My RoR", "members": []}],
+            )
+
+    async def test_reserved_rest_of_room_id_rejected_on_update(self, manager: DeviceGroupManager) -> None:
+        """Update also rejects zone_group id 'rest_of_room'."""
+        group = await manager.async_create(name="A", sources=["AA:BB:CC:DD:EE:FF"])
+        with pytest.raises(ValueError, match="rest_of_room"):
+            await manager.async_update(
+                id=group["id"],
+                name="A",
+                sources=["AA:BB:CC:DD:EE:FF"],
+                area_id=None,
+                zone_groups=[{"id": "rest_of_room", "name": "My RoR", "members": []}],
+            )

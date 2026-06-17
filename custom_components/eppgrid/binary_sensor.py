@@ -126,7 +126,7 @@ class _PlatformProxy:
             uid = f"eppgrid_device_group_{group['id']}_zone_group_{zg_id}"
             if zg_id == REST_OF_ROOM_ID:
                 # Implicit combined Rest of Room — not in stored zone_groups.
-                zg = {"id": REST_OF_ROOM_ID, "name": "Rest of Room"}
+                zg = {"id": REST_OF_ROOM_ID}
                 name = REST_OF_ROOM_NAME
             else:
                 zg = stored_zgs[zg_id]
