@@ -1769,8 +1769,9 @@ export class EPPGridPanel extends LitElement {
     .save-cancel-bar {
       display: flex;
       justify-content: space-between;
-      padding: 12px;
-      border-top: 1px solid var(--divider-color, #eee);
+      align-items: center;
+      padding: var(--epp-space-3, 12px);
+      border-top: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
       margin-top: auto;
     }
 

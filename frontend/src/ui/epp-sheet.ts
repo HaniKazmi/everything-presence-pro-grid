@@ -78,13 +78,15 @@ export class EppSheet extends LitElement {
     .body[hidden] { display: none; }
     .actions {
       flex-shrink: 0;
+      /* Column flex so the slotted .save-cancel-bar stretches to the full panel
+         width (cross-axis), letting ITS space-between spread Cancel-left/Save-right
+         like the settings / device-group editor bars. The previous row flex with
+         justify-content:flex-end shrink-wrapped the bar to content width and pushed
+         it right, so Cancel/Save sat close together. No padding/border here either:
+         the bar carries its own 12px padding + border-top divider (adding them here
+         double-padded the bar and rendered two stacked lines). */
       display: flex;
-      justify-content: flex-end;
-      gap: var(--epp-space-3, 12px);
-      padding: var(--epp-space-2, 8px) var(--epp-space-3, 12px);
-      /* No border-top here: the sole consumer slots the editor's
-         .save-cancel-bar, which carries its own border-top divider. A border
-         here too rendered TWO stacked lines above the Save/Cancel row. */
+      flex-direction: column;
     }
     .actions[hidden] { display: none; }
 

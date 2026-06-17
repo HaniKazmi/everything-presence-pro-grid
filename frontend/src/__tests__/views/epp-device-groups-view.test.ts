@@ -564,13 +564,12 @@ describe("desktop max-width centering", () => {
 		expect(cssText).toContain("margin: 0 auto");
 	});
 
-	it("scrolls the groups list under a fixed heading on desktop", () => {
-		// Desktop bounds the view (flex:1 of the height-bounded .tab-layout child)
-		// into a flex-column chain so the .card-content list scrolls while the
-		// "Device Groups" .card-header stays fixed — rather than scrolling the whole
-		// view. Guarded via cssText since happy-dom has no layout. The bounding lives
-		// in a min-width:820px block so mobile (which scrolls the view as a whole) is
-		// untouched.
+	it("scrolls the groups list under the fixed heading on desktop (capped, on grey)", () => {
+		// Desktop shows a content-sized card on the grey page (matching the flasher /
+		// Installed Devices), NOT a full-height white sheet. The group list scrolls
+		// inside .group-list (capped via max-height, like the flasher's .device-list)
+		// under the fixed "Device Groups" card-header. Guarded via cssText since
+		// happy-dom has no layout; the cap lives in the min-width:820px block.
 		const DeviceGroupsViewClass = customElements.get(
 			"epp-device-groups-view",
 		) as any;
@@ -579,19 +578,12 @@ describe("desktop max-width centering", () => {
 			.join("\n");
 		const desktop = cssText.slice(cssText.indexOf("@media (min-width: 820px)"));
 		expect(desktop).toContain("@media (min-width: 820px)");
-		const cardContentIdx = desktop.indexOf(".card-content");
-		expect(cardContentIdx).toBeGreaterThan(-1);
-		const cardContentRule = desktop.slice(
-			cardContentIdx,
-			desktop.indexOf("}", cardContentIdx),
-		);
-		expect(cardContentRule).toMatch(/overflow-y:\s*auto/);
-		expect(cardContentRule).toMatch(/min-height:\s*0/);
-		const headerIdx = desktop.indexOf(".card-header");
-		const headerRule = desktop.slice(
-			headerIdx,
-			desktop.indexOf("}", headerIdx),
-		);
-		expect(headerRule).toMatch(/flex-shrink:\s*0/);
+		const listIdx = desktop.indexOf(".group-list");
+		expect(listIdx).toBeGreaterThan(-1);
+		const listRule = desktop.slice(listIdx, desktop.indexOf("}", listIdx));
+		expect(listRule).toMatch(/overflow-y:\s*auto/);
+		expect(listRule).toMatch(/max-height:/);
+		// The card itself no longer fills the full height (no flex:1 on ha-card).
+		expect(desktop).not.toMatch(/ha-card\s*\{[^}]*flex:\s*1/);
 	});
 });

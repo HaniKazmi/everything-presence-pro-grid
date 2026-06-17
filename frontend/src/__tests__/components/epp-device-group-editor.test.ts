@@ -634,6 +634,8 @@ describe("desktop scroll + pinned actions", () => {
 			cssText.indexOf("}", cssText.indexOf(".actions {")),
 		);
 		expect(actions).toMatch(/flex-shrink:\s*0/);
+		// Consistent with the editor sidebar / settings bars: a top divider line.
+		expect(actions).toMatch(/border-top:\s*1px solid/);
 		expect(cssText).not.toContain("@media (max-width: 819px)");
 	});
 });

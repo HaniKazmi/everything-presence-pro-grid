@@ -70,7 +70,6 @@ export class EppDeviceGroupEditor extends LitElement {
 			padding: var(--epp-space-4, 16px);
 			display: flex;
 			flex-direction: column;
-			gap: var(--epp-space-4, 16px);
 			flex: 1;
 			min-height: 0;
 		}
@@ -145,8 +144,14 @@ export class EppDeviceGroupEditor extends LitElement {
 			gap: var(--epp-space-2, 8px);
 			justify-content: space-between;
 			align-items: center;
-			margin-top: var(--epp-space-1, 4px);
 			flex-shrink: 0;
+			/* Consistent footer with the editor sidebar / settings Save/Cancel bars:
+			   a transparent footer with a 1px top divider. Negative margins break it
+			   out of .card-content's 16px padding so the line spans the card width;
+			   the buttons re-inset via padding. */
+			border-top: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+			margin: 0 calc(-1 * var(--epp-space-4, 16px)) calc(-1 * var(--epp-space-4, 16px));
+			padding: var(--epp-space-3, 12px) var(--epp-space-4, 16px);
 		}
 
 	`,

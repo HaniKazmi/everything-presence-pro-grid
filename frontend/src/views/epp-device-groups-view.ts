@@ -36,6 +36,11 @@ export class EppDeviceGroupsView extends LitElement {
 			flex-direction: column;
 			gap: var(--epp-space-3, 12px);
 		}
+		.group-list {
+			display: flex;
+			flex-direction: column;
+			gap: var(--epp-space-3, 12px);
+		}
 		/* epp-card supplies the surface (border/radius/padding); .group-card is the
 		   flex row laid out inside its default slot. */
 		.group-card {
@@ -112,11 +117,13 @@ export class EppDeviceGroupsView extends LitElement {
 			}
 		}
 
-		/* Desktop: scroll the groups list under a fixed "Device Groups" heading
-		   instead of scrolling the whole view. The view is flex:1 of the height-
-		   bounded .tab-layout child, so a flex-column chain (host → .content →
-		   ha-card → .card-content) lets .card-content own the scroll while the
-		   header stays put. The reading column keeps its centered max-width. */
+		/* Desktop: a content-sized card on the grey page (matching the Installed
+		   Devices / flasher view), NOT a full-height white sheet. The group list
+		   scrolls inside .group-list (capped, like the flasher's .device-list) under
+		   the fixed "Device Groups" header, with the Add button below it. :host and
+		   .content stay a bounded flex column so the EDITOR mode (which reuses
+		   .content) can fill the height and pin its Cancel/Save; in list mode the
+		   card just sits at the top of that column with grey below. */
 		@media (min-width: 820px) {
 			:host {
 				display: flex;
@@ -131,18 +138,8 @@ export class EppDeviceGroupsView extends LitElement {
 				width: 100%;
 				box-sizing: border-box;
 			}
-			ha-card {
-				display: flex;
-				flex-direction: column;
-				min-height: 0;
-				flex: 1;
-			}
-			.card-header {
-				flex-shrink: 0;
-			}
-			.card-content {
-				flex: 1;
-				min-height: 0;
+			.group-list {
+				max-height: 40vh;
 				overflow-y: auto;
 			}
 		}
@@ -215,11 +212,13 @@ export class EppDeviceGroupsView extends LitElement {
 				<ha-card>
 					<div class="card-header">Device Groups</div>
 					<div class="card-content">
-						${
-							this._groups.length === 0
-								? html`<p class="empty">No device groups yet.</p>`
-								: this._groups.map((g) => this._renderGroupCard(g))
-						}
+						<div class="group-list">
+							${
+								this._groups.length === 0
+									? html`<p class="empty">No device groups yet.</p>`
+									: this._groups.map((g) => this._renderGroupCard(g))
+							}
+						</div>
 						<div class="footer">
 							<epp-button
 								variant="primary"
