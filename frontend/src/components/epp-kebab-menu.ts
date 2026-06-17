@@ -1,4 +1,3 @@
-import { mdiDotsVertical } from "@mdi/js";
 import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 import "../ui/epp-icon-button.js";
@@ -24,9 +23,13 @@ function isDivider(e: KebabEntry): e is KebabDivider {
 }
 
 /**
- * Small kebab (⋮) overflow menu. Uses HA's native `ha-button-menu` +
- * `ha-list-item` when registered (the panel case), and falls back to a
- * self-contained popover on older HA / under happy-dom unit tests.
+ * Small kebab (⋮) overflow menu — a self-contained popover that depends on no
+ * native HA menu element. HA removed `ha-button-menu` in 2026.02 (the
+ * `mwc-*` → webawesome migration) and the modern replacements churn across
+ * versions, so a self-contained widget stays stable across HA releases. The
+ * only HA element it touches is the eagerly-registered `ha-icon`. The popover is
+ * `position:fixed` and JS-anchored to the trigger (see `_positionFallbackMenu`)
+ * so it stays reachable on short viewports.
  *
  * Emits `item-select` CustomEvent<{ id: string }>.
  */
@@ -76,7 +79,6 @@ export class EppKebabMenu extends LitElement {
 			border: none;
 			border-top: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
 		}
-		ha-list-item.danger { color: var(--epp-danger, var(--error-color, #f44336)); }
 	`;
 
 	@property({ attribute: false }) items: KebabEntry[] = [];
@@ -131,63 +133,6 @@ export class EppKebabMenu extends LitElement {
 	/* v8 ignore stop */
 
 	render() {
-		if (customElements.get("ha-button-menu")) {
-			return this._renderNative();
-		}
-		return this._renderFallback();
-	}
-
-	private _renderNative() {
-		return html`
-			<ha-button-menu
-				fixed
-				@action=${this._onNativeAction}
-				@closed=${(e: Event) => e.stopPropagation()}
-			>
-				<ha-icon-button
-					slot="trigger"
-					data-testid="kebab-trigger"
-					.path=${mdiDotsVertical}
-				></ha-icon-button>
-				${this.items.map((entry) =>
-					isDivider(entry)
-						? html`<li
-								divider
-								role="separator"
-								data-testid="kebab-divider"
-							></li>`
-						: html`<ha-list-item
-								data-testid="kebab-item"
-								data-id=${entry.id}
-								graphic=${entry.icon ? "icon" : nothing}
-								class=${entry.danger ? "danger" : ""}
-							>
-								${
-									entry.icon
-										? html`<ha-icon
-												slot="graphic"
-												icon=${entry.icon}
-											></ha-icon>`
-										: nothing
-								}
-								${entry.label}
-							</ha-list-item>`,
-				)}
-			</ha-button-menu>
-		`;
-	}
-
-	// ha-button-menu's `action.index` counts only its focusable list items
-	// (ha-list-item), so map it against the selectable entries — dividers,
-	// which are plain <li>, are excluded.
-	private _onNativeAction(e: CustomEvent<{ index: number }>) {
-		e.stopPropagation();
-		const selectable = this.items.filter((x): x is KebabItem => !isDivider(x));
-		const item = selectable[e.detail.index];
-		if (item) this._emit(item.id);
-	}
-
-	private _renderFallback() {
 		return html`
 			<epp-icon-button
 				data-testid="kebab-trigger"
