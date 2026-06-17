@@ -338,14 +338,31 @@ describe("epp-device-groups-view", () => {
 		) as HTMLElement;
 		editor.dispatchEvent(
 			new CustomEvent("save", {
-				detail: { id: null, name: "New", sources: ["AA"], area_id: "a1" },
+				detail: {
+					id: null,
+					name: "New",
+					sources: ["AA"],
+					area_id: "a1",
+					zone_groups: [],
+					excluded_presence: ["motion"],
+					excluded_zones: ["z1"],
+					excluded_zone_groups: ["zg1"],
+				},
 				bubbles: true,
 				composed: true,
 			}),
 		);
 		await el.updateComplete;
 		await Promise.resolve();
-		expect(ctrl.create).toHaveBeenCalledWith("New", ["AA"], "a1");
+		expect(ctrl.create).toHaveBeenCalledWith({
+			name: "New",
+			sources: ["AA"],
+			area_id: "a1",
+			zone_groups: [],
+			excluded_presence: ["motion"],
+			excluded_zones: ["z1"],
+			excluded_zone_groups: ["zg1"],
+		});
 		await el.updateComplete;
 		expect(el.shadowRoot!.querySelector("epp-device-group-editor")).toBeNull();
 	});
@@ -366,6 +383,9 @@ describe("epp-device-groups-view", () => {
 			sources: ["AA"],
 			area_id: null,
 			zone_groups: [],
+			excluded_presence: ["motion"],
+			excluded_zones: ["z2"],
+			excluded_zone_groups: ["zg2"],
 		};
 		editor.dispatchEvent(
 			new CustomEvent("save", {

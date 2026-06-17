@@ -381,7 +381,15 @@ export class EppDeviceGroupsView extends LitElement {
 			if (d.id) {
 				await this.controller.update(d);
 			} else {
-				await this.controller.create(d.name, d.sources, d.area_id);
+				await this.controller.create({
+					name: d.name,
+					sources: d.sources,
+					area_id: d.area_id,
+					zone_groups: d.zone_groups,
+					excluded_presence: d.excluded_presence,
+					excluded_zones: d.excluded_zones,
+					excluded_zone_groups: d.excluded_zone_groups,
+				});
 			}
 			this._closeEditor();
 		} catch (err) {
