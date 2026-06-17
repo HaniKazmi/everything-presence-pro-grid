@@ -498,7 +498,8 @@ export class EppSensorList extends LitElement {
 	}
 
 	// Zones offered with checkboxes while merging: the ungrouped index-≥1 zones,
-	// plus — when editing — the group's own current members.
+	// plus — when editing — the group's own current members, all sorted together
+	// so same-named zones remain adjacent (numeric-aware by zone name, then device).
 	private _checkableZones(): ZoneEntry[] {
 		const zones = this._passthroughZones();
 		const g =
@@ -508,7 +509,11 @@ export class EppSensorList extends LitElement {
 		if (g) {
 			for (const m of g.members) zones.push(this._resolveMember(m));
 		}
-		return zones;
+		return zones.sort(
+			(a, b) =>
+				a.zoneName.localeCompare(b.zoneName, undefined, { numeric: true }) ||
+				a.deviceName.localeCompare(b.deviceName, undefined, { numeric: true }),
+		);
 	}
 
 	private _startEdit(g: DeviceGroupZoneGroup) {
@@ -542,6 +547,7 @@ export class EppSensorList extends LitElement {
 	}
 
 	private _confirmMerge() {
+		if (!this._canMerge()) return;
 		const m = this._merge;
 		if (!m) return;
 		const members = [...m.checked].map(parseKey);
@@ -603,7 +609,9 @@ function toggleInList<T>(
 	return list;
 }
 
-customElements.define("epp-sensor-list", EppSensorList);
+if (!customElements.get("epp-sensor-list")) {
+	customElements.define("epp-sensor-list", EppSensorList);
+}
 
 declare global {
 	interface HTMLElementTagNameMap {

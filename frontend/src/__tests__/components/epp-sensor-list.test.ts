@@ -6,6 +6,7 @@ import type {
 	DeviceGroupZoneGroup,
 	DeviceGroupZoneMember,
 } from "../../types.js";
+import { REST_OF_ROOM_NAME } from "../../types.js";
 
 async function fixture(): Promise<EppSensorList> {
 	const el = document.createElement("epp-sensor-list") as EppSensorList;
@@ -196,7 +197,7 @@ describe("epp-sensor-list — list mode", () => {
 		await el.updateComplete;
 		const rows = $all(el, '[data-testid="rest-of-room-row"]');
 		expect(rows.length).toBe(1);
-		expect(rows[0].textContent).toContain("Zone Rest of Room");
+		expect(rows[0].textContent).toContain(REST_OF_ROOM_NAME);
 		expect(rows[0].textContent).toContain("combined");
 		const t = $(el, '[data-testid="rest-of-room-toggle"]') as HTMLElement & {
 			checked: boolean;
@@ -610,6 +611,26 @@ describe("epp-sensor-list — merge mode", () => {
 		const g2 = groups.find((g) => g.id === "g2")!;
 		expect(g2.name).toBe("Couch");
 		expect(g2.members).toEqual([{ mac: "BB", zone_index: 3 }]);
+	});
+
+	it("edit mode: editing group's own members interleave alphabetically with other offered zones", async () => {
+		// g1 owns BB|2 (Desk · Right). Ungrouped: AA|2 (Desk · Left), BB|3 (Couch · Right).
+		// Full sorted order: Couch · Right, Desk · Left, Desk · Right.
+		// Before fix, BB|2 was appended raw → order was Couch, Desk·Left, Desk·Right
+		// only if the editing member happened to sort last, but the append skipped the sort.
+		const el = await fixture();
+		el.sources = TWO_SOURCES;
+		el.zoneGroups = [
+			{ id: "g1", name: "Bed", members: [{ mac: "BB", zone_index: 2 }] },
+		];
+		await el.updateComplete;
+		kebabSelect(el, "edit", 0);
+		await el.updateComplete;
+		const keys = $all(el, '[data-testid="merge-checkbox"]').map((b) =>
+			b.getAttribute("data-key"),
+		);
+		// All three zones present, fully sorted: Couch (BB|3), Desk·Left (AA|2), Desk·Right (BB|2).
+		expect(keys).toEqual(["BB|3", "AA|2", "BB|2"]);
 	});
 
 	it("unchecking a zone drops it back below the merge threshold", async () => {
