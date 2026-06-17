@@ -1,4 +1,4 @@
-import { nothing, render } from "lit";
+import { html, nothing, render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
@@ -733,6 +733,26 @@ describe("render() preserves settings view across transient device states", () =
 		const str = JSON.stringify(result);
 
 		expect(str).toContain("epp-settings-view");
+	});
+
+	it("makes the settings view inert while a status banner overlays it", () => {
+		// The banner overlay covers + DISABLES the still-mounted settings view.
+		// The opaque overlay only blocks pointer input (and only if the theme keeps
+		// it opaque); `inert` also blocks keyboard focus/tabbing into the obscured
+		// form, so the "disabled" claim holds for real. Edit state is preserved
+		// (the view stays mounted); inert lifts when the banner clears.
+		const a = createPanel() as any;
+		const withBanner = renderTo(
+			a._renderSettings(html`<div class="protocol-fullpage"></div>`),
+		);
+		const covered = withBanner.querySelector("epp-settings-view");
+		expect(covered).not.toBeNull();
+		expect(covered!.hasAttribute("inert")).toBe(true);
+		// No banner (default arg `nothing`) -> the view is fully interactive.
+		const noBanner = renderTo(a._renderSettings());
+		expect(
+			noBanner.querySelector("epp-settings-view")!.hasAttribute("inert"),
+		).toBe(false);
 	});
 
 	it("falls back to the full-page HA-reconnecting banner when not in settings view", () => {

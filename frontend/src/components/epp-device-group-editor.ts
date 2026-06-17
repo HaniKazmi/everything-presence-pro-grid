@@ -74,10 +74,10 @@ export class EppDeviceGroupEditor extends LitElement {
 			min-height: 0;
 		}
 		/* The form rows live in .editor-scroll, which carries the column layout +
-		   16px row gap that .card-content used to apply directly. On desktop
-		   .card-content has two children (.editor-scroll, .actions) with the same
-		   16px gap between them, so the spacing above the actions bar is unchanged
-		   (16px gap + .actions margin-top 4px, exactly as before the wrapper). */
+		   16px row gap that .card-content used to apply directly (before .card-content
+		   became the fill-height flex parent for the scroll region + pinned actions).
+		   .editor-scroll fills the card and scrolls; the .actions footer pins below it
+		   with its own top divider. */
 		.editor-scroll {
 			display: flex;
 			flex-direction: column;

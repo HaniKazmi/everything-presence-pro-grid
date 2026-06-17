@@ -333,14 +333,6 @@ export const panelStyles = css`
     .panel-header ha-select {
       width: 100%;
     }
-    /* Let the settings view fill the .panel's remaining height (below the
-       header/banner) so its Save/Cancel bar reaches the viewport bottom and
-       the accordion list scrolls internally. (Mobile @media only — desktop is
-       byte-identical.) */
-    .panel > epp-settings-view {
-      flex: 1;
-      min-height: 0;
-    }
     /* The device-groups view lives directly under .tab-layout (not .panel), so
        it already gets flex:1 + overflow:auto from the .tab-layout > :not(.tab-bar)
        rule. Add min-height:0 so its internal flex column can establish a
@@ -2929,6 +2921,7 @@ export class EPPGridPanel extends LitElement {
         ${this._renderHeader()}
         <div class="settings-stage">
         <epp-settings-view
+          ?inert=${statusBanner !== nothing}
           .sensorState=${this._sensorState}
           .targetAutoDistance=${this._targetAutoDistance}
           .targetMaxDistance=${this._targetMaxDistance}

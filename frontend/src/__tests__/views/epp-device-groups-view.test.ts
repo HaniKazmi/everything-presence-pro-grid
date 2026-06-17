@@ -567,10 +567,10 @@ describe("desktop max-width centering", () => {
 	it("desktop is a content-sized card on grey, with the list NOT in an overflow container", () => {
 		// Desktop shows a content-sized card on the grey page (matching the flasher /
 		// Installed Devices), NOT a full-height white sheet (no flex:1 on ha-card).
-		// CRITICAL: the group list is deliberately NOT capped/overflow — a scroll
-		// container would clip a kebab menu opening from a group card (the kebab's
-		// fallback popover is absolutely positioned). The view scrolls as a whole if
-		// the list is long. Guarded via cssText since happy-dom has no layout.
+		// The group list is deliberately NOT given its own overflow-scroll cap — the
+		// whole view scrolls if the list is long (and the kebab's fixed-position
+		// popover escapes overflow ancestors anyway). Guarded via cssText since
+		// happy-dom has no layout.
 		const DeviceGroupsViewClass = customElements.get(
 			"epp-device-groups-view",
 		) as any;

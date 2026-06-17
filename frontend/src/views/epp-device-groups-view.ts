@@ -18,7 +18,15 @@ export class EppDeviceGroupsView extends LitElement {
 	static styles = [
 		chipStyles,
 		css`
-		:host { display: block; padding: 16px; }
+		/* A bounded flex column at all widths: lets EDITOR mode (which reuses
+		   .content) fill the height and pin its Cancel/Save. The per-width @media
+		   blocks below only tune .content's width cap. */
+		:host {
+			display: flex;
+			flex-direction: column;
+			min-height: 0;
+			padding: 16px;
+		}
 		.content {
 			max-width: var(--epp-content-max, 720px);
 			margin: 0 auto;
@@ -102,11 +110,6 @@ export class EppDeviceGroupsView extends LitElement {
 		   rules so it wins on source order (mobile @media before base rules go
 		   silently dead). */
 		@media (max-width: 819px) {
-			:host {
-				display: flex;
-				flex-direction: column;
-				min-height: 0;
-			}
 			.content {
 				flex: 1;
 				min-height: 0;
@@ -119,19 +122,13 @@ export class EppDeviceGroupsView extends LitElement {
 
 		/* Desktop: a content-sized card on the grey page (matching the Installed
 		   Devices / flasher view), NOT a full-height white sheet. The card sizes to
-		   its content and the whole view scrolls if the group list is long — the
-		   list is deliberately NOT capped/overflow here: a kebab menu opening from a
-		   group card would be clipped by an overflow scroll container (the kebab's
-		   fallback popover is absolutely positioned). :host and .content stay a
-		   bounded flex column so the EDITOR mode (which reuses .content) can fill the
-		   height and pin its Cancel/Save; in list mode the card sits at the top of
-		   that column with grey below. */
+		   its content and the whole view scrolls if the group list is long; the list
+		   is deliberately NOT given its own overflow scroll cap — the whole view
+		   scrolling is enough (and the kebab's fixed-position popover escapes any
+		   overflow ancestor anyway). .content stays a bounded flex column so EDITOR
+		   mode (which reuses it) can fill the height and pin its Cancel/Save; in list
+		   mode the card sits at the top of that column with grey below. */
 		@media (min-width: 820px) {
-			:host {
-				display: flex;
-				flex-direction: column;
-				min-height: 0;
-			}
 			.content {
 				flex: 1;
 				min-height: 0;
