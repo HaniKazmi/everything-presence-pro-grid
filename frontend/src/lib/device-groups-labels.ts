@@ -1,4 +1,5 @@
 import type { KebabEntry } from "../components/epp-kebab-menu.js";
+import type { PresenceSlot } from "../types.js";
 
 /** Edit / Delete kebab items, shared by the device-group list cards and the
  *  merged-zone boxes so both per-row menus render identically. */
@@ -55,4 +56,31 @@ export function exposedSensorChips(exposed: {
 			}),
 	);
 	return ranked.map(({ name, kind }) => ({ name, kind }));
+}
+
+/** Which member devices provide a given combined presence slot, and which
+ *  don't (have it disabled in HA). Display names, source order preserved.
+ *  UI-only: the editor shows a presence row when `provided.length >= 1`. */
+export interface PresenceCoverage {
+	provided: string[];
+	missing: string[];
+}
+
+export function presenceCoverage(
+	slot: PresenceSlot,
+	sources: { name: string; enabled_presence: string[] }[],
+): PresenceCoverage {
+	const provided: string[] = [];
+	const missing: string[] = [];
+	for (const src of sources) {
+		if (src.enabled_presence.includes(slot)) provided.push(src.name);
+		else missing.push(src.name);
+	}
+	return { provided, missing };
+}
+
+/** Label for a passthrough zone row: "<zone> · <device>". Merged-zone rows
+ *  label with the group name + member device names (built by the component). */
+export function zoneRowLabel(zoneName: string, deviceName: string): string {
+	return `${zoneName} · ${deviceName}`;
 }
