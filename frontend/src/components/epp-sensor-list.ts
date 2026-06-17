@@ -1,7 +1,9 @@
-import { css, html, LitElement } from "lit";
+import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
 import { chipStyles } from "../styles.js";
+import "../ui/epp-button.js";
+import "../ui/epp-field.js";
 import "../ui/epp-toggle.js";
 import "./epp-kebab-menu.js";
 import {
@@ -173,35 +175,76 @@ export class EppSensorList extends LitElement {
 	@property({ attribute: false }) excludedZones: DeviceGroupZoneMember[] = [];
 	@property({ attribute: false }) excludedZoneGroups: string[] = [];
 
+	@state() private _mode: "list" | "merge" = "list";
+	// In-flight merge selection/name; only meaningful while `_mode === "merge"`.
 	@state() private _merge: MergeDraft | null = null;
 
 	render() {
+		const merging = this._mode === "merge";
 		const presenceSlots = PRESENCE_SLOTS.filter((slot) =>
 			this.sources.some((s) => s.enabled_presence.includes(slot)),
 		);
 		const showRoom = this.sources.some((s) =>
 			s.zones.some((z) => z.index === 0 && z.enabled),
 		);
-		const zones = this._passthroughZones();
+		// While merging, every checkable index-≥1 zone (ungrouped + the edited
+		// group's own members) becomes a checkbox row; in list mode only the
+		// ungrouped passthrough zones show, each with its opt-out toggle.
+		const zones = merging ? this._checkableZones() : this._passthroughZones();
 		const rows: unknown[] = [];
-		for (const slot of presenceSlots) rows.push(this._renderPresence(slot));
-		if (showRoom) rows.push(this._renderRoom());
-		for (const z of zones) rows.push(this._renderZone(z));
-		for (const g of this.zoneGroups) rows.push(this._renderMergedGroup(g));
+		for (const slot of presenceSlots)
+			rows.push(this._renderPresence(slot, merging));
+		if (showRoom) rows.push(this._renderRoom(merging));
+		for (const z of zones)
+			rows.push(merging ? this._renderZoneCheck(z) : this._renderZone(z));
+		// Merged-zone rows stay visible (with their kebab) only in list mode.
+		if (!merging)
+			for (const g of this.zoneGroups) rows.push(this._renderMergedGroup(g));
 		return html`
 			${this._renderHeader()}
 			${rows.length ? html`<div class="sensor-box">${rows}</div>` : html`<p class="empty">No sensors.</p>`}
+			${merging ? this._renderMergeControls() : nothing}
 		`;
 	}
 
 	private _renderHeader() {
-		// Segmented control (List ⇄ Merge zones) is added in Task D3.
+		const merging = this._mode === "merge";
 		return html`<div class="header">
 			<h4>Sensors</h4>
+			<div class="segmented" role="tablist">
+				<button
+					type="button"
+					data-testid="mode-list"
+					class=${merging ? "" : "active"}
+					@click=${this._toList}
+				>
+					List
+				</button>
+				<button
+					type="button"
+					data-testid="mode-merge"
+					class=${merging ? "active" : ""}
+					@click=${this._toMerge}
+				>
+					Merge zones
+				</button>
+			</div>
 		</div>`;
 	}
 
-	private _renderPresence(slot: PresenceSlot) {
+	private _toList() {
+		this._mode = "list";
+		this._merge = null;
+	}
+
+	private _toMerge() {
+		this._mode = "merge";
+		this._merge = { editingId: null, name: "", checked: new Set() };
+	}
+
+	// Presence + Rest-of-room rows stay visible while merging but their toggles
+	// are disabled and the row greyed — only zones are mergeable.
+	private _renderPresence(slot: PresenceSlot, disabled: boolean) {
 		const checked = !this.excludedPresence.includes(slot);
 		const cov = presenceCoverage(slot, this.sources);
 		const coverage = [
@@ -209,7 +252,7 @@ export class EppSensorList extends LitElement {
 			...cov.missing.map((n) => `${n} ✗ off in HA`),
 		].join(" · ");
 		return html`<div
-			class="sensor-row"
+			class="sensor-row ${disabled ? "disabled" : ""}"
 			data-testid="presence-row"
 			data-slot=${slot}
 		>
@@ -222,6 +265,7 @@ export class EppSensorList extends LitElement {
 			<epp-toggle
 				data-testid="presence-toggle"
 				.checked=${checked}
+				.disabled=${disabled}
 				@value-changed=${(e: CustomEvent<{ value: boolean }>) => {
 					e.stopPropagation();
 					this.excludedPresence = toggleInList(
@@ -236,9 +280,12 @@ export class EppSensorList extends LitElement {
 		</div>`;
 	}
 
-	private _renderRoom() {
+	private _renderRoom(disabled: boolean) {
 		const checked = !this.excludedZoneGroups.includes(REST_OF_ROOM_ID);
-		return html`<div class="sensor-row" data-testid="rest-of-room-row">
+		return html`<div
+			class="sensor-row ${disabled ? "disabled" : ""}"
+			data-testid="rest-of-room-row"
+		>
 			<div class="sensor-main">
 				<div class="sensor-label">
 					<span class="sensor-name">${REST_OF_ROOM_NAME}</span>
@@ -248,6 +295,7 @@ export class EppSensorList extends LitElement {
 			<epp-toggle
 				data-testid="rest-of-room-toggle"
 				.checked=${checked}
+				.disabled=${disabled}
 				@value-changed=${(e: CustomEvent<{ value: boolean }>) => {
 					e.stopPropagation();
 					this.excludedZoneGroups = toggleInList(
@@ -292,6 +340,87 @@ export class EppSensorList extends LitElement {
 				}}
 			></epp-toggle>
 		</div>`;
+	}
+
+	// A zone row in merge mode: the same label, but a multi-select checkbox
+	// instead of the opt-out toggle (epp-toggle is single on/off, not for
+	// multi-select — those stay ha-checkbox per the design system).
+	private _renderZoneCheck(z: ZoneEntry) {
+		const k = zoneKey(z.mac, z.index);
+		const checked = this._merge?.checked.has(k) ?? false;
+		const onChange = (e: Event) =>
+			this._toggleCheck(k, (e.target as HTMLInputElement).checked);
+		const box = customElements.get("ha-checkbox")
+			? html`<ha-checkbox
+					data-testid="merge-checkbox"
+					data-key=${k}
+					.checked=${checked}
+					@change=${onChange}
+				></ha-checkbox>`
+			: html`<input
+					type="checkbox"
+					data-testid="merge-checkbox"
+					data-key=${k}
+					.checked=${checked}
+					@change=${onChange}
+				/>`;
+		return html`<label
+			class="sensor-row"
+			data-testid="zone-row"
+			data-key=${k}
+		>
+			<div class="sensor-main">
+				<div class="sensor-label">
+					<span class="sensor-name"
+						>${zoneRowLabel(z.zoneName, z.deviceName)}</span
+					>
+				</div>
+			</div>
+			${box}
+		</label>`;
+	}
+
+	private _renderMergeControls() {
+		const m = this._merge as MergeDraft;
+		return html`
+			${this._renderNameField(m.name)}
+			<div class="actions">
+				<epp-button
+					variant="text"
+					data-testid="merge-cancel"
+					@click=${this._cancelMerge}
+					>Cancel</epp-button
+				>
+				<epp-button
+					variant="primary"
+					data-testid="merge-confirm"
+					.disabled=${!this._canMerge()}
+					@click=${this._confirmMerge}
+					>${m.editingId ? "Save" : "Merge"}</epp-button
+				>
+			</div>
+		`;
+	}
+
+	// Merged-zone name. epp-field picks ha-input / ha-textfield / native input
+	// internally and emits one normalized `value-changed`.
+	private _renderNameField(value: string) {
+		return html`
+			<epp-field
+				class="merge-name"
+				data-testid="merge-name"
+				type="text"
+				.label=${"Merged zone name"}
+				.value=${value}
+				@value-changed=${(e: CustomEvent) => {
+					e.stopPropagation();
+					this._merge = {
+						...(this._merge as MergeDraft),
+						name: e.detail.value as string,
+					};
+				}}
+			></epp-field>
+		`;
 	}
 
 	private _renderMergedGroup(g: DeviceGroupZoneGroup) {
@@ -383,6 +512,7 @@ export class EppSensorList extends LitElement {
 	}
 
 	private _startEdit(g: DeviceGroupZoneGroup) {
+		this._mode = "merge";
 		this._merge = {
 			editingId: g.id,
 			name: g.name,
@@ -407,6 +537,7 @@ export class EppSensorList extends LitElement {
 	}
 
 	private _cancelMerge() {
+		this._mode = "list";
 		this._merge = null;
 	}
 
@@ -424,6 +555,7 @@ export class EppSensorList extends LitElement {
 			const id = `zg_${crypto.randomUUID().slice(0, 8)}`;
 			next = [...this.zoneGroups, { id, name, members }];
 		}
+		this._mode = "list";
 		this._merge = null;
 		this._emit(next);
 	}

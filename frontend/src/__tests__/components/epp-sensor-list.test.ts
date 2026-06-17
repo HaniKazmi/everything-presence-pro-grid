@@ -360,6 +360,51 @@ describe("epp-sensor-list — list mode", () => {
 		expect(await detail).toEqual([]);
 	});
 
+	it("omits disabled index>=1 zones from the passthrough rows", async () => {
+		const el = await fixture();
+		el.sources = [
+			{
+				mac: "AA",
+				name: "Left",
+				available: true,
+				enabled_presence: ["occupancy"],
+				zones: [
+					{ index: 2, name: "Desk", enabled: true },
+					{ index: 4, name: "Hidden", enabled: false },
+				],
+			},
+		];
+		el.zoneGroups = [];
+		await el.updateComplete;
+		const keys = $all(el, '[data-testid="zone-row"]').map((r) =>
+			r.getAttribute("data-key"),
+		);
+		expect(keys).toEqual(["AA|2"]);
+	});
+
+	it("labels a merged member from an unknown device gracefully", async () => {
+		const el = await fixture();
+		el.sources = TWO_SOURCES;
+		el.zoneGroups = [
+			{ id: "g1", name: "Mixed", members: [{ mac: "ZZ", zone_index: 9 }] },
+		];
+		await el.updateComplete;
+		const text = $(el, '[data-testid="merged-zone"]')!.textContent!;
+		expect(text).toContain("Unknown device");
+	});
+
+	it("renders a merged zone with no members as just its name", async () => {
+		const el = await fixture();
+		el.sources = TWO_SOURCES;
+		el.zoneGroups = [{ id: "g1", name: "Empty", members: [] }];
+		await el.updateComplete;
+		const text = $(el, '[data-testid="merged-zone"]')!
+			.textContent!.replace(/\s+/g, " ")
+			.trim();
+		expect(text).toContain("Empty");
+		expect(text).not.toContain("·");
+	});
+
 	// Keep last in this block: registering ha-switch is global for the test env.
 	it("uses ha-switch for presence/zone/RoR toggles when registered", async () => {
 		if (!customElements.get("ha-switch")) {
@@ -376,5 +421,222 @@ describe("epp-sensor-list — list mode", () => {
 		expect(
 			toggles.every((t) => t.shadowRoot!.querySelector("ha-switch") !== null),
 		).toBe(true);
+	});
+});
+
+async function startMerge(el: EppSensorList): Promise<void> {
+	($(el, '[data-testid="mode-merge"]') as HTMLElement).click();
+	await el.updateComplete;
+}
+async function setMergeName(el: EppSensorList, name: string): Promise<void> {
+	const field = $(el, '[data-testid="merge-name"]') as HTMLElement;
+	field.dispatchEvent(
+		new CustomEvent("value-changed", {
+			detail: { value: name },
+			bubbles: true,
+			composed: true,
+		}),
+	);
+	await el.updateComplete;
+}
+async function check(
+	el: EppSensorList,
+	key: string,
+	on: boolean,
+): Promise<void> {
+	const box = el.shadowRoot!.querySelector(
+		`[data-testid="merge-checkbox"][data-key="${key}"]`,
+	) as HTMLInputElement;
+	box.checked = on;
+	box.dispatchEvent(new Event("change"));
+	await el.updateComplete;
+}
+
+describe("epp-sensor-list — merge mode", () => {
+	it("shows a segmented List/Merge control; clicking Merge enters merge mode", async () => {
+		const el = await fixture();
+		el.sources = TWO_SOURCES;
+		el.zoneGroups = [];
+		await el.updateComplete;
+		expect($(el, '[data-testid="mode-list"]')).not.toBeNull();
+		expect($(el, '[data-testid="mode-merge"]')).not.toBeNull();
+		expect($(el, '[data-testid="merge-name"]')).toBeNull();
+		await startMerge(el);
+		expect($(el, '[data-testid="merge-name"]')).not.toBeNull();
+		// One checkbox per enabled index-≥1 zone (Desk Left/Right + Couch = 3).
+		expect($all(el, '[data-testid="merge-checkbox"]').length).toBe(3);
+	});
+
+	it("greys out presence + Rest of room toggles in merge mode, enabled in list mode", async () => {
+		const el = await fixture();
+		el.sources = TWO_SOURCES;
+		el.zoneGroups = [];
+		await el.updateComplete;
+		// List mode: enabled.
+		const listToggles = [
+			...$all(el, '[data-testid="presence-toggle"]'),
+			$(el, '[data-testid="rest-of-room-toggle"]'),
+		] as Array<HTMLElement & { disabled: boolean }>;
+		expect(listToggles.every((t) => t.disabled === false)).toBe(true);
+		await startMerge(el);
+		const mergeToggles = [
+			...$all(el, '[data-testid="presence-toggle"]'),
+			$(el, '[data-testid="rest-of-room-toggle"]'),
+		] as Array<HTMLElement & { disabled: boolean }>;
+		expect(mergeToggles.every((t) => t.disabled === true)).toBe(true);
+		// Their rows carry a disabled class.
+		expect(
+			$(el, '[data-testid="rest-of-room-row"]')!.classList.contains("disabled"),
+		).toBe(true);
+		expect(
+			$(el, '[data-testid="presence-row"]')!.classList.contains("disabled"),
+		).toBe(true);
+	});
+
+	it("offers a checkbox only for index-≥1 zones (Rest of room has none)", async () => {
+		const el = await fixture();
+		el.sources = TWO_SOURCES;
+		el.zoneGroups = [];
+		await el.updateComplete;
+		await startMerge(el);
+		// Rest of room row has no merge checkbox.
+		expect(
+			$(el, '[data-testid="rest-of-room-row"]')!.querySelector(
+				'[data-testid="merge-checkbox"]',
+			),
+		).toBeNull();
+		const keys = $all(el, '[data-testid="merge-checkbox"]').map((b) =>
+			b.getAttribute("data-key"),
+		);
+		expect(keys.sort()).toEqual(["AA|2", "BB|2", "BB|3"]);
+	});
+
+	it("keeps Merge disabled until a name + 2 checks, then emits a group and returns to list", async () => {
+		const el = await fixture();
+		el.sources = TWO_SOURCES;
+		el.zoneGroups = [];
+		await el.updateComplete;
+		await startMerge(el);
+		const confirm = $(el, '[data-testid="merge-confirm"]') as HTMLButtonElement;
+		expect(confirm.disabled).toBe(true);
+		await setMergeName(el, "Bed");
+		expect(confirm.disabled).toBe(true);
+		await check(el, "AA|2", true);
+		expect(confirm.disabled).toBe(true);
+		await check(el, "BB|2", true);
+		expect(confirm.disabled).toBe(false);
+		const detail = nextGroups(el);
+		($(el, '[data-testid="merge-confirm"]') as HTMLButtonElement).click();
+		const groups = await detail;
+		expect(groups.length).toBe(1);
+		expect(groups[0].name).toBe("Bed");
+		expect(groups[0].members).toEqual([
+			{ mac: "AA", zone_index: 2 },
+			{ mac: "BB", zone_index: 2 },
+		]);
+		// Back to list mode.
+		await el.updateComplete;
+		expect($(el, '[data-testid="merge-name"]')).toBeNull();
+	});
+
+	it("Cancel exits merge mode without emitting", async () => {
+		const el = await fixture();
+		el.sources = TWO_SOURCES;
+		el.zoneGroups = [];
+		await el.updateComplete;
+		let fired = false;
+		el.addEventListener("zone-groups-changed", () => {
+			fired = true;
+		});
+		await startMerge(el);
+		($(el, '[data-testid="merge-cancel"]') as HTMLElement).click();
+		await el.updateComplete;
+		expect($(el, '[data-testid="merge-name"]')).toBeNull();
+		expect(fired).toBe(false);
+	});
+
+	it("clicking List exits merge mode without emitting", async () => {
+		const el = await fixture();
+		el.sources = TWO_SOURCES;
+		el.zoneGroups = [];
+		await el.updateComplete;
+		await startMerge(el);
+		($(el, '[data-testid="mode-list"]') as HTMLElement).click();
+		await el.updateComplete;
+		expect($(el, '[data-testid="merge-name"]')).toBeNull();
+		expect($(el, '[data-testid="zone-toggle"]')).not.toBeNull();
+	});
+
+	it("kebab Edit re-enters merge mode with the group's members pre-checked, then saves (leaving other groups untouched)", async () => {
+		const el = await fixture();
+		el.sources = TWO_SOURCES;
+		el.zoneGroups = [
+			{ id: "g1", name: "Bed", members: [{ mac: "AA", zone_index: 2 }] },
+			{ id: "g2", name: "Couch", members: [{ mac: "BB", zone_index: 3 }] },
+		];
+		await el.updateComplete;
+		// First merged-zone kebab is g1.
+		kebabSelect(el, "edit", 0);
+		await el.updateComplete;
+		expect(
+			($(el, '[data-testid="merge-name"]') as HTMLInputElement).value,
+		).toBe("Bed");
+		expect(
+			(
+				el.shadowRoot!.querySelector(
+					'[data-testid="merge-checkbox"][data-key="AA|2"]',
+				) as HTMLInputElement
+			).checked,
+		).toBe(true);
+		// Other ungrouped index-≥1 zones are still offered.
+		expect(
+			el.shadowRoot!.querySelector(
+				'[data-testid="merge-checkbox"][data-key="BB|2"]',
+			),
+		).not.toBeNull();
+		await setMergeName(el, "Bedroom");
+		await check(el, "BB|2", true);
+		const detail = nextGroups(el);
+		($(el, '[data-testid="merge-confirm"]') as HTMLButtonElement).click();
+		const groups = await detail;
+		expect(groups.length).toBe(2);
+		const g1 = groups.find((g) => g.id === "g1")!;
+		expect(g1.name).toBe("Bedroom");
+		expect(g1.members).toEqual([
+			{ mac: "AA", zone_index: 2 },
+			{ mac: "BB", zone_index: 2 },
+		]);
+		// g2 passes through the edit unchanged.
+		const g2 = groups.find((g) => g.id === "g2")!;
+		expect(g2.name).toBe("Couch");
+		expect(g2.members).toEqual([{ mac: "BB", zone_index: 3 }]);
+	});
+
+	it("unchecking a zone drops it back below the merge threshold", async () => {
+		const el = await fixture();
+		el.sources = TWO_SOURCES;
+		el.zoneGroups = [];
+		await el.updateComplete;
+		await startMerge(el);
+		await setMergeName(el, "Bed");
+		await check(el, "AA|2", true);
+		await check(el, "BB|2", true);
+		const confirm = $(el, '[data-testid="merge-confirm"]') as HTMLButtonElement;
+		expect(confirm.disabled).toBe(false);
+		await check(el, "BB|2", false);
+		expect(confirm.disabled).toBe(true);
+	});
+
+	// Keep last: registering ha-checkbox is global for the test env.
+	it("uses ha-checkbox for merge checkboxes when registered", async () => {
+		if (!customElements.get("ha-checkbox")) {
+			customElements.define("ha-checkbox", class extends HTMLElement {});
+		}
+		const el = await fixture();
+		el.sources = TWO_SOURCES;
+		el.zoneGroups = [];
+		await el.updateComplete;
+		await startMerge(el);
+		expect(el.shadowRoot!.querySelectorAll("ha-checkbox").length).toBe(3);
 	});
 });
