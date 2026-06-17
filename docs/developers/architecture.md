@@ -337,12 +337,23 @@ member devices' existing ESPHome presence/zone entities:
   enabled and which zones are configured/named) used for projection.
 - **`_projection.py` — `derive_exposed_entities()`** — pure function mapping a
   group definition + source state to the list of entities the group *will*
-  expose: presence is the union of enabled slots; each zone group becomes one
-  merged entity; ungrouped enabled zones pass through, name-collision-resolved
-  with a source-name prefix. **This is mirrored verbatim in the frontend**
-  (`lib/device-groups-projection.ts`) so the editor can preview entities without
-  a round trip — keep the two in sync (see *Firmware ↔ TypeScript Sync* for the
-  general policy; the same discipline applies here).
+  expose: presence is the union of enabled slots minus `excluded_presence`;
+  each zone group becomes one merged entity; ungrouped enabled zones pass
+  through (minus `excluded_zones`), name-collision-resolved with a source-name
+  prefix. The **combined Rest of room** is an implicit zone group synthesised
+  from every source's zone 0 — it is never stored in `zone_groups` and carries
+  the reserved id `rest_of_room`; its entity unique_id follows the scheme
+  `eppgrid_device_group_{group_id}_zone_group_rest_of_room`. It can be
+  suppressed by including `"rest_of_room"` in `excluded_zone_groups`. Both
+  `derive_exposed_entities` (Python) and its mirror `deriveExposedEntities`
+  (TypeScript) accept keyword exclusion args (`excluded_presence`,
+  `excluded_zones`, `excluded_zone_groups`) — keep the two in sync
+  (see *Firmware ↔ TypeScript Sync* for the general policy; the same discipline
+  applies here). `zone_groups` members use zone index **1–7** only (zone 0 is
+  always the implicit combined Rest of room; a legacy zone-0 member in a stored
+  group is rewritten by the v3→v4 migration). **This is mirrored verbatim in
+  the frontend** (`lib/device-groups-projection.ts`) so the editor can preview
+  entities without a round trip.
 - **`binary_sensor.py`** — the `Platform.BINARY_SENSOR` platform, forwarded from
   `async_setup_entry`. A `_PlatformProxy.sync_all()` reconciles live entities to
   the current group definitions (presence / zone-group / zone-passthrough
@@ -356,9 +367,19 @@ member devices' existing ESPHome presence/zone entities:
 Frontend side: `controllers/device-groups-controller.ts` is the WS client
 (subscribe + CRUD), `views/epp-device-groups-view.ts` is the list/editor host
 wired into the panel's **Device Groups** tab, and the
-`components/epp-device-group-editor.ts` + `components/epp-zone-merge-list.ts`
-components edit one group (basics + source selection + zone merging). Two
-shared helpers back the UI:
+`components/epp-device-group-editor.ts` composes the two-section editor. It
+carries the exclusion sets (`excludedPresence`, `excludedZones`,
+`excludedZoneGroups`) in its draft state, computing exposed entities via the
+mirrored projection function before every save. The two editor sections are:
+
+- `components/epp-device-source-list.ts` — the **Devices** section: per-device
+  availability badge and master toggle; emits `source-toggled`.
+- `components/epp-sensor-list.ts` (replaces `epp-zone-merge-list.ts`) — the
+  **Sensors** section: presence rows with coverage indicators, the combined Rest
+  of room row, passthrough zones, merged zones, and the List ⇄ Merge mode;
+  emits `exclusions-changed` and `zone-groups-changed`.
+
+Two shared helpers back the UI:
 
 - **`components/epp-kebab-menu.ts`** — a reusable ⋮ overflow menu used by the
   group list cards, the merged-zone boxes, and (after migration) the panel's
