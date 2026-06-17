@@ -58,6 +58,7 @@ import {
 	SETTINGS_FIELD_MAP,
 } from "./lib/settings-defaults.js";
 import { persistSelectedMac } from "./lib/storage.js";
+import { tablistKeydownIndex } from "./lib/tablist-nav.js";
 import {
 	DEFAULT_SIDEBAR_TAB,
 	parseViewHash,
@@ -513,6 +514,12 @@ export const layoutStyles = css`
   .sidebar-tabs .sidebar-tab.active {
     background: var(--secondary-background-color, #f5f5f5);
     color: var(--primary-color, #03a9f4);
+  }
+  /* Manual activation lets focus diverge from selection while arrowing, so the
+     focused-but-not-selected tab needs a visible ring distinct from .active. */
+  .sidebar-tabs .sidebar-tab:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: -2px;
   }
 
   @media (max-width: 819px) {
@@ -2111,6 +2118,7 @@ export class EPPGridPanel extends LitElement {
 			<div class="tab-bar">
 				${EPP_LOGO}
 				<button class="tab ${this._panelTab === "config" ? "active" : ""}"
+					aria-current=${this._panelTab === "config" ? "page" : nothing}
 					@click=${() =>
 						this._navGuard.guardNavigation(() => {
 							void this._flasherCtrl.resetUsbState();
@@ -2122,6 +2130,7 @@ export class EPPGridPanel extends LitElement {
 					<span class="tab-label-short">${this._localize("tabs.device_configuration_short")}</span>
 				</button>
 				<button class="tab ${this._panelTab === "flasher" ? "active" : ""}"
+					aria-current=${this._panelTab === "flasher" ? "page" : nothing}
 					@click=${() =>
 						this._navGuard.guardNavigation(() => {
 							void this._flasherCtrl.resetUsbState();
@@ -2136,6 +2145,7 @@ export class EPPGridPanel extends LitElement {
 					<span class="tab-label-short">${this._localize("tabs.flash_firmware_short")}</span>
 				</button>
 				<button class="tab ${this._panelTab === "device-groups" ? "active" : ""}"
+					aria-current=${this._panelTab === "device-groups" ? "page" : nothing}
 					@click=${() =>
 						this._navGuard.guardNavigation(() => {
 							void this._flasherCtrl.resetUsbState();
@@ -3238,12 +3248,17 @@ export class EPPGridPanel extends LitElement {
 			{ id: "furniture", label: this._localize("menu.furniture") },
 		];
 		return html`
-      <div class="sidebar-tabs" role="tablist">
+      <div
+        class="sidebar-tabs"
+        role="tablist"
+        @keydown=${this._onSidebarTabsKeydown}
+      >
         ${tabs.map(
 					(t) => html`<button
             class="sidebar-tab ${this._sidebarTab === t.id ? "active" : ""}"
             role="tab"
             aria-selected=${this._sidebarTab === t.id ? "true" : "false"}
+            tabindex=${this._sidebarTab === t.id ? "0" : "-1"}
             @click=${(e: Event) => {
 							// Keep the tab-switch self-contained (don't let it bubble to the
 							// panel-level click handler / influence zone selection).
@@ -3255,6 +3270,21 @@ export class EPPGridPanel extends LitElement {
       </div>
     `;
 	}
+
+	// Roving-tabindex keyboard nav for the sub-tab row (WAI-ARIA tablist). Arrows
+	// / Home / End move FOCUS between tabs (current = the focused tab via e.target,
+	// so repeated arrows walk the row); the native <button> click on Enter/Space/
+	// click does the actual switch — manual activation, so we never activate here.
+	private _onSidebarTabsKeydown = (e: KeyboardEvent): void => {
+		const list = e.currentTarget as HTMLElement;
+		const buttons = [...list.querySelectorAll<HTMLElement>(".sidebar-tab")];
+		const current = buttons.indexOf(e.target as HTMLElement);
+		if (current === -1) return;
+		const next = tablistKeydownIndex(e, current, buttons.length);
+		if (next === null) return;
+		e.preventDefault();
+		buttons[next]?.focus();
+	};
 
 	/** Run local zone engine replica — delegated to TargetController. */
 	private _runLocalZoneEngine(): ZoneEngineResult {

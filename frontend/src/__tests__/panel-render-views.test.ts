@@ -1890,3 +1890,58 @@ describe("epp-furniture-sidebar renders via component", () => {
 		expect(add.disabled).toBe(true);
 	});
 });
+
+describe("tab switchers — keyboard a11y", () => {
+	it("sidebar sub-tabs use roving tabindex (only the selected tab is a tab stop)", () => {
+		const a = createPanel() as any;
+		a._sidebarTab = "overlays";
+		const c = renderTo(a._renderSidebarTabs());
+		const tabs = [...c.querySelectorAll(".sidebar-tab")] as HTMLElement[];
+		expect(tabs.map((t) => t.getAttribute("tabindex"))).toEqual([
+			"-1",
+			"0",
+			"-1",
+		]);
+	});
+
+	it("ArrowRight moves focus along the sub-tabs without switching (manual activation)", () => {
+		const a = createPanel() as any;
+		a._sidebarTab = "zones";
+		const applySpy = vi.spyOn(
+			a as { _applyView: (...args: unknown[]) => void },
+			"_applyView",
+		);
+		const c = renderTo(a._renderSidebarTabs());
+		const tabs = [...c.querySelectorAll(".sidebar-tab")] as HTMLElement[];
+		tabs[0].focus();
+		tabs[0].dispatchEvent(
+			new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }),
+		);
+		// Focus moved to the next tab...
+		expect(document.activeElement).toBe(tabs[1]);
+		// ...but selection did NOT change — arrows move focus only (manual activation).
+		expect(applySpy).not.toHaveBeenCalled();
+		expect(a._sidebarTab).toBe("zones");
+	});
+
+	it("ArrowLeft wraps from the first sub-tab to the last", () => {
+		const a = createPanel() as any;
+		a._sidebarTab = "zones";
+		const c = renderTo(a._renderSidebarTabs());
+		const tabs = [...c.querySelectorAll(".sidebar-tab")] as HTMLElement[];
+		tabs[0].focus();
+		tabs[0].dispatchEvent(
+			new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }),
+		);
+		expect(document.activeElement).toBe(tabs[2]);
+	});
+
+	it("marks the active top-bar tab with aria-current=page (and only that one)", () => {
+		const a = createPanel() as any;
+		a._panelTab = "flasher";
+		const c = renderTo(a._renderTabBar());
+		const current = c.querySelectorAll('.tab[aria-current="page"]');
+		expect(current.length).toBe(1);
+		expect(current[0].textContent).toContain("flash");
+	});
+});
