@@ -3,6 +3,8 @@ which entities a device group exposes given its definition + source state."""
 
 from __future__ import annotations
 
+from custom_components.eppgrid.const import REST_OF_ROOM_ID
+from custom_components.eppgrid.const import REST_OF_ROOM_NAME
 from custom_components.eppgrid.device_groups._projection import SourceState
 from custom_components.eppgrid.device_groups._projection import ZoneState
 from custom_components.eppgrid.device_groups._projection import derive_exposed_entities
@@ -198,10 +200,6 @@ class TestExclusions:
         result = derive_exposed_entities(sources=sources, zone_groups=[])
         assert result["presence"] == ["occupancy"]
         assert [z["name"] for z in result["zones"]] == ["Desk"]
-
-
-from custom_components.eppgrid.const import REST_OF_ROOM_ID
-from custom_components.eppgrid.const import REST_OF_ROOM_NAME
 
 
 class TestCombinedRestOfRoom:
