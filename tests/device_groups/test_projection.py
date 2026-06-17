@@ -199,3 +199,63 @@ class TestExclusions:
         result = derive_exposed_entities(sources=sources, zone_groups=[])
         assert result["presence"] == ["occupancy"]
         assert [z["name"] for z in result["zones"]] == ["Desk"]
+
+
+from custom_components.eppgrid.const import REST_OF_ROOM_ID
+from custom_components.eppgrid.const import REST_OF_ROOM_NAME
+
+
+class TestCombinedRestOfRoom:
+    def test_combined_ror_emitted_when_a_source_has_enabled_zone_zero(self) -> None:
+        sources = [
+            _source("AA", "Left", [], [ZoneState(index=0, name="Zone Rest of Room", enabled=True)]),
+        ]
+        result = derive_exposed_entities(sources=sources, zone_groups=[])
+        assert result["zones"] == [
+            {"kind": "group", "id": REST_OF_ROOM_ID, "name": REST_OF_ROOM_NAME, "available": True},
+        ]
+
+    def test_combined_ror_is_first_in_zone_order(self) -> None:
+        """Order is [combined RoR] + [merged groups] + [passthroughs]."""
+        sources = [
+            _source("AA", "Left", [], [
+                ZoneState(index=0, name="Zone Rest of Room", enabled=True),
+                ZoneState(index=2, name="Desk", enabled=True),
+            ]),
+        ]
+        result = derive_exposed_entities(sources=sources, zone_groups=[])
+        assert [z["id"] if z["kind"] == "group" else z["name"] for z in result["zones"]] == [
+            REST_OF_ROOM_ID,
+            "Desk",
+        ]
+
+    def test_combined_ror_available_is_or_of_member_enabled(self) -> None:
+        sources = [
+            _source("AA", "Left", [], [ZoneState(index=0, name="Zone Rest of Room", enabled=False)]),
+            _source("BB", "Right", [], [ZoneState(index=0, name="Zone Rest of Room", enabled=True)]),
+        ]
+        result = derive_exposed_entities(sources=sources, zone_groups=[])
+        assert result["zones"][0] == {
+            "kind": "group", "id": REST_OF_ROOM_ID, "name": REST_OF_ROOM_NAME, "available": True,
+        }
+
+    def test_combined_ror_not_emitted_when_no_source_has_zone_zero(self) -> None:
+        sources = [_source("AA", "Left", [], [ZoneState(index=2, name="Desk", enabled=True)])]
+        result = derive_exposed_entities(sources=sources, zone_groups=[])
+        assert all(z.get("id") != REST_OF_ROOM_ID for z in result["zones"])
+
+    def test_combined_ror_emitted_even_when_all_zone_zero_disabled(self) -> None:
+        """Like merged groups, the combined RoR appears (marked unavailable) as
+        long as a source HAS a zone 0, so the user can still see/toggle it."""
+        sources = [_source("AA", "Left", [], [ZoneState(index=0, name="Zone Rest of Room", enabled=False)])]
+        result = derive_exposed_entities(sources=sources, zone_groups=[])
+        assert result["zones"] == [
+            {"kind": "group", "id": REST_OF_ROOM_ID, "name": REST_OF_ROOM_NAME, "available": False},
+        ]
+
+    def test_combined_ror_dropped_when_excluded(self) -> None:
+        sources = [_source("AA", "Left", [], [ZoneState(index=0, name="Zone Rest of Room", enabled=True)])]
+        result = derive_exposed_entities(
+            sources=sources, zone_groups=[], excluded_zone_groups=[REST_OF_ROOM_ID]
+        )
+        assert result["zones"] == []

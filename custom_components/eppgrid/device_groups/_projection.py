@@ -14,6 +14,8 @@ from typing import Any
 from typing import TypedDict
 
 from ..const import PRESENCE_SLOTS
+from ..const import REST_OF_ROOM_ID
+from ..const import REST_OF_ROOM_NAME
 
 
 def resolve_name_collisions(names: list[str], source_names: list[str]) -> list[str]:
@@ -79,6 +81,25 @@ def _project_presence(sources: list[SourceState], excluded_presence: list[str]) 
     enabled_union = {p for src in sources for p in src.enabled_presence}
     excluded = set(excluded_presence)
     return [slot for slot in PRESENCE_SLOTS if slot in enabled_union and slot not in excluded]
+
+
+def _project_combined_rest_of_room(sources: list[SourceState]) -> dict[str, Any] | None:
+    """Synthesise the implicit combined Rest of Room from every source's zone 0.
+
+    Emitted only when at least one source HAS a zone 0 (mirrors merged-group
+    behaviour: visible-but-unavailable if all its zone-0 members are disabled).
+    `available` is the OR of members' enabled state. Never stored — the caller
+    excludes it via REST_OF_ROOM_ID in excluded_zone_groups.
+    """
+    zone_zeros = [z for src in sources for z in src.zones if z.index == 0]
+    if not zone_zeros:
+        return None
+    return {
+        "kind": "group",
+        "id": REST_OF_ROOM_ID,
+        "name": REST_OF_ROOM_NAME,
+        "available": any(z.enabled for z in zone_zeros),
+    }
 
 
 def _project_zones(
@@ -157,4 +178,10 @@ def _project_zones(
             }
         )
 
-    return grouped_out + passthroughs
+    combined: list[dict[str, Any]] = []
+    if REST_OF_ROOM_ID not in excluded_zg_ids:
+        ror = _project_combined_rest_of_room(sources)
+        if ror is not None:
+            combined.append(ror)
+
+    return combined + grouped_out + passthroughs

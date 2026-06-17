@@ -127,6 +127,34 @@
           { "kind": "passthrough", "mac": "AA", "zone_index": 4, "name": "Desk", "available": true }
         ]
       }
+    },
+    {
+      "name": "combined rest of room is synthesised first from zone 0",
+      "sources": [
+        { "mac": "AA", "name": "Left", "enabled_presence": [], "zones": [{ "index": 0, "name": "Zone Rest of Room", "enabled": true }, { "index": 2, "name": "Desk", "enabled": true }] },
+        { "mac": "BB", "name": "Right", "enabled_presence": [], "zones": [{ "index": 0, "name": "Zone Rest of Room", "enabled": false }] }
+      ],
+      "zone_groups": [],
+      "expected": {
+        "presence": [],
+        "zones": [
+          { "kind": "group", "id": "rest_of_room", "name": "Zone Rest of Room", "available": true },
+          { "kind": "passthrough", "mac": "AA", "zone_index": 2, "name": "Desk", "available": true }
+        ]
+      }
+    },
+    {
+      "name": "combined rest of room absent when no source has zone 0",
+      "sources": [
+        { "mac": "AA", "name": "Left", "enabled_presence": ["occupancy"], "zones": [{ "index": 2, "name": "Desk", "enabled": true }] }
+      ],
+      "zone_groups": [],
+      "expected": {
+        "presence": ["occupancy"],
+        "zones": [
+          { "kind": "passthrough", "mac": "AA", "zone_index": 2, "name": "Desk", "available": true }
+        ]
+      }
     }
   ]
 }
