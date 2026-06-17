@@ -60,7 +60,7 @@ export class EppDeviceSourceList extends LitElement {
 			white-space: nowrap;
 		}
 		.badge.online {
-			color: var(--epp-success, var(--success-color, #4caf50));
+			color: var(--epp-success, var(--success-color, #43a047));
 		}
 		.badge.offline {
 			color: var(--epp-text-muted, var(--secondary-text-color, #757575));

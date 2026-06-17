@@ -129,7 +129,12 @@ class _PlatformProxy:
                 zg = {"id": REST_OF_ROOM_ID}
                 name = REST_OF_ROOM_NAME
             else:
-                zg = stored_zgs[zg_id]
+                zg = stored_zgs.get(zg_id)
+                if zg is None:
+                    # Aggregator output references a zone group not in the current
+                    # definition (transient desync mid-update); the stale entity is
+                    # reconciled away by _compute_active_uids, so skip it here.
+                    continue
                 # A merged zone is a zone sensor too — name it "Zone {name}".
                 name = f"Zone {zg['name']}"
             existing = self._entities.get(uid)
