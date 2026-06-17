@@ -230,7 +230,7 @@ describe("epp-sensor-list — list mode", () => {
 		expect((await detail).excluded_zone_groups).toEqual([]);
 	});
 
-	it("hides the Rest of room row when no source has an enabled zone 0", async () => {
+	it("hides the Rest of room row when no source has a zone 0", async () => {
 		const el = await fixture();
 		el.sources = [
 			{
@@ -244,6 +244,24 @@ describe("epp-sensor-list — list mode", () => {
 		el.zoneGroups = [];
 		await el.updateComplete;
 		expect($(el, '[data-testid="rest-of-room-row"]')).toBeNull();
+	});
+
+	it("still shows the Rest of room row when a source has a zone 0 that is disabled", async () => {
+		// Matches the projection contract: RoR is offered whenever a source HAS a
+		// zone 0, even if disabled in HA, so the user can always opt out of it.
+		const el = await fixture();
+		el.sources = [
+			{
+				mac: "AA",
+				name: "Left",
+				available: true,
+				enabled_presence: ["occupancy"],
+				zones: [{ index: 0, name: "Rest of room", enabled: false }],
+			},
+		];
+		el.zoneGroups = [];
+		await el.updateComplete;
+		expect($(el, '[data-testid="rest-of-room-row"]')).not.toBeNull();
 	});
 
 	it("lists index>=1 passthrough zones, same-named adjacent, labelled Zone · Device", async () => {

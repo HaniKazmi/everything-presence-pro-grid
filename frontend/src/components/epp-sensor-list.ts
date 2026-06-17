@@ -184,8 +184,12 @@ export class EppSensorList extends LitElement {
 		const presenceSlots = PRESENCE_SLOTS.filter((slot) =>
 			this.sources.some((s) => s.enabled_presence.includes(slot)),
 		);
+		// Match the projection: the combined Rest of room is offered whenever a
+		// source HAS a zone 0, even if its zone-0 entities are currently disabled
+		// in HA — so the user can always see and opt out of it (and the editor
+		// preview agrees with what the projection exposes).
 		const showRoom = this.sources.some((s) =>
-			s.zones.some((z) => z.index === 0 && z.enabled),
+			s.zones.some((z) => z.index === 0),
 		);
 		// While merging, every checkable index-≥1 zone (ungrouped + the edited
 		// group's own members) becomes a checkbox row; in list mode only the
@@ -211,11 +215,12 @@ export class EppSensorList extends LitElement {
 		const merging = this._mode === "merge";
 		return html`<div class="header">
 			<h4>Sensors</h4>
-			<div class="segmented" role="tablist">
+			<div class="segmented" role="group" aria-label="Sensor list mode">
 				<button
 					type="button"
 					data-testid="mode-list"
 					class=${merging ? "" : "active"}
+					aria-pressed=${!merging}
 					@click=${this._toList}
 				>
 					List
@@ -224,6 +229,7 @@ export class EppSensorList extends LitElement {
 					type="button"
 					data-testid="mode-merge"
 					class=${merging ? "active" : ""}
+					aria-pressed=${merging}
 					@click=${this._toMerge}
 				>
 					Merge zones

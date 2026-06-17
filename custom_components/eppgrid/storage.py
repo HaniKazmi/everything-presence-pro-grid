@@ -58,8 +58,12 @@ class _MigratingStore(Store[dict[str, Any]]):
                 group.setdefault("excluded_zone_groups", [])
                 kept_groups: list[dict[str, Any]] = []
                 for zg in group.get("zone_groups", []):
-                    members = zg.get("members", [])
-                    non_zero = [m for m in members if m.get("zone_index") != 0]
+                    # Guard against malformed/corrupt stored data so migration
+                    # never raises and blocks startup.
+                    if not isinstance(zg, dict):
+                        continue
+                    members = [m for m in zg.get("members", []) if isinstance(m, dict)]
+                    non_zero = [m for m in members if isinstance(m.get("zone_index"), int) and m["zone_index"] != 0]
                     # All-zone-0 merge (legacy manual Rest of room) -> drop.
                     # Mixed merge -> keep only the non-zero members, and drop
                     # the whole merge if fewer than two real members remain.

@@ -347,9 +347,9 @@ describe("epp-device-groups-view", () => {
 					sources: ["AA"],
 					area_id: "a1",
 					zone_groups: [],
-					excluded_presence: ["motion"],
-					excluded_zones: ["z1"],
-					excluded_zone_groups: ["zg1"],
+					excluded_presence: ["motion_presence"],
+					excluded_zones: [{ mac: "AA", zone_index: 2 }],
+					excluded_zone_groups: ["rest_of_room"],
 				},
 				bubbles: true,
 				composed: true,
@@ -362,9 +362,9 @@ describe("epp-device-groups-view", () => {
 			sources: ["AA"],
 			area_id: "a1",
 			zone_groups: [],
-			excluded_presence: ["motion"],
-			excluded_zones: ["z1"],
-			excluded_zone_groups: ["zg1"],
+			excluded_presence: ["motion_presence"],
+			excluded_zones: [{ mac: "AA", zone_index: 2 }],
+			excluded_zone_groups: ["rest_of_room"],
 		});
 		await el.updateComplete;
 		expect(el.shadowRoot!.querySelector("epp-device-group-editor")).toBeNull();
@@ -386,9 +386,9 @@ describe("epp-device-groups-view", () => {
 			sources: ["AA"],
 			area_id: null,
 			zone_groups: [],
-			excluded_presence: ["motion"],
-			excluded_zones: ["z2"],
-			excluded_zone_groups: ["zg2"],
+			excluded_presence: ["motion_presence"],
+			excluded_zones: [{ mac: "AA", zone_index: 3 }],
+			excluded_zone_groups: ["rest_of_room"],
 		};
 		editor.dispatchEvent(
 			new CustomEvent("save", {

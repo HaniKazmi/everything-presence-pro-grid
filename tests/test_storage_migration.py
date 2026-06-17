@@ -322,3 +322,45 @@ async def test_migration_v3_to_v4_leaves_non_ror_merge_untouched(hass: HomeAssis
         {"mac": "11:22:33:44:55:66", "zone_index": 3},
     ]
     assert g["excluded_zone_groups"] == []
+
+
+async def test_migration_v3_to_v4_survives_malformed_data(hass: HomeAssistant, hass_storage: dict) -> None:
+    """Corrupt stored data must not raise and block startup: non-dict groups,
+    non-dict zone_groups, and non-dict / malformed members are skipped."""
+    hass_storage[DOMAIN] = {
+        "version": 3,
+        "key": DOMAIN,
+        "data": {
+            "devices": {},
+            "configurations": {},
+            "device_groups": [
+                "not-a-dict",
+                {
+                    "id": "g1",
+                    "name": "Bedroom",
+                    "area_id": None,
+                    "sources": ["AA:BB:CC:DD:EE:FF"],
+                    "zone_groups": [
+                        "not-a-dict",
+                        {
+                            "id": "zg1",
+                            "name": "Junk",
+                            "members": [
+                                "not-a-dict",
+                                {"mac": "AA:BB:CC:DD:EE:FF"},  # missing zone_index
+                                {"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 0},
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+    }
+    store = EPPGridStore(hass)
+    await store.async_load()  # must not raise
+
+    # The well-formed group survived with exclusion fields seeded; the junk
+    # zone_group (no >=2 valid non-zero members) was dropped.
+    g = next(x for x in store.device_groups if isinstance(x, dict) and x.get("id") == "g1")
+    assert g["zone_groups"] == []
+    assert g["excluded_presence"] == []
