@@ -322,6 +322,23 @@ describe("layout styles", () => {
 		expect(resetIdx).toBeGreaterThan(mediaIdx);
 	});
 
+	it("sizes the mobile sidebar sub-tabs to the panel's touch-target control height", () => {
+		// The zones/overlays/furniture sub-tabs are hand-rolled <button class="sidebar-tab">,
+		// not epp-* primitives, so they don't inherit the panel's mobile 44px control
+		// height on their own (the base rule is ~32px from padding + font). On mobile the
+		// panel sets --epp-control-height:44px on :host (panelStyles), so the tabs opt in
+		// via min-height to match every other mobile control and meet the touch-target
+		// goal. The override must live inside the mobile @media (after the base rule) so
+		// it wins.
+		const css = layoutStyles.cssText;
+		const mediaIdx = css.indexOf("@media (max-width: 819px)");
+		expect(mediaIdx).toBeGreaterThan(-1);
+		const tabIdx = css.indexOf(".sidebar-tabs .sidebar-tab {", mediaIdx);
+		expect(tabIdx).toBeGreaterThan(mediaIdx);
+		const tabRule = css.slice(tabIdx, css.indexOf("}", tabIdx));
+		expect(tabRule).toMatch(/min-height:\s*var\(--epp-control-height/);
+	});
+
 	it("reserves the header height so the device picker can't collapse on the swap", () => {
 		// Root cause of the desktop live↔editor swap flicker: the .panel-header holds
 		// an <ha-select> whose 56px field renders asynchronously (the element is 0px

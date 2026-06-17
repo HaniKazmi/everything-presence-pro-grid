@@ -544,6 +544,16 @@ export const layoutStyles = css`
       border: none;
       padding: 0;
     }
+    /* The hand-rolled sub-tabs aren't epp-* primitives, so they don't pick up
+       the panel's mobile control height on their own. Size them to it (44px
+       here) so they match every other mobile control and meet the touch-target
+       goal, and centre the label at that height. */
+    .sidebar-tabs .sidebar-tab {
+      min-height: var(--epp-control-height);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
   }
 `;
 
