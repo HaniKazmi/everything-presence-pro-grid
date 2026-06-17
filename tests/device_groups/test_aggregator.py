@@ -336,9 +336,7 @@ class TestCombinedRestOfRoom:
         _set_state(hass, z_a, STATE_OFF)
         _set_state(hass, z_b, STATE_ON)
 
-        agg = Aggregator(
-            hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}"
-        )
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
         await agg.async_start()
         try:
             assert agg.outputs["zone_groups"][REST_OF_ROOM_ID] is True
@@ -351,9 +349,7 @@ class TestCombinedRestOfRoom:
         z = _register(hass, "AA:BB:CC:DD:EE:FF", "zone_0_presence")
         _set_state(hass, z, STATE_OFF)
 
-        agg = Aggregator(
-            hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}"
-        )
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
         await agg.async_start()
         try:
             assert ("AA:BB:CC:DD:EE:FF", 0) not in agg.outputs["zone_passthroughs"]
@@ -362,9 +358,7 @@ class TestCombinedRestOfRoom:
 
     async def test_combined_ror_absent_when_no_source_has_zone_zero(self, hass: HomeAssistant, group_def: dict) -> None:
         _register(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
-        agg = Aggregator(
-            hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}"
-        )
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
         await agg.async_start()
         try:
             assert REST_OF_ROOM_ID not in agg.outputs["zone_groups"]
@@ -376,9 +370,7 @@ class TestCombinedRestOfRoom:
         _set_state(hass, z, STATE_ON)
         group_def["excluded_zone_groups"] = [REST_OF_ROOM_ID]
 
-        agg = Aggregator(
-            hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}"
-        )
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
         await agg.async_start()
         try:
             assert REST_OF_ROOM_ID not in agg.outputs["zone_groups"]
@@ -392,9 +384,7 @@ class TestExclusionAwareness:
         _set_state(hass, a, STATE_ON)
         group_def["excluded_presence"] = ["occupancy"]
 
-        agg = Aggregator(
-            hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}"
-        )
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
         await agg.async_start()
         try:
             assert "occupancy" not in agg.outputs["presence"]
@@ -406,9 +396,7 @@ class TestExclusionAwareness:
         _set_state(hass, z, STATE_OFF)
         group_def["excluded_zones"] = [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 4}]
 
-        agg = Aggregator(
-            hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}"
-        )
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
         await agg.async_start()
         try:
             assert ("AA:BB:CC:DD:EE:FF", 4) not in agg.outputs["zone_passthroughs"]
@@ -422,9 +410,7 @@ class TestExclusionAwareness:
         _set_state(hass, z_b, STATE_OFF)
         group_def["excluded_zone_groups"] = ["zg1"]
 
-        agg = Aggregator(
-            hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}"
-        )
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
         await agg.async_start()
         try:
             assert "zg1" not in agg.outputs["zone_groups"]

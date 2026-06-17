@@ -220,9 +220,7 @@ class Aggregator:
     def _recompute_all(self) -> None:
         sources = self._def["sources"]
         excluded_presence = set(self._def.get("excluded_presence", []))
-        excluded_zone_keys = {
-            (z["mac"], z["zone_index"]) for z in self._def.get("excluded_zones", [])
-        }
+        excluded_zone_keys = {(z["mac"], z["zone_index"]) for z in self._def.get("excluded_zones", [])}
         excluded_zg_ids = set(self._def.get("excluded_zone_groups", []))
 
         # Presence: expose a slot only if at least one source has that entity

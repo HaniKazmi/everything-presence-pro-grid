@@ -203,7 +203,14 @@ class TestFullPayload:
             sources=["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"],
             area_id="bedroom",
             zone_groups=[
-                {"id": "zg1", "name": "Bed", "members": [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2}, {"mac": "11:22:33:44:55:66", "zone_index": 3}]}
+                {
+                    "id": "zg1",
+                    "name": "Bed",
+                    "members": [
+                        {"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2},
+                        {"mac": "11:22:33:44:55:66", "zone_index": 3},
+                    ],
+                }
             ],
             excluded_presence=["motion_presence"],
             excluded_zones=[{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 4}],
