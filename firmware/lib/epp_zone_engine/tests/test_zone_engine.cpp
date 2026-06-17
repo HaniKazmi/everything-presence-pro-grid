@@ -91,6 +91,46 @@ static WindowOutput make_window_2(float x1, float y1, int fc1,
     return make_window(specs, 2);
 }
 
+// --- Relocation test helpers ---------------------------------------------
+// Vertical corridor at col 9, rows 0..15 (room/zone 0). Bed = zone 1 at
+// [9,2] (no overlay). Door = zone 2 at [9,12]; with_entry adds the entry
+// overlay there. Bed↔door = 10 cells > MAX_MOVEMENT_CELLS.
+static Grid make_relo_grid(bool with_entry) {
+    Grid grid(0.0f, 0.0f, GRID_COLS, GRID_ROWS, GRID_CELL_SIZE_MM);
+    for (int r = 0; r < 16; ++r) grid.cell(r * GRID_COLS + 9) = CELL_ROOM_BIT;
+    grid.cell(2 * GRID_COLS + 9) = CELL_ROOM_BIT | (1 << CELL_ZONE_SHIFT);
+    uint8_t door = CELL_ROOM_BIT | (2 << CELL_ZONE_SHIFT);
+    if (with_entry) door |= (CELL_OVERLAY_ENTRY << CELL_OVERLAY_SHIFT);
+    grid.cell(12 * GRID_COLS + 9) = door;
+    return grid;
+}
+
+static ZoneEngine make_relo_engine(bool with_entry) {
+    ZoneConfig z0{}; z0.id = 0; z0.trigger = 5; z0.renew = 3; z0.timeout = 10.0f; z0.handoff_timeout = 3.0f;
+    ZoneConfig z1{}; z1.id = 1; z1.trigger = 3; z1.renew = 2; z1.timeout = 5.0f;  z1.handoff_timeout = 1.0f;
+    ZoneConfig z2{}; z2.id = 2; z2.trigger = 3; z2.renew = 2; z2.timeout = 5.0f;  z2.handoff_timeout = 1.0f;
+    ZoneConfig zones[] = {z0, z1, z2};
+    ZoneEngine e;
+    e.set_grid(make_relo_grid(with_entry));
+    e.set_zones(zones, 3);
+    return e;
+}
+
+// Single-target window with an explicit on_overlay flag.
+static WindowOutput relo_win(float x, float y, int fc, bool on_overlay) {
+    WindowOutput wo{};
+    wo.total_frames = CANONICAL_FRAMES;
+    wo.targets[0].active = (fc > 0);
+    wo.targets[0].median_x = x;
+    wo.targets[0].median_y = y;
+    wo.targets[0].frame_count = fc;
+    wo.targets[0].on_overlay = on_overlay;
+    return wo;
+}
+
+// Bed = [9,2] -> (2850, 750); Door = [9,12] -> (2850, 3750);
+// Far non-overlay = [9,8] -> (2850, 2550).
+
 // ---------------------------------------------------------------------------
 // Parity tests
 // ---------------------------------------------------------------------------
@@ -1355,4 +1395,120 @@ TEST_CASE("assisted-clear: timeout 0 == legacy immediate clear") {
     engine.tick(make_window_0(), t + 2.0f, sensors);  // sensors pending
     const ProcessingResult& r = engine.tick(make_window_0(), t + 3.5f, sensors);
     CHECK_FALSE(r.zone_occupancy[0]);  // cleared on first inactive tick
+}
+
+TEST_CASE("pending target relocates to free slot on far entrance-overlay reuse") {
+    ZoneEngine e = make_relo_engine(/*with_entry=*/true);
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);            // bed: gate_count=1
+    CHECK(e.tick(relo_win(2850, 750, 5, false), t + 1).zone_occupancy[1]);  // OCCUPIED
+    const ProcessingResult& r3 = e.tick(relo_win(2850, 750, 0, false), t + 2);  // PENDING
+    CHECK(r3.zone_occupancy[1]);
+    CHECK(r3.targets[0].status == TargetStatus::PENDING);
+
+    // Collision: slot 0 reused by a far new occupant on the door entry overlay.
+    const ProcessingResult& r4 = e.tick(relo_win(2850, 3750, 5, true), t + 3);
+    CHECK(r4.zone_occupancy[1]);                              // bed still held (via slot 2)
+    CHECK(r4.zone_occupancy[2]);                              // new occupant instant-entry at door
+    CHECK(r4.targets[0].status == TargetStatus::ACTIVE);     // new occupant in slot 0
+    CHECK(r4.targets[2].status == TargetStatus::PENDING);    // parked bed target in slot 2
+    CHECK(r4.targets[2].x == doctest::Approx(2850.0f));      // parked at the bed's last position
+    CHECK(r4.targets[2].y == doctest::Approx(750.0f));
+}
+
+TEST_CASE("pending target re-acquired nearby is NOT parked") {
+    ZoneEngine e = make_relo_engine(/*with_entry=*/true);
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);
+    e.tick(relo_win(2850, 750, 5, false), t + 1);            // OCCUPIED
+    e.tick(relo_win(2850, 750, 0, false), t + 2);            // PENDING
+    // Re-acquired at the bed (dist 0) with signal >= renew.
+    const ProcessingResult& r = e.tick(relo_win(2850, 750, 2, false), t + 3);
+    CHECK(r.zone_occupancy[1]);                               // back to OCCUPIED
+    CHECK(r.targets[0].status == TargetStatus::ACTIVE);
+    CHECK(r.targets[2].status == TargetStatus::INACTIVE);    // nothing parked
+}
+
+TEST_CASE("no entrance configured: pending target parks on far reuse alone") {
+    ZoneEngine e = make_relo_engine(/*with_entry=*/false);  // no entry overlay anywhere
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);
+    e.tick(relo_win(2850, 750, 5, false), t + 1);            // bed OCCUPIED
+    e.tick(relo_win(2850, 750, 0, false), t + 2);            // bed PENDING
+    // Far new occupant at the door cell, NOT on overlay (none exist).
+    const ProcessingResult& r = e.tick(relo_win(2850, 3750, 5, false), t + 3);
+    CHECK(r.zone_occupancy[1]);                               // bed still held
+    CHECK(r.targets[2].status == TargetStatus::PENDING);     // parked despite no overlay
+    CHECK(r.targets[0].status == TargetStatus::ACTIVE);      // new occupant
+}
+
+TEST_CASE("entrance configured, occupant off-overlay: pending NOT parked") {
+    ZoneEngine e = make_relo_engine(/*with_entry=*/true);
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);
+    e.tick(relo_win(2850, 750, 5, false), t + 1);            // bed OCCUPIED
+    e.tick(relo_win(2850, 750, 0, false), t + 2);            // bed PENDING
+    // Far new occupant at a non-overlay corridor cell [9,8] -> (2850, 2550).
+    const ProcessingResult& r = e.tick(relo_win(2850, 2550, 5, false), t + 3);
+    CHECK(r.targets[2].status == TargetStatus::INACTIVE);    // nothing parked (entrance gate blocks)
+    CHECK(r.targets[0].status == TargetStatus::ACTIVE);      // new occupant took the slot (today's behaviour)
+}
+
+TEST_CASE("no free slot: held pending target is dropped (clean clobber)") {
+    // No entry overlay → relocation triggers on distance alone. The new occupant
+    // and the two blockers land on plain zone-0 corridor cells with signal below
+    // the gated threshold, so NONE confirms a zone. That isolates the bed zone's
+    // bit for the follow-up assertion: the only thing that could make slot 0
+    // PENDING after it goes inactive is a leftover bed bit (a failed clobber).
+    ZoneEngine e = make_relo_engine(/*with_entry=*/false);
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);
+    e.tick(relo_win(2850, 750, 5, false), t + 1);            // bed (slot 0) OCCUPIED
+    e.tick(relo_win(2850, 750, 0, false), t + 2);            // bed PENDING (slot 0 held)
+
+    // Collision tick: slot 0 = far new occupant in zone 0; slots 1 & 2 active → no free slot.
+    WindowOutput wo{};
+    wo.total_frames = CANONICAL_FRAMES;
+    wo.targets[0] = {2850.0f, 3150.0f, 5, true, false};      // [9,10] zone 0, far from bed
+    wo.targets[1] = {2850.0f, 2550.0f, 5, true, false};      // [9,8]  zone 0
+    wo.targets[2] = {2850.0f, 1950.0f, 5, true, false};      // [9,6]  zone 0
+    const ProcessingResult& r = e.tick(wo, t + 3);
+    // All three slots active → none can be PENDING this tick.
+    CHECK(r.targets[0].status != TargetStatus::PENDING);
+    CHECK(r.targets[1].status != TargetStatus::PENDING);
+    CHECK(r.targets[2].status != TargetStatus::PENDING);
+
+    // Follow-up: the bed bit was stripped, so slot 0 going inactive must NOT
+    // resurrect as a PENDING ghost. (No zone-0 cell ever confirmed a zone, so a
+    // leftover bed bit is the only thing that could make slot 0 PENDING here.)
+    const ProcessingResult& r2 = e.tick(relo_win(2850, 3150, 0, false), t + 4);
+    CHECK(r2.targets[0].status == TargetStatus::INACTIVE);
+}
+
+TEST_CASE("parked target times out on the original schedule, not extended") {
+    ZoneEngine e = make_relo_engine(/*with_entry=*/true);
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);
+    e.tick(relo_win(2850, 750, 5, false), t + 1);            // OCCUPIED
+    e.tick(relo_win(2850, 750, 0, false), t + 2);            // PENDING (pending_since = 102, timeout 5 -> clears at 107)
+    e.tick(relo_win(2850, 3750, 5, true), t + 3);            // park to slot 2 at t=103
+
+    // New occupant stays at the door; assert the bed (slot 2) clears at 107, not 108.
+    const ProcessingResult& held = e.tick(relo_win(2850, 3750, 5, true), 106.9f);  // still held
+    CHECK(held.zone_occupancy[1]);
+    CHECK(held.targets[2].status == TargetStatus::PENDING);
+    const ProcessingResult& after = e.tick(relo_win(2850, 3750, 5, true), 107.1f);
+    CHECK_FALSE(after.zone_occupancy[1]);                    // cleared on original schedule
+    CHECK(after.targets[2].status == TargetStatus::INACTIVE);
+}
+
+TEST_CASE("off-grid new occupant does not trigger relocation") {
+    ZoneEngine e = make_relo_engine(/*with_entry=*/false);
+    float t = 100.0f;
+    e.tick(relo_win(2850, 750, 5, false), t);
+    e.tick(relo_win(2850, 750, 5, false), t + 1);            // bed OCCUPIED
+    e.tick(relo_win(2850, 750, 0, false), t + 2);            // bed PENDING
+    // New "occupant" reported off-grid (y=6300 -> row 21, outside the 20-row grid).
+    const ProcessingResult& r = e.tick(relo_win(2850, 6300, 5, false), t + 3);
+    CHECK(r.targets[2].status == TargetStatus::INACTIVE);    // nothing parked
 }

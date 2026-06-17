@@ -79,6 +79,13 @@ ZoneEngine::ZoneEngine() {
 
 void ZoneEngine::set_grid(const Grid& grid) {
     grid_ = grid;
+    grid_has_entry_overlay_ = false;
+    for (int c = 0; c < grid_.cell_count(); ++c) {
+        if (grid_.cell_overlay(c) == CELL_OVERLAY_ENTRY) {
+            grid_has_entry_overlay_ = true;
+            break;
+        }
+    }
     // Per-target prev-cell coords are indexed by the OLD grid's coordinate
     // system; reset them so the next tick computes fresh continuity from the
     // new grid. dismissed_cell_ is also a cell-index reference under the OLD
@@ -211,6 +218,97 @@ int ZoneEngine::find_zone_index(int zone_id) const {
 }
 
 // ---------------------------------------------------------------------------
+// relocate_pending_targets_ — Step 0, parks held PENDING targets to free slots
+// ---------------------------------------------------------------------------
+
+void ZoneEngine::relocate_pending_targets_(const WindowOutput& window) {
+    for (int i = 0; i < MAX_TARGETS; ++i) {
+        // (1) A brand-new occupant is present in slot i this tick.
+        if (!window.targets[i].active) continue;
+        // (2) Slot i still holds a pending target (some PENDING_CLEAR zone
+        //     confirms it) with a known last position.
+        if (!target_has_prev_xy_[i]) continue;
+        bool held = false;
+        for (int zi = 0; zi < zone_count_; ++zi) {
+            if (zone_enabled_[zi] && zones_[zi].state == ZoneState::PENDING_CLEAR &&
+                (zones_[zi].confirmed_targets & (1 << i))) {
+                held = true;
+                break;
+            }
+        }
+        if (!held) continue;
+        // (3) The new occupant is FAR from the held target's last cell.
+        int ncol, nrow, pcol, prow;
+        if (!grid_.xy_to_col_row(window.targets[i].median_x, window.targets[i].median_y, ncol, nrow)) continue;
+        if (!grid_.xy_to_col_row(target_prev_x_[i], target_prev_y_[i], pcol, prow)) continue;
+        int dist = std::max(std::abs(ncol - pcol), std::abs(nrow - prow));
+        if (dist <= MAX_MOVEMENT_CELLS) continue;  // close → re-acquisition; let normal flow re-confirm
+        // (4) Entrance gate — required only when an entry overlay exists.
+        if (grid_has_entry_overlay_ && !window.targets[i].on_overlay) continue;
+
+        // Pick the highest-index free park slot (inactive, no zone bit).
+        int j = -1;
+        for (int cand = MAX_TARGETS - 1; cand >= 0; --cand) {
+            if (cand == i || window.targets[cand].active) continue;
+            bool has_bit = false;
+            for (int zi = 0; zi < zone_count_; ++zi) {
+                // No zone_enabled_ guard needed here: set_zones memsets
+                // zone_enabled_ and resets every ZoneRuntime, so a disabled
+                // slot's confirmed_targets is always 0 and never matches.
+                if (zones_[zi].confirmed_targets & (1 << cand)) { has_bit = true; break; }
+            }
+            if (!has_bit) { j = cand; break; }
+        }
+        if (j < 0) {
+            // No free slot: clean clobber — drop the held target's bits so the
+            // new occupant gets a clean slot and no stale bit lingers.
+            for (int zi = 0; zi < zone_count_; ++zi) zones_[zi].confirmed_targets &= ~(1 << i);
+            log_(LogLevel::DEBUG, "T%d pending dropped: no free slot", i);
+            continue;
+        }
+
+        // Move per-slot tracking state i -> j.
+        target_prev_col_[j] = target_prev_col_[i];
+        target_prev_row_[j] = target_prev_row_[i];
+        target_has_prev_[j] = target_has_prev_[i];
+        target_prev_x_[j] = target_prev_x_[i];
+        target_prev_y_[j] = target_prev_y_[i];
+        target_has_prev_xy_[j] = target_has_prev_xy_[i];
+        target_gate_count_[j] = target_gate_count_[i];
+        target_last_zone_[j] = target_last_zone_[i];
+        dismissed_cell_[j] = dismissed_cell_[i];
+        target_overlay_sticky_[j] = target_overlay_sticky_[i];
+        stuck_ref_x_[j] = stuck_ref_x_[i];
+        stuck_ref_y_[j] = stuck_ref_y_[i];
+        stuck_since_s_[j] = stuck_since_s_[i];
+        stuck_has_ref_[j] = stuck_has_ref_[i];
+        target_log_zone_[j] = target_log_zone_[i];
+        target_log_in_room_[j] = target_log_in_room_[i];
+
+        // Move zone confirmation bits i -> j (pending_since left untouched).
+        for (int zi = 0; zi < zone_count_; ++zi) {
+            if (zones_[zi].confirmed_targets & (1 << i)) {
+                zones_[zi].confirmed_targets &= ~(1 << i);
+                zones_[zi].confirmed_targets |= (1 << j);
+            }
+        }
+
+        // Reset slot i so the new occupant gates from a clean state.
+        target_has_prev_[i] = false;
+        target_has_prev_xy_[i] = false;
+        target_gate_count_[i] = 0;
+        target_overlay_sticky_[i] = false;
+        target_last_zone_[i] = -1;
+        dismissed_cell_[i] = -1;
+        stuck_has_ref_[i] = false;  // stuck_ref_x_/y_ left stale; guard is stuck_has_ref_
+        target_log_zone_[i] = -1;
+        target_log_in_room_[i] = false;
+
+        log_(LogLevel::DEBUG, "T%d parked -> T%d", i, j);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // tick() — the core state machine, matching Python ZoneEngine._tick()
 // ---------------------------------------------------------------------------
 
@@ -257,6 +355,13 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
 
     // target_last_zone_[i] persists the last zone a target was in while in-room.
     // Used by overlay exit handoff (Step 2b) to know which zone to accelerate.
+
+    // -----------------------------------------------------------------------
+    // Step 0: pending-target slot relocation. Runs before Step 1 so a reused
+    // slot's new occupant gates from scratch and the parked target keeps its
+    // zone bit + original pending timer.
+    // -----------------------------------------------------------------------
+    relocate_pending_targets_(window);
 
     // -----------------------------------------------------------------------
     // Step 1: Per-target evaluation (Python lines 510-604)

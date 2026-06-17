@@ -84,6 +84,92 @@ function makeDefaultParams(
 	};
 }
 
+// --- Relocation helpers (mirror firmware test_zone_engine.cpp) -------------
+function makeReloGrid(withEntry: boolean): Uint8Array {
+	const grid = new Uint8Array(GRID_CELL_COUNT);
+	for (let r = 0; r < 16; r++) grid[r * GRID_COLS + 9] = CELL_ROOM_BIT;
+	grid[2 * GRID_COLS + 9] = cellSetZone(CELL_ROOM_BIT, 1); // bed = zone 1
+	let door = cellSetZone(CELL_ROOM_BIT, 2); // door = zone 2
+	if (withEntry) door = cellSetOverlay(door, CELL_OVERLAY_ENTRY);
+	grid[12 * GRID_COLS + 9] = door;
+	return grid;
+}
+
+function makeReloParams(withEntry: boolean): ZoneEngineParams {
+	const zoneConfigs: (import("../zone-defaults.js").ZoneConfig | null)[] =
+		new Array(MAX_ZONES).fill(null);
+	const bedDoor = {
+		name: "z",
+		color: "#fff",
+		type: "custom" as const,
+		trigger: 3,
+		renew: 2,
+		timeout: 5,
+		handoff_timeout: 1,
+	};
+	zoneConfigs[0] = bedDoor; // zone 1
+	zoneConfigs[1] = bedDoor; // zone 2
+	return {
+		targets: [],
+		grid: makeReloGrid(withEntry),
+		roomWidth: 6000,
+		roomDepth: 6000,
+		zoneConfigs,
+		roomType: "default",
+		roomTrigger: 5,
+		roomRenew: 3,
+		roomTimeout: 10,
+		roomHandoffTimeout: 3,
+	};
+}
+
+// Three-slot target array (null slots stay inactive so result has 3 entries).
+function reloTargets(
+	t0: { x: number; y: number; signal: number; onOverlay?: boolean } | null,
+) {
+	const slot = (
+		t: { x: number; y: number; signal: number; onOverlay?: boolean } | null,
+	) =>
+		t
+			? {
+					x: t.x,
+					y: t.y,
+					signal: t.signal,
+					status: "active",
+					onOverlay: t.onOverlay ?? false,
+				}
+			: makeNullTarget();
+	return [slot(t0), makeNullTarget(), makeNullTarget()];
+}
+
+function at3(
+	state: ZoneEngineState,
+	p: ZoneEngineParams,
+	slots: ({
+		x: number;
+		y: number;
+		signal: number;
+		onOverlay?: boolean;
+	} | null)[],
+	now: number,
+) {
+	const slot = (s: any) =>
+		s
+			? {
+					x: s.x,
+					y: s.y,
+					signal: s.signal,
+					status: "active",
+					onOverlay: s.onOverlay ?? false,
+				}
+			: makeNullTarget();
+	return runLocalZoneEngine(state, {
+		...p,
+		targets: [slot(slots[0]), slot(slots[1]), slot(slots[2])],
+		now,
+	});
+}
+
 describe("createZoneEngineState", () => {
 	it("returns correct initial state", () => {
 		const state = createZoneEngineState();
@@ -2346,5 +2432,127 @@ describe("stale zone cleanup", () => {
 		const result = runLocalZoneEngine(state, params);
 		expect(state.localZoneState.get(0)?.occupied).toBeFalsy();
 		expect(result.occupancy[0]).toBeFalsy();
+	});
+});
+
+describe("pending-target relocation (firmware Step 0 parity)", () => {
+	it("parks a held pending target on far entrance-overlay slot reuse", () => {
+		const state = createZoneEngineState();
+		const p = makeReloParams(true);
+		const at = (t0: any, now: number) =>
+			runLocalZoneEngine(state, { ...p, targets: reloTargets(t0), now });
+		at({ x: 2850, y: 750, signal: 5 }, 100); // bed gate
+		expect(at({ x: 2850, y: 750, signal: 5 }, 101).occupancy[1]).toBe(true); // OCCUPIED
+		const r3 = at({ x: 2850, y: 750, signal: 0 }, 102); // PENDING
+		expect(r3.occupancy[1]).toBe(true);
+		expect(r3.targets[0].status).toBe("pending");
+
+		const r4 = at({ x: 2850, y: 3750, signal: 5, onOverlay: true }, 103); // collision
+		expect(r4.occupancy[1]).toBe(true); // bed held via slot 2
+		expect(r4.occupancy[2]).toBe(true); // new occupant at door
+		expect(r4.targets[0].status).toBe("active");
+		expect(r4.targets[2].status).toBe("pending");
+	});
+
+	it("does not park a pending target re-acquired nearby", () => {
+		const state = createZoneEngineState();
+		const p = makeReloParams(true);
+		const at = (t0: any, now: number) =>
+			runLocalZoneEngine(state, { ...p, targets: reloTargets(t0), now });
+		at({ x: 2850, y: 750, signal: 5 }, 100);
+		at({ x: 2850, y: 750, signal: 5 }, 101);
+		at({ x: 2850, y: 750, signal: 0 }, 102); // PENDING
+		const r = at({ x: 2850, y: 750, signal: 2 }, 103); // re-acquired at bed
+		expect(r.occupancy[1]).toBe(true);
+		expect(r.targets[0].status).toBe("active");
+		expect(r.targets[2].status).toBe("inactive");
+	});
+
+	it("parks on far reuse alone when no entrance is configured", () => {
+		const state = createZoneEngineState();
+		const p = makeReloParams(false); // no overlay anywhere
+		const at = (t0: any, now: number) =>
+			runLocalZoneEngine(state, { ...p, targets: reloTargets(t0), now });
+		at({ x: 2850, y: 750, signal: 5 }, 100);
+		at({ x: 2850, y: 750, signal: 5 }, 101);
+		at({ x: 2850, y: 750, signal: 0 }, 102);
+		const r = at({ x: 2850, y: 3750, signal: 5, onOverlay: false }, 103);
+		expect(r.occupancy[1]).toBe(true);
+		expect(r.targets[2].status).toBe("pending");
+		expect(r.targets[0].status).toBe("active");
+	});
+
+	it("does not park when entrance configured but occupant is off-overlay", () => {
+		const state = createZoneEngineState();
+		const p = makeReloParams(true);
+		const at = (t0: any, now: number) =>
+			runLocalZoneEngine(state, { ...p, targets: reloTargets(t0), now });
+		at({ x: 2850, y: 750, signal: 5 }, 100);
+		at({ x: 2850, y: 750, signal: 5 }, 101);
+		at({ x: 2850, y: 750, signal: 0 }, 102);
+		const r = at({ x: 2850, y: 2550, signal: 5, onOverlay: false }, 103); // far, off-overlay
+		expect(r.targets[2].status).toBe("inactive");
+		expect(r.targets[0].status).toBe("active");
+	});
+
+	it("drops the held pending target when no free slot exists", () => {
+		// No entry overlay → distance-only trigger; the new occupant and blockers
+		// sit on plain zone-0 cells below the gated threshold, so none confirms a
+		// zone. A leftover bed bit is then the only thing that could make slot 0
+		// PENDING after it goes inactive — isolating the clobber for the follow-up.
+		const state = createZoneEngineState();
+		const p = makeReloParams(false);
+		at3(state, p, [{ x: 2850, y: 750, signal: 5 }, null, null], 100);
+		at3(state, p, [{ x: 2850, y: 750, signal: 5 }, null, null], 101);
+		at3(state, p, [{ x: 2850, y: 750, signal: 0 }, null, null], 102); // bed PENDING (slot 0)
+		const r = at3(
+			state,
+			p,
+			[
+				{ x: 2850, y: 3150, signal: 5 }, // [9,10] zone 0, far from bed
+				{ x: 2850, y: 2550, signal: 5 }, // [9,8]  zone 0
+				{ x: 2850, y: 1950, signal: 5 }, // [9,6]  zone 0
+			],
+			103,
+		);
+		expect(r.targets.some((t) => t.status === "pending")).toBe(false);
+		// Follow-up: bed bit stripped → slot 0 going inactive must not resurrect as PENDING.
+		const r2 = at3(
+			state,
+			p,
+			[{ x: 2850, y: 3150, signal: 0 }, null, null],
+			104,
+		);
+		expect(r2.targets[0].status).toBe("inactive");
+	});
+
+	it("parked target times out on the original schedule", () => {
+		const state = createZoneEngineState();
+		const p = makeReloParams(true);
+		const at = (t0: any, now: number) =>
+			runLocalZoneEngine(state, { ...p, targets: reloTargets(t0), now });
+		at({ x: 2850, y: 750, signal: 5 }, 100);
+		at({ x: 2850, y: 750, signal: 5 }, 101);
+		at({ x: 2850, y: 750, signal: 0 }, 102); // pendingSince=102, clears at 107
+		at({ x: 2850, y: 3750, signal: 5, onOverlay: true }, 103); // park to slot 2
+		expect(
+			at({ x: 2850, y: 3750, signal: 5, onOverlay: true }, 106.9).occupancy[1],
+		).toBe(true);
+		const after = at({ x: 2850, y: 3750, signal: 5, onOverlay: true }, 107.1);
+		expect(after.occupancy[1]).toBe(false);
+		expect(after.targets[2].status).toBe("inactive");
+	});
+
+	it("does not relocate when the new occupant is off-grid (C++ parity)", () => {
+		const state = createZoneEngineState();
+		const p = makeReloParams(false); // distance-only path (no entry overlay)
+		const at = (t0: any, now: number) =>
+			runLocalZoneEngine(state, { ...p, targets: reloTargets(t0), now });
+		at({ x: 2850, y: 750, signal: 5 }, 100);
+		at({ x: 2850, y: 750, signal: 5 }, 101);
+		at({ x: 2850, y: 750, signal: 0 }, 102); // PENDING
+		// Off-grid new occupant: y=6300 -> row 21, outside the 20-row grid.
+		const r = at({ x: 2850, y: 6300, signal: 5 }, 103);
+		expect(r.targets[2].status).toBe("inactive"); // must NOT park (mirror C++)
 	});
 });

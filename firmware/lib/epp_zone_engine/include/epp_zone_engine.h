@@ -117,6 +117,7 @@ public:
 
 private:
     Grid grid_;
+    bool grid_has_entry_overlay_ = false;  // cached: any cell carries CELL_OVERLAY_ENTRY
     ZoneRuntime zones_[MAX_ZONE_SLOTS]{};
     bool zone_enabled_[MAX_ZONE_SLOTS]{};  // which slots are configured
     int zone_count_ = 0;  // highest configured zone_id + 1
@@ -168,6 +169,12 @@ private:
     /// Find the ZoneRuntime index for a given zone_id. Returns -1 if not found.
     /// Invariant: slot index == config.id; established by parse_zone_configs.
     int find_zone_index(int zone_id) const;
+
+    /// Step 0: park a held PENDING target into a free slot when its slot is
+    /// reused by a brand-new, far entrant (entrance-gated; auto-falls back to
+    /// distance-only when no entry overlay is configured). Preserves the zone's
+    /// pending_since so the parked target times out on its original schedule.
+    void relocate_pending_targets_(const WindowOutput& window);
 
     /// Append a log entry to result_.log[] (silently drops if full)
     void log_(LogLevel level, const char* fmt, ...)

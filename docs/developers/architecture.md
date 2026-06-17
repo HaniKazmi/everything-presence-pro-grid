@@ -613,6 +613,7 @@ WiFi Provisioning below.
 The frontend contains a pure-function replica of the firmware's zone engine
 state machine for live preview in the editor. It implements the same algorithms:
 
+- **Step 0 — pending relocation:** before per-target evaluation, a held PENDING target whose slot is reused by a far new entrant is parked into a free slot (entrance-gated; distance-only fallback when no entry overlay is configured), preserving its original pending timer.
 - Target → grid cell mapping
 - Continuity check (Chebyshev ≤ 5 cells)
 - Entry-point gating

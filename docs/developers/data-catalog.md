@@ -571,6 +571,15 @@ Zone-clear reason `r` (the `zc:Z:r` suffix):
 
 A `zc:Z` with no `:r` suffix (forward/back-compat) renders as a plain "cleared".
 
+#### Firmware DEBUG Log Lines (not detection-log events)
+
+The following lines appear only in the firmware DEBUG log. They are **not** structured detection-log events — no new `EventType` was added and they are never included in the `ev` array or the `subscribe_grid_targets` payload.
+
+| Log line | Meaning |
+| --- | --- |
+| `T<i> parked -> T<j>` | Step 0 pending-target relocation: the PENDING target held in slot `i` was moved to free slot `j` because slot `i` was reused by a far new entrant. Entrance-gated (the new entrant must arrive via an entry overlay); falls back to distance-only when no entry overlay is configured anywhere on the grid. |
+| `T<i> pending dropped: no free slot` | Step 0 fallback when all slots are active: no free slot was available to park the held PENDING target, so it is dropped and its zone's pending bit is stripped (clean clobber). |
+
 ## 5. Configuration Storage
 
 `EPPGridStore` persists per-device config keyed by MAC:
