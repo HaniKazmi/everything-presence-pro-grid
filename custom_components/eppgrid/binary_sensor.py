@@ -124,17 +124,19 @@ class _PlatformProxy:
         stored_zgs = {zg["id"]: zg for zg in group.get("zone_groups", [])}
         for zg_id in aggregator.outputs.get("zone_groups", {}):
             uid = f"eppgrid_device_group_{group['id']}_zone_group_{zg_id}"
+            zg: dict[str, Any]
             if zg_id == REST_OF_ROOM_ID:
                 # Implicit combined Rest of Room — not in stored zone_groups.
                 zg = {"id": REST_OF_ROOM_ID}
                 name = REST_OF_ROOM_NAME
             else:
-                zg = stored_zgs.get(zg_id)
-                if zg is None:
+                stored = stored_zgs.get(zg_id)
+                if stored is None:
                     # Aggregator output references a zone group not in the current
                     # definition (transient desync mid-update); the stale entity is
                     # reconciled away by _compute_active_uids, so skip it here.
                     continue
+                zg = stored
                 # A merged zone is a zone sensor too — name it "Zone {name}".
                 name = f"Zone {zg['name']}"
             existing = self._entities.get(uid)
