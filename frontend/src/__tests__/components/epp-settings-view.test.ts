@@ -3014,11 +3014,10 @@ describe("desktop max-width centering", () => {
 		);
 		expect(scroll).toMatch(/overflow-y:\s*auto/);
 		expect(scroll).toMatch(/flex:\s*1/);
-		const bar = cssText.slice(
-			cssText.indexOf(".save-cancel-bar {"),
-			cssText.indexOf("}", cssText.indexOf(".save-cancel-bar {")),
-		);
-		expect(bar).toMatch(/flex-shrink:\s*0/);
+		// flex-shrink lives in this view's local .save-cancel-bar delta; the shared
+		// saveCancelBarStyles const adds a second .save-cancel-bar block (chrome only),
+		// so match against the composed cssText rather than the first block slice.
+		expect(cssText).toMatch(/\.save-cancel-bar\s*{[^}]*flex-shrink:\s*0/);
 		// Unconditional now — no mobile-only @media gating the scroll/pin.
 		expect(cssText).not.toContain("@media (max-width: 819px)");
 	});

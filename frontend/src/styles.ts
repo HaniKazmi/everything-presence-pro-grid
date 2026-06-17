@@ -272,6 +272,20 @@ export const chipStyles = css`
   }
 `;
 
+/** Common chrome for the Save/Cancel footer bar shared by the editor sidebar
+ *  (panel), the settings view, and the device-group editor. These three had
+ *  already drifted once (the markup was unified in `save-cancel-bar.ts`); this
+ *  lifts the shared CSS core so it can't drift again. Consumers keep their own
+ *  deltas (padding, margins, background, flex-shrink) locally. */
+export const saveCancelBarStyles = css`
+  .save-cancel-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+  }
+`;
+
 export const headerStyles = css`
   .panel-header {
     display: flex;

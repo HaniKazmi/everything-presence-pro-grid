@@ -77,7 +77,12 @@ import {
 	ensureObserversAttached,
 	installPanelMountGuard,
 } from "./panel-mount-guard.js";
-import { buttonStyles, dialogStyles, headerStyles } from "./styles.js";
+import {
+	buttonStyles,
+	dialogStyles,
+	headerStyles,
+	saveCancelBarStyles,
+} from "./styles.js";
 import type { DeviceInfo, RawTarget, Target } from "./types.js";
 import { tokens } from "./ui/tokens.js";
 
@@ -1746,6 +1751,7 @@ export class EPPGridPanel extends LitElement {
 		dialogStyles,
 		buttonStyles,
 		headerStyles,
+		saveCancelBarStyles,
 		protocolFullpageStyles,
 		layoutStyles,
 		liveMenuStyles,
@@ -1786,11 +1792,8 @@ export class EPPGridPanel extends LitElement {
     }
 
     .save-cancel-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      /* Shared chrome (display/justify/align/border-top) is in saveCancelBarStyles. */
       padding: var(--epp-space-3, 12px);
-      border-top: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
       margin-top: auto;
     }
 

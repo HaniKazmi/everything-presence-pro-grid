@@ -8,7 +8,7 @@ import "../ui/epp-toggle.js";
 import "./epp-zone-merge-list.js";
 import { exposedSensorChips } from "../lib/device-groups-labels.js";
 import { deriveExposedEntities } from "../lib/device-groups-projection.js";
-import { chipStyles } from "../styles.js";
+import { chipStyles, saveCancelBarStyles } from "../styles.js";
 import type {
 	DeviceGroup,
 	DeviceGroupSource,
@@ -49,9 +49,10 @@ function canon(d: EditorDraft): string {
 export class EppDeviceGroupEditor extends LitElement {
 	static styles = [
 		chipStyles,
+		saveCancelBarStyles,
 		css`
 		/* Fill the device-groups view's bounded .content and pin the Cancel/Save
-		   .actions bar to the bottom while the form scrolls inside .editor-scroll.
+		   .save-cancel-bar to the bottom while the form scrolls inside .editor-scroll.
 		   Fill-height chain: :host -> ha-card -> .card-content -> .editor-scroll
 		   (flex columns). Applies at all widths (desktop + mobile). */
 		:host {
@@ -76,8 +77,8 @@ export class EppDeviceGroupEditor extends LitElement {
 		/* The form rows live in .editor-scroll, which carries the column layout +
 		   16px row gap that .card-content used to apply directly (before .card-content
 		   became the fill-height flex parent for the scroll region + pinned actions).
-		   .editor-scroll fills the card and scrolls; the .actions footer pins below it
-		   with its own top divider. */
+		   .editor-scroll fills the card and scrolls; the .save-cancel-bar footer pins
+		   below it with its own top divider. */
 		.editor-scroll {
 			display: flex;
 			flex-direction: column;
@@ -139,17 +140,14 @@ export class EppDeviceGroupEditor extends LitElement {
 		}
 		.missing-warning ha-icon { --mdc-icon-size: 18px; }
 		.chips { display: flex; flex-wrap: wrap; gap: var(--epp-space-1, 4px); }
-		.actions {
-			display: flex;
-			gap: var(--epp-space-2, 8px);
-			justify-content: space-between;
-			align-items: center;
-			flex-shrink: 0;
-			/* Consistent footer with the editor sidebar / settings Save/Cancel bars:
+		.save-cancel-bar {
+			/* Shared chrome (display/justify/align/border-top) is in saveCancelBarStyles.
+			   Consistent footer with the editor sidebar / settings Save/Cancel bars:
 			   a transparent footer with a 1px top divider. Negative margins break it
 			   out of .card-content's 16px padding so the line spans the card width;
 			   the buttons re-inset via padding. */
-			border-top: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+			gap: var(--epp-space-2, 8px);
+			flex-shrink: 0;
 			margin: 0 calc(-1 * var(--epp-space-4, 16px)) calc(-1 * var(--epp-space-4, 16px));
 			padding: var(--epp-space-3, 12px) var(--epp-space-4, 16px);
 		}
@@ -271,7 +269,7 @@ export class EppDeviceGroupEditor extends LitElement {
 						${this._renderSensorsPreview()}
 					</div>
 
-					<div class="actions">
+					<div class="save-cancel-bar">
 						<epp-button variant="text" @click=${this._cancel}>Cancel</epp-button>
 						<epp-button
 							variant="primary"

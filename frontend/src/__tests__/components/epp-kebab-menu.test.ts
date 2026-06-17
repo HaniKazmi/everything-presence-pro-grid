@@ -138,6 +138,26 @@ describe("epp-kebab-menu", () => {
 		).toBeNull();
 	});
 
+	it("closes the menu when Escape is pressed", async () => {
+		const el = await fixture(ITEMS);
+		(
+			el.shadowRoot!.querySelector(
+				'[data-testid="kebab-trigger"]',
+			) as HTMLElement
+		).click();
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector('[data-testid="kebab-item"]'),
+		).not.toBeNull();
+		document.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+		);
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector('[data-testid="kebab-item"]'),
+		).toBeNull();
+	});
+
 	it("closes the menu when the trigger is clicked a second time", async () => {
 		const el = await fixture(ITEMS);
 		const trigger = el.shadowRoot!.querySelector(

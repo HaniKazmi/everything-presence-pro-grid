@@ -616,7 +616,7 @@ describe("epp-device-group-editor", () => {
 
 describe("desktop scroll + pinned actions", () => {
 	it("bounds the editor at all widths so the form scrolls + Cancel/Save pins", () => {
-		// The form scrolls inside .editor-scroll while the Cancel/Save .actions bar
+		// The form scrolls inside .editor-scroll while the Cancel/Save .save-cancel-bar
 		// pins to the bottom — fed by the device-groups view's bounded .content.
 		// Moved from a mobile-only @media to the base so it applies on desktop too.
 		const Ctor = customElements.get("epp-device-group-editor") as any;
@@ -629,13 +629,16 @@ describe("desktop scroll + pinned actions", () => {
 		);
 		expect(scroll).toMatch(/overflow-y:\s*auto/);
 		expect(scroll).toMatch(/flex:\s*1/);
-		const actions = cssText.slice(
-			cssText.indexOf(".actions {"),
-			cssText.indexOf("}", cssText.indexOf(".actions {")),
-		);
-		expect(actions).toMatch(/flex-shrink:\s*0/);
+		// flex-shrink lives in this editor's local .save-cancel-bar delta; the shared
+		// saveCancelBarStyles const adds a second .save-cancel-bar block (chrome only),
+		// so match against the composed cssText rather than the first block slice.
+		expect(cssText).toMatch(/\.save-cancel-bar\s*{[^}]*flex-shrink:\s*0/);
 		// Consistent with the editor sidebar / settings bars: a top divider line.
-		expect(actions).toMatch(/border-top:\s*1px solid/);
+		// The border-top lives in the shared saveCancelBarStyles const (a separate
+		// `static styles` entry), so assert it against the full composed cssText.
+		expect(cssText).toMatch(
+			/\.save-cancel-bar\s*{[^}]*border-top:\s*1px solid/,
+		);
 		expect(cssText).not.toContain("@media (max-width: 819px)");
 	});
 });

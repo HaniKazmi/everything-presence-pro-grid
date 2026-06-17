@@ -10,7 +10,12 @@ import {
 	SETTINGS_FIELD_MAP,
 } from "../lib/settings-defaults.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
-import { buttonStyles, settingStyles, toggleStyles } from "../styles.js";
+import {
+	buttonStyles,
+	saveCancelBarStyles,
+	settingStyles,
+	toggleStyles,
+} from "../styles.js";
 import "./epp-info-tip.js";
 import "../ui/epp-card.js";
 import "../ui/epp-toggle.js";
@@ -380,6 +385,7 @@ export class EppSettingsView extends LitElement {
 		settingStyles,
 		toggleStyles,
 		settingControlStyles,
+		saveCancelBarStyles,
 		css`
       /* Fill the panel height and pin the Save/Cancel bar to the bottom while the
          accordion list scrolls inside .settings-scroll. Fill-height chain:
@@ -419,17 +425,14 @@ export class EppSettingsView extends LitElement {
       }
 
       .save-cancel-bar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+        /* Shared chrome (display/justify/align/border-top) is in saveCancelBarStyles. */
         padding: var(--epp-space-3, 12px);
-        border-top: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+        margin-top: auto;
+        flex-shrink: 0;
         /* Sit on the surface (white) so the bar matches the editor sidebar +
            device-group editor bars, which sit on their white sheet/card. Without
            this the settings bar showed the grey page behind it. */
         background: var(--epp-surface, var(--card-background-color, #fff));
-        margin-top: auto;
-        flex-shrink: 0;
       }
     `,
 	];

@@ -1,5 +1,6 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
+import { DocumentListenerGroup } from "../lib/document-listeners.js";
 import "../ui/epp-icon-button.js";
 
 export interface KebabItem {
@@ -87,7 +88,7 @@ export class EppKebabMenu extends LitElement {
 
 	disconnectedCallback(): void {
 		super.disconnectedCallback();
-		this._detachOutside();
+		this._dismiss.detach();
 	}
 
 	protected updated(): void {
@@ -164,13 +165,13 @@ export class EppKebabMenu extends LitElement {
 
 	private _toggle() {
 		this._open = !this._open;
-		if (this._open) this._attachOutside();
-		else this._detachOutside();
+		if (this._open) this._dismiss.attach();
+		else this._dismiss.detach();
 	}
 
 	private _emit(id: string) {
 		this._open = false;
-		this._detachOutside();
+		this._dismiss.detach();
 		this.dispatchEvent(
 			new CustomEvent("item-select", {
 				detail: { id },
@@ -185,22 +186,43 @@ export class EppKebabMenu extends LitElement {
 		// trigger's own click can toggle without this handler racing it closed.
 		if (e.composedPath().includes(this)) return;
 		this._open = false;
-		this._detachOutside();
+		this._dismiss.detach();
 	};
 
-	private _attachOutside() {
-		document.addEventListener("pointerdown", this._onOutside, true);
-		// Keep the fixed popover anchored when an ancestor scrolls or the window
-		// resizes (capture catches scrolls on any scroll container).
-		window.addEventListener("scroll", this._onReposition, true);
-		window.addEventListener("resize", this._onReposition);
-	}
+	private _onKeydown = (e: Event): void => {
+		if ((e as KeyboardEvent).key === "Escape") {
+			this._open = false;
+			this._dismiss.detach();
+		}
+	};
 
-	private _detachOutside() {
-		document.removeEventListener("pointerdown", this._onOutside, true);
-		window.removeEventListener("scroll", this._onReposition, true);
-		window.removeEventListener("resize", this._onReposition);
-	}
+	// Global dismiss listeners, active only while the popover is open. Declared
+	// after the handler fields it references (DocumentListenerGroup throws if a
+	// listener is undefined at construction). Unlike sibling popovers, scroll/
+	// resize REPOSITION the popover rather than close it — the kebab stays
+	// anchored to its trigger. Capture phase so an inner scroll container still
+	// reaches the handler.
+	private _dismiss = new DocumentListenerGroup([
+		{
+			target: document,
+			type: "pointerdown",
+			listener: this._onOutside,
+			options: true,
+		},
+		{
+			target: document,
+			type: "keydown",
+			listener: this._onKeydown,
+			options: true,
+		},
+		{
+			target: window,
+			type: "scroll",
+			listener: this._onReposition,
+			options: true,
+		},
+		{ target: window, type: "resize", listener: this._onReposition },
+	]);
 }
 
 if (!customElements.get("epp-kebab-menu")) {
