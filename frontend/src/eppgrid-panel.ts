@@ -262,9 +262,26 @@ export const panelStyles = css`
   .tab-layout > .panel--settings {
     overflow: hidden;
   }
-  .panel--settings > epp-settings-view {
+  /* The settings area below the header: the settings view fills it, and a
+     connection/protocol status banner (.protocol-fullpage) overlays it — covering
+     and disabling it — while the view stays mounted (preserving edit state). */
+  .panel--settings .settings-stage {
+    position: relative;
     flex: 1;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .settings-stage > epp-settings-view {
+    flex: 1;
+    min-height: 0;
+  }
+  .settings-stage > .protocol-fullpage {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    border-radius: 0;
+    z-index: 5;
   }
 
   @media (max-width: 819px) {
@@ -2900,7 +2917,7 @@ export class EPPGridPanel extends LitElement {
 		return html`
       <div class="panel panel--settings">
         ${this._renderHeader()}
-        ${statusBanner}
+        <div class="settings-stage">
         <epp-settings-view
           .sensorState=${this._sensorState}
           .targetAutoDistance=${this._targetAutoDistance}
@@ -2950,6 +2967,13 @@ export class EPPGridPanel extends LitElement {
           @save=${(e: CustomEvent) => this._saveSettings(e.detail)}
           @cancel=${() => this._cancelSettings()}
         ></epp-settings-view>
+        ${
+					/* The connection/protocol status banner overlays the settings view
+					   (covering + disabling it) while keeping it mounted so the in-progress
+					   edit state is preserved — see the inSettingsEdit branch in render(). */
+					statusBanner
+				}
+        </div>
       </div>
     `;
 	}

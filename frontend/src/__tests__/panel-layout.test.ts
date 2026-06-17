@@ -291,9 +291,18 @@ describe("layout styles", () => {
 		const rule = pcss.slice(idx, pcss.indexOf("}", idx));
 		expect(rule).toMatch(/flex-direction:\s*column/);
 		expect(rule).toMatch(/min-height:\s*0/);
-		const svIdx = pcss.indexOf(".panel--settings > epp-settings-view");
+		// The settings view fills the .settings-stage (a relative wrapper below the
+		// header that also hosts the connection-banner overlay).
+		const svIdx = pcss.indexOf(".settings-stage > epp-settings-view");
 		const svRule = pcss.slice(svIdx, pcss.indexOf("}", svIdx));
 		expect(svRule).toMatch(/flex:\s*1/);
+		const stageIdx = pcss.indexOf(".panel--settings .settings-stage");
+		const stageRule = pcss.slice(stageIdx, pcss.indexOf("}", stageIdx));
+		expect(stageRule).toMatch(/position:\s*relative/);
+		// The status banner overlays (covers + disables) the settings view.
+		const ovIdx = pcss.indexOf(".settings-stage > .protocol-fullpage");
+		const ovRule = pcss.slice(ovIdx, pcss.indexOf("}", ovIdx));
+		expect(ovRule).toMatch(/position:\s*absolute/);
 	});
 
 	it("desktop frames the grid in an expansion-area card, reset on mobile", () => {
