@@ -183,6 +183,10 @@ async def websocket_create_device_group(
             name=msg["name"],
             sources=msg["sources"],
             area_id=msg.get("area_id"),
+            zone_groups=msg["zone_groups"],
+            excluded_presence=msg["excluded_presence"],
+            excluded_zones=msg["excluded_zones"],
+            excluded_zone_groups=msg["excluded_zone_groups"],
         )
     except ValueError as e:
         connection.send_error(msg["id"], "invalid_input", str(e))
