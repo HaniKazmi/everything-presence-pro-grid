@@ -146,3 +146,56 @@ class TestZoneProjection:
         result = derive_exposed_entities(sources=sources, zone_groups=[])
         names = [z["name"] for z in result["zones"]]
         assert names == ["Desk", "Sofa", "Door"]
+
+
+class TestExclusions:
+    def test_excluded_presence_slot_is_dropped(self) -> None:
+        sources = [_source("AA", "Left", ["occupancy", "static_presence"], [])]
+        result = derive_exposed_entities(
+            sources=sources, zone_groups=[], excluded_presence=["static_presence"]
+        )
+        assert result["presence"] == ["occupancy"]
+
+    def test_excluded_passthrough_zone_is_dropped(self) -> None:
+        sources = [
+            _source("AA", "Left", [], [
+                ZoneState(index=2, name="Desk", enabled=True),
+                ZoneState(index=3, name="Sofa", enabled=True),
+            ]),
+        ]
+        result = derive_exposed_entities(
+            sources=sources, zone_groups=[], excluded_zones=[{"mac": "AA", "zone_index": 2}]
+        )
+        names = [z["name"] for z in result["zones"]]
+        assert names == ["Sofa"]
+
+    def test_excluded_zone_group_is_dropped(self) -> None:
+        sources = [
+            _source("AA", "Left", [], [ZoneState(index=2, name="Bed L", enabled=True)]),
+            _source("BB", "Right", [], [ZoneState(index=3, name="Bed R", enabled=True)]),
+        ]
+        zone_groups = [
+            {"id": "g1", "name": "Bed", "members": [{"mac": "AA", "zone_index": 2}, {"mac": "BB", "zone_index": 3}]}
+        ]
+        result = derive_exposed_entities(
+            sources=sources, zone_groups=zone_groups, excluded_zone_groups=["g1"]
+        )
+        assert result["zones"] == []
+
+    def test_excluding_a_zone_group_still_keeps_its_members_out_of_passthrough(self) -> None:
+        """An excluded merge produces no group entity AND its members stay merged
+        (they don't fall back to individual passthroughs)."""
+        sources = [
+            _source("AA", "Left", [], [ZoneState(index=2, name="Bed L", enabled=True)]),
+        ]
+        zone_groups = [{"id": "g1", "name": "Bed", "members": [{"mac": "AA", "zone_index": 2}]}]
+        result = derive_exposed_entities(
+            sources=sources, zone_groups=zone_groups, excluded_zone_groups=["g1"]
+        )
+        assert result["zones"] == []
+
+    def test_default_none_exclusions_behave_like_empty(self) -> None:
+        sources = [_source("AA", "Left", ["occupancy"], [ZoneState(index=2, name="Desk", enabled=True)])]
+        result = derive_exposed_entities(sources=sources, zone_groups=[])
+        assert result["presence"] == ["occupancy"]
+        assert [z["name"] for z in result["zones"]] == ["Desk"]
