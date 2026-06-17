@@ -6,6 +6,20 @@ and firmware downloads, see the
 
 ## Unreleased
 
+### New features
+
+- **Device Groups editor redesigned.** Pick which devices to include and which
+  sensors to import — toggle off any presence sensor or zone you don't need.
+  Presence coverage and device availability are shown inline so you can see at
+  a glance what each sensor contributes.
+
+### Breaking changes
+
+- **Device groups now expose a single combined Rest of room sensor** instead of
+  one per source device. Automations that referenced a group's per-device
+  Rest-of-room sensor should be repointed to the combined sensor, or to the
+  physical device's own Rest-of-room entity.
+
 ### Improvements
 
 - **More reliable firmware updates.** Updates now succeed on devices that were
