@@ -251,14 +251,17 @@ class Aggregator:
         # Implicit combined Rest of Room: OR of every enabled source zone 0,
         # synthesised unless excluded and only when a source HAS a zone 0.
         if REST_OF_ROOM_ID not in excluded_zg_ids:
+            # Unlike the projection (which emits a greyed available=False row so
+            # the editor can preview a Rest of room whose zone-0 entities are all
+            # disabled), the aggregator only wires up the entity when at least one
+            # source's zone-0 entity is enabled — it never creates a
+            # permanently-unavailable sensor.
             ror_states: list[str | None] = []
-            has_zone_zero = False
             for mac in sources:
                 if not self._entity_enabled(mac, "zone_0_presence"):
                     continue
-                has_zone_zero = True
                 ror_states.append(self._state_of(mac, "zone_0_presence"))
-            if has_zone_zero:
+            if ror_states:
                 zg_state[REST_OF_ROOM_ID] = or_presence(ror_states)
 
         # Passthroughs: enabled (registered + not disabled) zone entities with a

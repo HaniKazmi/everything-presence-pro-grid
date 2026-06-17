@@ -66,6 +66,15 @@ class _MigratingStore(Store[dict[str, Any]]):
                     if len(non_zero) >= 2:
                         zg["members"] = non_zero
                         kept_groups.append(zg)
+                    else:
+                        _LOGGER.warning(
+                            "Device groups v4 migration: dropping merged zone "
+                            "%r (id %s) — Rest of room is now combined "
+                            "automatically and a merge needs at least two "
+                            "named-zone (1-7) members",
+                            zg.get("name"),
+                            zg.get("id"),
+                        )
                 group["zone_groups"] = kept_groups
         return old_data
 
