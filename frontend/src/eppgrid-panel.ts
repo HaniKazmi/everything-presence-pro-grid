@@ -216,6 +216,37 @@ export const panelStyles = css`
     max-width: none;
     margin: 0;
     align-self: stretch;
+    /* Bound the grid-hero panel to the viewport (it's flex:1 of the full-height
+       .tab-layout) and make it a flex column so the sidebar sheet scrolls
+       internally — its body scrolls and Save/Cancel pin to the bottom — instead
+       of the whole panel growing and the page scrolling when the zone list /
+       furniture browser is tall. The header stays fixed; the editor-shell fills
+       the rest. Mirrors what the mobile .panel column already does. */
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  /* Own the scroll inside the sheet, not the panel: beat the lower-down
+     .tab-layout > :not(.tab-bar) { overflow: auto } at the same (0,2,0)
+     specificity by adding a class (0,3,0) so order no longer matters. */
+  .tab-layout > .panel.panel--grid {
+    overflow: hidden;
+  }
+  .panel--grid > .panel-header {
+    flex-shrink: 0;
+  }
+
+  /* Non-grid panels (settings, wizard, loading, empty-state) fill the host width
+     so they don't shrink-wrap to content. As a flex item of the column .tab-layout
+     the auto side margins above disable align-items:stretch, so without this the
+     panel sizes to its widest content — settings visibly jumped narrow→wide as an
+     accordion's controls appeared/disappeared. width:100% pins it to the host width
+     (box-sizing:border-box folds the 24px padding in rather than overflowing); the
+     inner reading column (e.g. .settings-container max-width) then stays a stable
+     fixed width. Grid-hero (.panel--grid) is excluded — it fills via align-self. */
+  .panel:not(.panel--grid) {
+    width: 100%;
+    box-sizing: border-box;
   }
 
   @media (max-width: 819px) {
@@ -392,14 +423,21 @@ export const layoutStyles = css`
   .editor-shell {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 360px;
+    /* Fill the panel height below the header (flex:1) and let the single row fill
+       the shell (grid-template-rows) so the tracks are bounded; min-height:0 lets
+       them shrink and scroll internally rather than the shell growing the page. */
+    grid-template-rows: minmax(0, 1fr);
     gap: 24px;
     align-items: stretch;
     width: 100%;
+    flex: 1;
+    min-height: 0;
   }
 
   .editor-shell > .grid-column {
     min-width: 0;
     max-width: none;
+    min-height: 0;
     display: flex;
     flex-direction: column;
   }
@@ -415,6 +453,9 @@ export const layoutStyles = css`
     flex: 0 0 360px;
     max-width: 360px;
     min-width: 0;
+    /* Allow the sheet to shrink below its content height so its own body scrolls
+       (Save/Cancel stay pinned) instead of stretching the row. */
+    min-height: 0;
   }
 
   /* Sidebar-tab switcher — rendered in the epp-sheet peek at every breakpoint. */

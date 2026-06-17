@@ -563,4 +563,35 @@ describe("desktop max-width centering", () => {
 		expect(cssText).toContain("max-width: var(--epp-content-max");
 		expect(cssText).toContain("margin: 0 auto");
 	});
+
+	it("scrolls the groups list under a fixed heading on desktop", () => {
+		// Desktop bounds the view (flex:1 of the height-bounded .tab-layout child)
+		// into a flex-column chain so the .card-content list scrolls while the
+		// "Device Groups" .card-header stays fixed — rather than scrolling the whole
+		// view. Guarded via cssText since happy-dom has no layout. The bounding lives
+		// in a min-width:820px block so mobile (which scrolls the view as a whole) is
+		// untouched.
+		const DeviceGroupsViewClass = customElements.get(
+			"epp-device-groups-view",
+		) as any;
+		const cssText = (DeviceGroupsViewClass as any).styles
+			.map((s: { cssText?: string }) => s.cssText ?? String(s))
+			.join("\n");
+		const desktop = cssText.slice(cssText.indexOf("@media (min-width: 820px)"));
+		expect(desktop).toContain("@media (min-width: 820px)");
+		const cardContentIdx = desktop.indexOf(".card-content");
+		expect(cardContentIdx).toBeGreaterThan(-1);
+		const cardContentRule = desktop.slice(
+			cardContentIdx,
+			desktop.indexOf("}", cardContentIdx),
+		);
+		expect(cardContentRule).toMatch(/overflow-y:\s*auto/);
+		expect(cardContentRule).toMatch(/min-height:\s*0/);
+		const headerIdx = desktop.indexOf(".card-header");
+		const headerRule = desktop.slice(
+			headerIdx,
+			desktop.indexOf("}", headerIdx),
+		);
+		expect(headerRule).toMatch(/flex-shrink:\s*0/);
+	});
 });

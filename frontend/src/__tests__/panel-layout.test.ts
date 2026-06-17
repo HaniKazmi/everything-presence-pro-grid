@@ -238,6 +238,48 @@ describe("layout styles", () => {
 		expect(rule).toMatch(/align-self:\s*stretch/);
 	});
 
+	it("non-grid panels fill width on desktop so settings is a stable fixed width", () => {
+		// `.panel { margin: 0 auto }` on a flex item of the column `.tab-layout`
+		// disables align-items:stretch, so a plain panel shrink-wraps to its content
+		// width. Settings then started narrow and widened when an accordion expanded
+		// (its widest control drove the panel width). `width: 100%` (box-sizing:
+		// border-box, so the 24px padding folds in rather than overflowing) pins
+		// non-grid panels to the host width, so the inner `.settings-container` caps
+		// at its fixed max-width regardless of accordion state. `.panel--grid` is
+		// excluded — grid-hero views already fill via align-self:stretch +
+		// max-width:none. Mobile already does this; this brings desktop in line.
+		const css = panelStyles.cssText;
+		const m = css.match(/\.panel:not\(\.panel--grid\)\s*\{([^}]*)\}/);
+		expect(m).not.toBeNull();
+		expect(m![1]).toMatch(/width:\s*100%/);
+		expect(m![1]).toMatch(/box-sizing:\s*border-box/);
+	});
+
+	it("grid-hero panel is height-bounded so the sidebar sheet scrolls, not the page", () => {
+		// On desktop the grid-hero panel must be a bounded flex column so a tall
+		// zone list / furniture browser scrolls inside the epp-sheet body (and
+		// Save/Cancel pin to the bottom) rather than growing the panel so the whole
+		// page scrolls. Verify the height-bounding chain: .panel--grid is a
+		// min-height:0 flex column, the editor-shell fills it (flex:1) and can shrink
+		// (min-height:0), and the controls track can shrink (min-height:0) so the
+		// sheet's own .body{overflow-y:auto} / .actions{flex-shrink:0} take over.
+		const pcss = panelStyles.cssText;
+		const gridIdx = pcss.indexOf(".panel.panel--grid");
+		const gridRule = pcss.slice(gridIdx, pcss.indexOf("}", gridIdx));
+		expect(gridRule).toMatch(/flex-direction:\s*column/);
+		expect(gridRule).toMatch(/min-height:\s*0/);
+
+		const lcss = layoutStyles.cssText;
+		const shellIdx = lcss.indexOf(".editor-shell {");
+		const shellRule = lcss.slice(shellIdx, lcss.indexOf("}", shellIdx));
+		expect(shellRule).toMatch(/flex:\s*1/);
+		expect(shellRule).toMatch(/min-height:\s*0/);
+
+		const ctrlIdx = lcss.indexOf(".editor-shell > .editor-controls");
+		const ctrlRule = lcss.slice(ctrlIdx, lcss.indexOf("}", ctrlIdx));
+		expect(ctrlRule).toMatch(/min-height:\s*0/);
+	});
+
 	it("desktop frames the grid in an expansion-area card, reset on mobile", () => {
 		// .editor-shell .grid-container gets a themed surface + border on desktop
 		// (shows the area the grid can expand into; the log lines up with its left

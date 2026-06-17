@@ -111,6 +111,41 @@ export class EppDeviceGroupsView extends LitElement {
 				max-width: none;
 			}
 		}
+
+		/* Desktop: scroll the groups list under a fixed "Device Groups" heading
+		   instead of scrolling the whole view. The view is flex:1 of the height-
+		   bounded .tab-layout child, so a flex-column chain (host → .content →
+		   ha-card → .card-content) lets .card-content own the scroll while the
+		   header stays put. The reading column keeps its centered max-width. */
+		@media (min-width: 820px) {
+			:host {
+				display: flex;
+				flex-direction: column;
+				min-height: 0;
+			}
+			.content {
+				flex: 1;
+				min-height: 0;
+				display: flex;
+				flex-direction: column;
+				width: 100%;
+				box-sizing: border-box;
+			}
+			ha-card {
+				display: flex;
+				flex-direction: column;
+				min-height: 0;
+				flex: 1;
+			}
+			.card-header {
+				flex-shrink: 0;
+			}
+			.card-content {
+				flex: 1;
+				min-height: 0;
+				overflow-y: auto;
+			}
+		}
 	`,
 	];
 
