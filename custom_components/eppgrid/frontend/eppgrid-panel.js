@@ -3953,11 +3953,11 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 			font-size: var(--epp-font-base, 14px);
 			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 		}
-	`,e([Ae({type:Boolean})],Vs.prototype,"open",void 0),e([Ae()],Vs.prototype,"heading",void 0),e([Ae()],Vs.prototype,"message",void 0),e([Ae()],Vs.prototype,"confirmLabel",void 0),e([Ae()],Vs.prototype,"cancelLabel",void 0),e([Ae({type:Boolean})],Vs.prototype,"danger",void 0),e([Ae({type:Boolean})],Vs.prototype,"hideCancel",void 0),customElements.define("epp-confirm-dialog",Vs);class Xs extends ce{constructor(){super(...arguments),this.availableDevices=[],this.selectedMacs=[],this.missingSources=[]}_label(e){return e.area?`${e.name} (${e.area})`:e.name}render(){const e=this.availableDevices.filter(e=>this.selectedMacs.includes(e.mac)),t=this.availableDevices.filter(e=>!this.selectedMacs.includes(e.mac)),i=0===e.length&&0===this.missingSources.length;return N`
-			${t.length?this._renderAddPicker(t):J}
+	`,e([Ae({type:Boolean})],Vs.prototype,"open",void 0),e([Ae()],Vs.prototype,"heading",void 0),e([Ae()],Vs.prototype,"message",void 0),e([Ae()],Vs.prototype,"confirmLabel",void 0),e([Ae()],Vs.prototype,"cancelLabel",void 0),e([Ae({type:Boolean})],Vs.prototype,"danger",void 0),e([Ae({type:Boolean})],Vs.prototype,"hideCancel",void 0),customElements.define("epp-confirm-dialog",Vs);class Xs extends ce{constructor(){super(...arguments),this.availableDevices=[],this.selectedMacs=[],this.missingSources=[]}_label(e){return e.area?`${e.name} (${e.area})`:e.name}render(){const e=new Set(this.selectedMacs),t=this.availableDevices.filter(t=>e.has(t.mac)),i=this.availableDevices.filter(t=>!e.has(t.mac)),s=0===t.length&&0===this.missingSources.length;return N`
+			${i.length?this._renderAddPicker(i):J}
 			<div class="source-box">
-				${i?N`<p class="empty" data-testid="no-devices">No devices added yet.</p>`:J}
-				${e.map(e=>this._renderAddedRow(e))}
+				${s?N`<p class="empty" data-testid="no-devices">No devices added yet.</p>`:J}
+				${t.map(e=>this._renderAddedRow(e))}
 				${this.missingSources.map(e=>this._renderMissingRow(e))}
 			</div>
 			${this.missingSources.length?N`<div class="missing-warning" data-testid="missing-warning">
