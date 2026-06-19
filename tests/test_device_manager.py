@@ -1315,6 +1315,104 @@ class TestDeviceManager:
         assert result[0]["area"] is None
         assert result[0]["name"] == "EPP Device"
 
+    async def test_list_devices_onboarded_true_when_user_named(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A device with a user-set name is reported onboarded."""
+        dev_reg = dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="everything-presence-pro-aabbcc",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        dev_reg.async_update_device(device.id, name_by_user="My Sensor")
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="everything-presence-pro-aabbcc",
+            host="192.168.1.50",
+            device_id=device.id,
+        )
+
+        assert manager.list_devices()[0]["onboarded"] is True
+
+    async def test_list_devices_onboarded_true_when_area_assigned(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A device with an assigned area is reported onboarded."""
+        from homeassistant.helpers import area_registry as ar
+
+        area = ar.async_get(hass).async_create("Office")
+        dev_reg = dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.51"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:01")},
+            name="everything-presence-pro-aabb01",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        dev_reg.async_update_device(device.id, area_id=area.id)
+        manager.devices["AA:BB:CC:DD:EE:01"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:01",
+            name="everything-presence-pro-aabb01",
+            host="192.168.1.51",
+            device_id=device.id,
+        )
+
+        assert manager.list_devices()[0]["onboarded"] is True
+
+    async def test_list_devices_onboarded_false_when_unconfigured(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A device with no user name, no area, and no stored config is not onboarded."""
+        dev_reg = dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.52"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:02")},
+            name="everything-presence-pro-aabb02",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        manager.devices["AA:BB:CC:DD:EE:02"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:02",
+            name="everything-presence-pro-aabb02",
+            host="192.168.1.52",
+            device_id=device.id,
+        )
+
+        assert manager.list_devices()[0]["onboarded"] is False
+
+    async def test_list_devices_onboarded_respects_explicit_flag(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """An explicit stored onboarded flag overrides inference."""
+        dev_reg = dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.53"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:03")},
+            name="everything-presence-pro-aabb03",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        manager.devices["AA:BB:CC:DD:EE:03"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:03",
+            name="everything-presence-pro-aabb03",
+            host="192.168.1.53",
+            device_id=device.id,
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:03"] = {"onboarded": True}
+
+        assert manager.list_devices()[0]["onboarded"] is True
+
     async def test_list_devices_reports_live_availability_not_stale_flag(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
