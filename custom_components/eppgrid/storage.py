@@ -12,7 +12,7 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-STORAGE_VERSION = 3
+STORAGE_VERSION = 4
 STORAGE_KEY = DOMAIN
 
 
@@ -32,6 +32,11 @@ class _MigratingStore(Store[dict[str, Any]]):
             saved-configuration settings so installs that predate the
             sensor-assisted-clear timeout keep clearing immediately. New
             installs (no settings dict) pick up the 5 s default instead.
+        v3 -> v4: seed device-group opt-out fields (`excluded_presence`,
+            `excluded_zones`, `excluded_zone_groups`) and rewrite legacy
+            zone-0 (Rest-of-room) merges into the implicit combined Rest of
+            Room: drop all-zone-0 merges; strip zone-0 members from mixed
+            merges (dropping the merge if <2 members remain).
         """
         if old_major_version < 2:
             old_data.setdefault("device_groups", [])
@@ -44,6 +49,37 @@ class _MigratingStore(Store[dict[str, Any]]):
                 settings = owner.get("settings") if isinstance(owner, dict) else None
                 if isinstance(settings, dict):
                     settings.setdefault("assisted_clear_timeout", 0)
+        if old_major_version < 4:
+            for group in old_data.get("device_groups", []):
+                if not isinstance(group, dict):
+                    continue
+                group.setdefault("excluded_presence", [])
+                group.setdefault("excluded_zones", [])
+                group.setdefault("excluded_zone_groups", [])
+                kept_groups: list[dict[str, Any]] = []
+                for zg in group.get("zone_groups", []):
+                    # Guard against malformed/corrupt stored data so migration
+                    # never raises and blocks startup.
+                    if not isinstance(zg, dict):
+                        continue
+                    members = [m for m in zg.get("members", []) if isinstance(m, dict)]
+                    non_zero = [m for m in members if isinstance(m.get("zone_index"), int) and m["zone_index"] != 0]
+                    # All-zone-0 merge (legacy manual Rest of room) -> drop.
+                    # Mixed merge -> keep only the non-zero members, and drop
+                    # the whole merge if fewer than two real members remain.
+                    if len(non_zero) >= 2:
+                        zg["members"] = non_zero
+                        kept_groups.append(zg)
+                    else:
+                        _LOGGER.warning(
+                            "Device groups v4 migration: dropping merged zone "
+                            "%r (id %s) — Rest of room is now combined "
+                            "automatically and a merge needs at least two "
+                            "named-zone (1-7) members",
+                            zg.get("name"),
+                            zg.get("id"),
+                        )
+                group["zone_groups"] = kept_groups
         return old_data
 
 

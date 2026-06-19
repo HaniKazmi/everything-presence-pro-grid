@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from ..const import MAX_DEVICE_GROUPS
 from ..const import MAX_SOURCES_PER_DEVICE_GROUP
 from ..const import MAX_ZONE_GROUPS_PER_DEVICE_GROUP
+from ..const import REST_OF_ROOM_ID
 from ..storage import EPPGridStore
 from ._aggregator import Aggregator
 
@@ -126,8 +127,13 @@ class DeviceGroupManager:
         name: str,
         sources: list[str],
         area_id: str | None = None,
+        zone_groups: list[dict[str, Any]] | None = None,
+        excluded_presence: list[str] | None = None,
+        excluded_zones: list[dict[str, Any]] | None = None,
+        excluded_zone_groups: list[str] | None = None,
     ) -> dict[str, Any]:
-        self._validate(name=name, sources=sources, zone_groups=[])
+        zone_groups = zone_groups or []
+        self._validate(name=name, sources=sources, zone_groups=zone_groups)
         if len(self._store.device_groups) >= MAX_DEVICE_GROUPS:
             raise ValueError(f"too many device groups (cap {MAX_DEVICE_GROUPS})")
         group = {
@@ -135,7 +141,10 @@ class DeviceGroupManager:
             "name": name,
             "area_id": area_id,
             "sources": list(sources),
-            "zone_groups": [],
+            "zone_groups": [{**zg, "members": [dict(m) for m in zg.get("members", [])]} for zg in zone_groups],
+            "excluded_presence": list(excluded_presence or []),
+            "excluded_zones": [dict(z) for z in (excluded_zones or [])],
+            "excluded_zone_groups": list(excluded_zone_groups or []),
         }
         self._store.device_groups.append(group)
         await self._store.async_save()
@@ -153,6 +162,9 @@ class DeviceGroupManager:
         sources: list[str],
         area_id: str | None,
         zone_groups: list[dict[str, Any]],
+        excluded_presence: list[str] | None = None,
+        excluded_zones: list[dict[str, Any]] | None = None,
+        excluded_zone_groups: list[str] | None = None,
     ) -> dict[str, Any]:
         # Check existence before validation so unknown-id always raises KeyError.
         idx = next(
@@ -167,7 +179,10 @@ class DeviceGroupManager:
             "name": name,
             "area_id": area_id,
             "sources": list(sources),
-            "zone_groups": [dict(zg) for zg in zone_groups],
+            "zone_groups": [{**zg, "members": [dict(m) for m in zg.get("members", [])]} for zg in zone_groups],
+            "excluded_presence": list(excluded_presence or []),
+            "excluded_zones": [dict(z) for z in (excluded_zones or [])],
+            "excluded_zone_groups": list(excluded_zone_groups or []),
         }
         await self._store.async_save()
         agg = self._aggregators.get(id)
@@ -214,6 +229,21 @@ class DeviceGroupManager:
         for zg in zone_groups:
             if not zg.get("id") or not zg.get("name"):
                 raise ValueError("zone group needs id and name")
+            if zg["id"] == REST_OF_ROOM_ID:
+                raise ValueError(
+                    f"zone group id '{REST_OF_ROOM_ID}' is reserved for the implicit combined Rest of Room"
+                )
             for m in zg.get("members", []):
                 if "mac" not in m or "zone_index" not in m:
                     raise ValueError("zone group member needs mac and zone_index")
+                # Rest of room (zone 0) is the implicit combined group, never a
+                # manual merge member: zone_groups are restricted to an int index
+                # 1-7. Reject non-ints / out-of-range here too (not just at the WS
+                # layer) so a programmatic caller can't persist keys that break
+                # grouping. (bool is an int subclass but True/False == 1/0, so the
+                # range check handles it without a separate guard.)
+                zi = m["zone_index"]
+                if not isinstance(zi, int) or not (1 <= zi <= 7):
+                    raise ValueError(
+                        "zone group member zone_index must be an int 1-7 (zone 0 is the combined Rest of Room)"
+                    )

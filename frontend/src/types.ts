@@ -109,6 +109,14 @@ export const PRESENCE_SLOTS = [
 ] as const;
 export type PresenceSlot = (typeof PRESENCE_SLOTS)[number];
 
+/** Reserved id for the implicit "combined Rest of room" zone group. Never
+ *  stored in `zone_groups`; synthesised by the projection from every source's
+ *  zone 0. Must match the Python REST_OF_ROOM_ID constant byte-for-byte. */
+export const REST_OF_ROOM_ID = "rest_of_room";
+/** Display name for the combined Rest of room entity (matches the per-device
+ *  zone-0 entity name convention "Zone Rest of Room"). */
+export const REST_OF_ROOM_NAME = "Zone Rest of Room";
+
 export interface DeviceGroupZoneMember {
 	mac: string;
 	zone_index: number;
@@ -156,4 +164,11 @@ export interface DeviceGroup {
 	sources: DeviceGroupSource[];
 	zone_groups: DeviceGroupZoneGroup[];
 	exposed_entities: DeviceGroupExposedEntities;
+	/** Presence slots the user has opted OUT of (default []). */
+	excluded_presence: PresenceSlot[];
+	/** Passthrough zones (index 1–7) the user has opted OUT of (default []). */
+	excluded_zones: DeviceGroupZoneMember[];
+	/** Zone-group ids opted out — only ever the reserved REST_OF_ROOM_ID
+	 *  (merged zones have no toggle). Kept as a list for projection uniformity. */
+	excluded_zone_groups: string[];
 }

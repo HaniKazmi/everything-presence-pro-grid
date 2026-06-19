@@ -17,6 +17,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .const import PRESENCE_SLOTS
+from .const import REST_OF_ROOM_ID
+from .const import REST_OF_ROOM_NAME
 from .device_groups._aggregator import Aggregator
 from .device_groups._projection import resolve_name_collisions
 
@@ -119,10 +121,24 @@ class _PlatformProxy:
 
     def _build_zone_entities(self, group: dict[str, Any], aggregator: Aggregator) -> list[BinarySensorEntity]:
         out: list[BinarySensorEntity] = []
-        for zg in group.get("zone_groups", []):
-            uid = f"eppgrid_device_group_{group['id']}_zone_group_{zg['id']}"
-            # A merged zone is a zone sensor too — name it "Zone {name}".
-            name = f"Zone {zg['name']}"
+        stored_zgs = {zg["id"]: zg for zg in group.get("zone_groups", [])}
+        for zg_id in aggregator.outputs.get("zone_groups", {}):
+            uid = f"eppgrid_device_group_{group['id']}_zone_group_{zg_id}"
+            zg: dict[str, Any]
+            if zg_id == REST_OF_ROOM_ID:
+                # Implicit combined Rest of Room — not in stored zone_groups.
+                zg = {"id": REST_OF_ROOM_ID}
+                name = REST_OF_ROOM_NAME
+            else:
+                stored = stored_zgs.get(zg_id)
+                if stored is None:
+                    # Aggregator output references a zone group not in the current
+                    # definition (transient desync mid-update); the stale entity is
+                    # reconciled away by _compute_active_uids, so skip it here.
+                    continue
+                zg = stored
+                # A merged zone is a zone sensor too — name it "Zone {name}".
+                name = f"Zone {zg['name']}"
             existing = self._entities.get(uid)
             if isinstance(existing, DeviceGroupZoneGroupEntity):
                 # Refresh the name so a zone-group rename updates the entity.
@@ -175,8 +191,8 @@ class _PlatformProxy:
                 continue
             for slot in agg.outputs.get("presence", {}):
                 uids.add(f"eppgrid_device_group_{g['id']}_{slot}")
-            for zg in g.get("zone_groups", []):
-                uids.add(f"eppgrid_device_group_{g['id']}_zone_group_{zg['id']}")
+            for zg_id in agg.outputs.get("zone_groups", {}):
+                uids.add(f"eppgrid_device_group_{g['id']}_zone_group_{zg_id}")
             for mac, idx in agg.outputs.get("zone_passthroughs", {}):
                 uids.add(f"eppgrid_device_group_{g['id']}_zone_pass_{mac}_{idx}")
         return uids

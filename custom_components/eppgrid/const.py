@@ -93,3 +93,12 @@ PRESENCE_SLOTS: tuple[str, ...] = (
 MAX_DEVICE_GROUPS = 32
 MAX_ZONE_GROUPS_PER_DEVICE_GROUP = 16
 MAX_SOURCES_PER_DEVICE_GROUP = 8
+
+# Reserved id/name for the implicit "combined Rest of Room" zone group. Not a
+# stored zone_group: the projection/aggregator synthesise it from every
+# source's zone 0. Excluding it = adding REST_OF_ROOM_ID to
+# excluded_zone_groups. REST_OF_ROOM_NAME must equal _resolve_zone_name(..,
+# index=0, ..) ("Zone Rest of Room") so the combined sensor reads like a
+# device's own zone-0 sensor and the py<->ts projection parity test passes.
+REST_OF_ROOM_ID = "rest_of_room"
+REST_OF_ROOM_NAME = "Zone Rest of Room"

@@ -626,7 +626,7 @@ prefers the existing frontend session connection when one is active
 temporary connection (e.g., on-boot push when no frontend is open).
 
 **Store migrations** are handled by `_MigratingStore._async_migrate_func`
-(`STORAGE_VERSION` is currently **3**):
+(`STORAGE_VERSION` is currently **4**):
 
 - **v1 → v2** — adds the `device_groups` list (see below).
 - **v2 → v3** — stamps `assisted_clear_timeout: 0` into the `settings` of every
@@ -634,9 +634,14 @@ temporary connection (e.g., on-boot push when no frontend is open).
   pending zones immediately, matching the old hard-coded behaviour. New installs
   (no stored settings to migrate) fall through to the 5 s frontend default.
   `assisted_clear_enabled` needs no stamping — absent means default `true`.
+- **v3 → v4** — seeds `excluded_presence: []`, `excluded_zones: []`, and
+  `excluded_zone_groups: []` on every existing device group, and removes any
+  `zone_groups` member with `zone_index: 0` (legacy Rest-of-room merge —
+  replaced by the implicit combined Rest of room).
 
 **Device groups** are persisted separately in `EPPGridStore.device_groups`
-(added by the v1→v2 store migration) as a list of definitions:
+(added by the v1→v2 store migration; current format is **v4**) as a list of
+definitions:
 
 ```python
 [
@@ -650,16 +655,40 @@ temporary connection (e.g., on-boot push when no frontend is open).
                 "id": str,
                 "name": str,        # 1-128 chars
                 "members": [
-                    {"mac": str, "zone_index": int},   # zone_index 0-7 (0 = rest of room)
+                    {"mac": str, "zone_index": int},   # zone_index 1-7 (named zones only)
                     ...                                 # 0-16 members
                 ],
             },
             ...                     # up to MAX_ZONE_GROUPS_PER_DEVICE_GROUP (16)
         ],
+        # Opt-out exclusion fields (all default []); added by v3→v4 migration:
+        "excluded_presence": [str, ...],            # presence slot keys to suppress
+                                                    # e.g. ["static_presence"]
+        "excluded_zones": [                         # individual source zones to suppress
+            {"mac": str, "zone_index": int},        # zone_index 1-7
+            ...
+        ],
+        "excluded_zone_groups": [str, ...],         # zone-group ids to suppress; the
+                                                    # schema accepts any id, but the
+                                                    # editor only ever adds "rest_of_room"
+                                                    # (merged zones have no toggle)
     },
     ...                             # up to MAX_DEVICE_GROUPS (32)
 ]
 ```
+
+`zone_groups` members use zone index **1–7** only (named zones). Zone 0
+(Rest of room) is handled as the **implicit combined Rest of room**: a synthetic
+zone group with the reserved id `rest_of_room` that is never stored in
+`zone_groups`. It is synthesised by `derive_exposed_entities` from every
+source's zone-0 entity and exposes one binary sensor per group with unique_id
+`eppgrid_device_group_{group_id}_zone_group_rest_of_room`. To suppress it,
+add `"rest_of_room"` to `excluded_zone_groups`.
+
+The **v3→v4 storage migration** seeds `excluded_presence`, `excluded_zones`,
+and `excluded_zone_groups` to `[]` on every existing group, and rewrites any
+legacy `zone_groups` member with `zone_index: 0` (old-style Rest-of-room
+merge) by removing it (the combined Rest of room replaces it implicitly).
 
 Only the *definition* is stored. The exposed entity list (`exposed_entities`)
 is derived at read time by `device_groups/_projection.py` and is never

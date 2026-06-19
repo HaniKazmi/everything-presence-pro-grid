@@ -9,6 +9,7 @@ from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
+from custom_components.eppgrid.const import REST_OF_ROOM_ID
 from custom_components.eppgrid.device_groups._aggregator import Aggregator
 
 
@@ -324,5 +325,96 @@ class TestVisibleChange:
             _set_state(hass, a, STATE_ON)
             await hass.async_block_till_done()
             assert not visible
+        finally:
+            await agg.async_stop()
+
+
+class TestCombinedRestOfRoom:
+    async def test_combined_ror_ors_zone_zero_across_sources(self, hass: HomeAssistant, group_def: dict) -> None:
+        z_a = _register(hass, "AA:BB:CC:DD:EE:FF", "zone_0_presence")
+        z_b = _register(hass, "11:22:33:44:55:66", "zone_0_presence")
+        _set_state(hass, z_a, STATE_OFF)
+        _set_state(hass, z_b, STATE_ON)
+
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
+        await agg.async_start()
+        try:
+            assert agg.outputs["zone_groups"][REST_OF_ROOM_ID] is True
+        finally:
+            await agg.async_stop()
+
+    async def test_zone_zero_is_not_a_passthrough(self, hass: HomeAssistant, group_def: dict) -> None:
+        """Zone 0 only ever flows through the combined Rest of Room, never as a
+        per-device passthrough."""
+        z = _register(hass, "AA:BB:CC:DD:EE:FF", "zone_0_presence")
+        _set_state(hass, z, STATE_OFF)
+
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
+        await agg.async_start()
+        try:
+            assert ("AA:BB:CC:DD:EE:FF", 0) not in agg.outputs["zone_passthroughs"]
+        finally:
+            await agg.async_stop()
+
+    async def test_combined_ror_absent_when_no_source_has_zone_zero(self, hass: HomeAssistant, group_def: dict) -> None:
+        _register(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
+        await agg.async_start()
+        try:
+            assert REST_OF_ROOM_ID not in agg.outputs["zone_groups"]
+        finally:
+            await agg.async_stop()
+
+    async def test_combined_ror_excluded_produces_no_output(self, hass: HomeAssistant, group_def: dict) -> None:
+        z = _register(hass, "AA:BB:CC:DD:EE:FF", "zone_0_presence")
+        _set_state(hass, z, STATE_ON)
+        group_def["excluded_zone_groups"] = [REST_OF_ROOM_ID]
+
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
+        await agg.async_start()
+        try:
+            assert REST_OF_ROOM_ID not in agg.outputs["zone_groups"]
+        finally:
+            await agg.async_stop()
+
+
+class TestExclusionAwareness:
+    async def test_excluded_presence_slot_produces_no_output(self, hass: HomeAssistant, group_def: dict) -> None:
+        a = _register(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+        _set_state(hass, a, STATE_ON)
+        group_def["excluded_presence"] = ["occupancy"]
+
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
+        await agg.async_start()
+        try:
+            assert "occupancy" not in agg.outputs["presence"]
+        finally:
+            await agg.async_stop()
+
+    async def test_excluded_passthrough_zone_produces_no_output(self, hass: HomeAssistant, group_def: dict) -> None:
+        z = _register(hass, "AA:BB:CC:DD:EE:FF", "zone_4_presence")
+        _set_state(hass, z, STATE_OFF)
+        group_def["excluded_zones"] = [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 4}]
+
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
+        await agg.async_start()
+        try:
+            assert ("AA:BB:CC:DD:EE:FF", 4) not in agg.outputs["zone_passthroughs"]
+        finally:
+            await agg.async_stop()
+
+    async def test_excluded_named_zone_group_produces_no_output(self, hass: HomeAssistant, group_def: dict) -> None:
+        z_a = _register(hass, "AA:BB:CC:DD:EE:FF", "zone_2_presence")
+        z_b = _register(hass, "11:22:33:44:55:66", "zone_3_presence")
+        _set_state(hass, z_a, STATE_ON)
+        _set_state(hass, z_b, STATE_OFF)
+        group_def["excluded_zone_groups"] = ["zg1"]
+
+        agg = Aggregator(hass, group_def, device_name_fn=lambda m: m, zone_name_fn=lambda m, i: f"Zone {i}")
+        await agg.async_start()
+        try:
+            assert "zg1" not in agg.outputs["zone_groups"]
+            # Excluded merge members do NOT fall back to passthroughs.
+            assert ("AA:BB:CC:DD:EE:FF", 2) not in agg.outputs["zone_passthroughs"]
         finally:
             await agg.async_stop()

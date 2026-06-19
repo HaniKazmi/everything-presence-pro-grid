@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	exposedSensorChips,
 	PRESENCE_LABELS,
+	presenceCoverage,
+	zoneRowLabel,
 } from "../../lib/device-groups-labels.js";
 
 describe("exposedSensorChips", () => {
@@ -93,5 +95,47 @@ describe("exposedSensorChips", () => {
 
 	it("exposes a label for every known presence slot", () => {
 		expect(PRESENCE_LABELS.mmwave_presence).toBe("mmWave presence");
+	});
+});
+
+describe("presenceCoverage", () => {
+	it("splits sources into providers and missing by slot", () => {
+		const cov = presenceCoverage("occupancy", [
+			{ name: "Sensor 1", enabled_presence: ["occupancy"] },
+			{ name: "Sensor 2", enabled_presence: ["static_presence"] },
+		]);
+		expect(cov).toEqual({ provided: ["Sensor 1"], missing: ["Sensor 2"] });
+	});
+
+	it("a source providing the slot is never also listed as missing", () => {
+		const cov = presenceCoverage("static_presence", [
+			{ name: "A", enabled_presence: ["static_presence", "occupancy"] },
+			{ name: "B", enabled_presence: ["static_presence"] },
+		]);
+		expect(cov.provided).toEqual(["A", "B"]);
+		expect(cov.missing).toEqual([]);
+	});
+
+	it("preserves source order in both lists", () => {
+		const cov = presenceCoverage("motion_presence", [
+			{ name: "First", enabled_presence: [] },
+			{ name: "Second", enabled_presence: ["motion_presence"] },
+			{ name: "Third", enabled_presence: [] },
+		]);
+		expect(cov.provided).toEqual(["Second"]);
+		expect(cov.missing).toEqual(["First", "Third"]);
+	});
+
+	it("no sources -> empty coverage", () => {
+		expect(presenceCoverage("occupancy", [])).toEqual({
+			provided: [],
+			missing: [],
+		});
+	});
+});
+
+describe("zoneRowLabel", () => {
+	it("joins zone and device with a middot separator", () => {
+		expect(zoneRowLabel("Bed", "Sensor 1")).toBe("Bed · Sensor 1");
 	});
 });

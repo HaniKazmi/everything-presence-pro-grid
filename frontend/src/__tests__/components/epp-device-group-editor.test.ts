@@ -4,6 +4,7 @@ import type { EppDeviceGroupEditor } from "../../components/epp-device-group-edi
 import type {
 	DeviceGroup,
 	DeviceGroupSource,
+	DeviceGroupZoneMember,
 	DeviceInfo,
 } from "../../types.js";
 
@@ -32,18 +33,10 @@ function nameField(
 		label: string;
 	};
 }
-function deviceToggles(el: EppDeviceGroupEditor): HTMLElement[] {
-	return [
-		...el.shadowRoot!.querySelectorAll('[data-testid="device-toggle"]'),
-	] as HTMLElement[];
-}
-function toggle(
-	el: EppDeviceGroupEditor,
-	mac: string,
-): HTMLElement & { checked: boolean } {
-	return el.shadowRoot!.querySelector(
-		`[data-testid="device-toggle"][data-mac="${mac}"]`,
-	) as HTMLElement & { checked: boolean };
+
+// Helpers to reach into epp-device-source-list's shadow DOM for toggles.
+function sourceList(el: EppDeviceGroupEditor): HTMLElement {
+	return el.shadowRoot!.querySelector("epp-device-source-list") as HTMLElement;
 }
 function actionBtn(el: EppDeviceGroupEditor, label: string): HTMLElement {
 	return [...el.shadowRoot!.querySelectorAll("epp-button")].find(
@@ -65,8 +58,31 @@ function emitValueChanged(target: HTMLElement, value: unknown): void {
 function setName(el: EppDeviceGroupEditor, value: string): void {
 	emitValueChanged(nameField(el), value);
 }
+/** Drive source inclusion/exclusion by dispatching source-toggled on the epp-device-source-list host. */
 function setToggle(el: EppDeviceGroupEditor, mac: string, on: boolean): void {
-	emitValueChanged(toggle(el, mac), on);
+	const sl = sourceList(el);
+	sl.dispatchEvent(
+		new CustomEvent("source-toggled", {
+			detail: { mac, on },
+			bubbles: true,
+			composed: true,
+		}),
+	);
+}
+function sensorList(el: EppDeviceGroupEditor): HTMLElement & {
+	sources: DeviceGroupSource[];
+	zoneGroups: unknown[];
+	excludedPresence: string[];
+	excludedZones: DeviceGroupZoneMember[];
+	excludedZoneGroups: string[];
+} {
+	return el.shadowRoot!.querySelector("epp-sensor-list") as HTMLElement & {
+		sources: DeviceGroupSource[];
+		zoneGroups: unknown[];
+		excludedPresence: string[];
+		excludedZones: DeviceGroupZoneMember[];
+		excludedZoneGroups: string[];
+	};
 }
 
 const DEVICES: DeviceInfo[] = [
@@ -115,6 +131,9 @@ const EXISTING: DeviceGroup = {
 	sources: [SOURCE_AA],
 	zone_groups: [{ id: "zg1", name: "Bed", members: [] }],
 	exposed_entities: { presence: [], zones: [] },
+	excluded_presence: [],
+	excluded_zones: [],
+	excluded_zone_groups: [],
 };
 
 // A group referencing a source device that no longer exists (available: false,
@@ -133,6 +152,9 @@ const EXISTING_WITH_MISSING: DeviceGroup = {
 	sources: [SOURCE_AA, DEAD_SOURCE],
 	zone_groups: [],
 	exposed_entities: { presence: [], zones: [] },
+	excluded_presence: [],
+	excluded_zones: [],
+	excluded_zone_groups: [],
 };
 
 describe("epp-device-group-editor", () => {
@@ -147,16 +169,14 @@ describe("epp-device-group-editor", () => {
 		expect(nameField(el).label).toBe("Device name");
 	});
 
-	it("renders a toggle for every available device", async () => {
+	it("passes every available device to epp-device-source-list", async () => {
 		const el = await fixture();
 		el.availableDevices = DEVICES;
 		await el.updateComplete;
-		const toggles = deviceToggles(el);
-		expect(toggles.length).toBe(2);
-		expect(toggles.map((t) => t.getAttribute("data-mac"))).toEqual([
-			"AA",
-			"BB",
-		]);
+		const sl = sourceList(el) as HTMLElement & {
+			availableDevices: DeviceInfo[];
+		};
+		expect(sl.availableDevices.map((d) => d.mac)).toEqual(["AA", "BB"]);
 	});
 
 	it("frames the editor in an ha-card", async () => {
@@ -164,52 +184,6 @@ describe("epp-device-group-editor", () => {
 		el.availableDevices = DEVICES;
 		await el.updateComplete;
 		expect(el.shadowRoot!.querySelector("ha-card")).not.toBeNull();
-	});
-
-	it("shows each source device's name but not its mac", async () => {
-		const el = await fixture();
-		el.availableDevices = [
-			{ ...DEVICES[0], mac: "28:05:A5:11:22:33", name: "Kitchen" },
-		];
-		await el.updateComplete;
-		const row = el.shadowRoot!.querySelector(".source-row") as HTMLElement;
-		expect(row.textContent).toContain("Kitchen");
-		expect(row.textContent).not.toContain("28:05:A5:11:22:33");
-	});
-
-	it("shows the device's area name in parentheses after the name", async () => {
-		const el = await fixture();
-		el.availableDevices = [
-			{ ...DEVICES[0], name: "Kitchen", area: "Downstairs" },
-		];
-		await el.updateComplete;
-		const name = el.shadowRoot!.querySelector(".source-name") as HTMLElement;
-		expect(name.textContent!.trim()).toBe("Kitchen (Downstairs)");
-	});
-
-	it("puts all the source rows in a single box", async () => {
-		const el = await fixture();
-		el.availableDevices = DEVICES;
-		await el.updateComplete;
-		const boxes = el.shadowRoot!.querySelectorAll(".source-box");
-		expect(boxes.length).toBe(1);
-		expect(boxes[0].querySelectorAll(".source-row").length).toBe(2);
-	});
-
-	it("renders the device name before its toggle in the row", async () => {
-		const el = await fixture();
-		el.availableDevices = DEVICES;
-		await el.updateComplete;
-		const row = el.shadowRoot!.querySelector(".source-row") as HTMLElement;
-		const name = row.querySelector(".source-name") as HTMLElement;
-		const tog = row.querySelector(
-			'[data-testid="device-toggle"]',
-		) as HTMLElement;
-		expect(name).not.toBeNull();
-		// name comes before the toggle in document order (toggle sits on the right)
-		expect(
-			name.compareDocumentPosition(tog) & Node.DOCUMENT_POSITION_FOLLOWING,
-		).toBeTruthy();
 	});
 
 	it("does not render a 'Basics' heading", async () => {
@@ -248,8 +222,8 @@ describe("epp-device-group-editor", () => {
 		el.existingGroup = EXISTING;
 		await el.updateComplete;
 		expect(nameField(el).value).toBe("Bedroom");
-		expect(toggle(el, "AA").checked).toBe(true);
-		expect(toggle(el, "BB").checked).toBe(false);
+		const sl = sourceList(el) as HTMLElement & { selectedMacs: string[] };
+		expect(sl.selectedMacs).toEqual(["AA"]);
 	});
 
 	it("enables Save once a name and a source are chosen", async () => {
@@ -306,21 +280,16 @@ describe("epp-device-group-editor", () => {
 		expect(seen).toEqual([true, false]);
 	});
 
-	it("flags a missing source device with a warning + a removable row", async () => {
+	it("passes missing source devices to epp-device-source-list", async () => {
 		const el = await fixture();
-		el.availableDevices = DEVICES; // AA, BB — note: 28:DEAD is gone
+		el.availableDevices = DEVICES;
 		el.sourcesByMac = { AA: SOURCE_AA };
 		el.existingGroup = EXISTING_WITH_MISSING;
 		await el.updateComplete;
-		// a warning note is shown
-		expect(
-			el.shadowRoot!.querySelector('[data-testid="missing-warning"]'),
-		).not.toBeNull();
-		// the missing device is listed as its own row (with a toggle to drop it)
-		const row = el.shadowRoot!.querySelector('[data-testid="missing-source"]');
-		expect(row).not.toBeNull();
-		expect(row!.textContent).toContain("28:DEAD");
-		expect(toggle(el, "28:DEAD")).not.toBeNull();
+		const sl = sourceList(el) as HTMLElement & {
+			missingSources: { mac: string; name: string }[];
+		};
+		expect(sl.missingSources.map((s) => s.mac)).toContain("28:DEAD");
 	});
 
 	it("toggling off a missing source drops it from the save payload", async () => {
@@ -361,6 +330,9 @@ describe("epp-device-group-editor", () => {
 				{ id: "zgY", name: "Solo", members: [{ mac: "BB", zone_index: 3 }] },
 			],
 			exposed_entities: { presence: [], zones: [] },
+			excluded_presence: [],
+			excluded_zones: [],
+			excluded_zone_groups: [],
 		};
 		await el.updateComplete;
 		setToggle(el, "BB", false); // remove BB
@@ -385,11 +357,11 @@ describe("epp-device-group-editor", () => {
 		el.sourcesByMac = { AA: SOURCE_AA };
 		el.existingGroup = EXISTING; // only SOURCE_AA, which is available
 		await el.updateComplete;
+		const sl = sourceList(el);
+		await (sl as HTMLElement & { updateComplete: Promise<unknown> })
+			.updateComplete;
 		expect(
-			el.shadowRoot!.querySelector('[data-testid="missing-warning"]'),
-		).toBeNull();
-		expect(
-			el.shadowRoot!.querySelector('[data-testid="missing-source"]'),
+			sl.shadowRoot!.querySelector('[data-testid="missing-warning"]'),
 		).toBeNull();
 	});
 
@@ -415,7 +387,7 @@ describe("epp-device-group-editor", () => {
 		expect((saveBtn(el) as HTMLButtonElement).disabled).toBe(true);
 	});
 
-	it("emits save with the trimmed payload", async () => {
+	it("emits save with the trimmed payload (including exclusion sets)", async () => {
 		const el = await fixture();
 		el.availableDevices = DEVICES;
 		await el.updateComplete;
@@ -435,6 +407,9 @@ describe("epp-device-group-editor", () => {
 			sources: ["AA"],
 			area_id: null,
 			zone_groups: [],
+			excluded_presence: [],
+			excluded_zones: [],
+			excluded_zone_groups: [],
 		});
 	});
 
@@ -450,16 +425,14 @@ describe("epp-device-group-editor", () => {
 		await expect(detail).resolves.toBeUndefined();
 	});
 
-	it("renders selected sources' zones in the merge list", async () => {
+	it("renders selected sources' zones in the sensor list", async () => {
 		const el = await fixture();
 		el.availableDevices = DEVICES;
 		el.sourcesByMac = { AA: SOURCE_AA };
 		el.existingGroup = EXISTING;
 		await el.updateComplete;
-		const mergeList = el.shadowRoot!.querySelector("epp-zone-merge-list") as {
-			sources: DeviceGroupSource[];
-		};
-		expect(mergeList.sources).toEqual([SOURCE_AA]);
+		const sl = sensorList(el);
+		expect(sl.sources).toEqual([SOURCE_AA]);
 	});
 
 	it("surfaces a device's zones as soon as it is toggled on (no save needed)", async () => {
@@ -468,14 +441,12 @@ describe("epp-device-group-editor", () => {
 		// Candidate sources for ALL devices are supplied up front by the view.
 		el.sourcesByMac = { AA: SOURCE_AA, BB: SOURCE_BB };
 		await el.updateComplete;
-		const mergeList = el.shadowRoot!.querySelector("epp-zone-merge-list") as {
-			sources: DeviceGroupSource[];
-		};
-		expect(mergeList.sources).toEqual([]);
+		const sl = sensorList(el);
+		expect(sl.sources).toEqual([]);
 
 		setToggle(el, "BB", true);
 		await el.updateComplete;
-		expect(mergeList.sources).toEqual([SOURCE_BB]);
+		expect(sl.sources).toEqual([SOURCE_BB]);
 	});
 
 	it("updates the draft area_id from the area picker", async () => {
@@ -504,16 +475,14 @@ describe("epp-device-group-editor", () => {
 		expect((await detail).area_id).toBe("kitchen");
 	});
 
-	it("updates draft zone_groups when the merge list changes", async () => {
+	it("updates draft zone_groups when the sensor list fires zone-groups-changed", async () => {
 		const el = await fixture();
 		el.availableDevices = DEVICES;
 		el.sourcesByMac = { AA: SOURCE_AA };
 		el.existingGroup = EXISTING;
 		await el.updateComplete;
-		const mergeList = el.shadowRoot!.querySelector(
-			"epp-zone-merge-list",
-		) as HTMLElement;
-		mergeList.dispatchEvent(
+		const sl = sensorList(el);
+		sl.dispatchEvent(
 			new CustomEvent("zone-groups-changed", {
 				detail: { zone_groups: [{ id: "zg9", name: "New", members: [] }] },
 				bubbles: true,
@@ -555,62 +524,204 @@ describe("epp-device-group-editor", () => {
 		expect((await detail).area_id).toBeNull();
 	});
 
-	it("previews the presence sensors that will be created", async () => {
+	it("never renders a sensors-preview element", async () => {
 		const el = await fixture();
 		el.availableDevices = DEVICES;
 		el.sourcesByMac = {
 			AA: { ...SOURCE_AA, enabled_presence: ["occupancy", "mmwave_presence"] },
 		};
 		await el.updateComplete;
-		// nothing selected yet -> no preview
 		expect(
 			el.shadowRoot!.querySelector('[data-testid="sensors-preview"]'),
 		).toBeNull();
 
 		setToggle(el, "AA", true);
 		await el.updateComplete;
-		const chips = [
-			...el.shadowRoot!.querySelectorAll('[data-testid="sensor-chip"]'),
-		].map((c) => c.textContent!.trim());
-		// Occupancy first, then the remaining presence sensors, then zones
-		expect(chips).toEqual(["Occupancy", "mmWave presence", "Desk"]);
+		expect(
+			el.shadowRoot!.querySelector('[data-testid="sensors-preview"]'),
+		).toBeNull();
+	});
+
+	it("passes exclusion sets down to epp-sensor-list", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		el.sourcesByMac = { AA: SOURCE_AA };
+		el.existingGroup = {
+			...EXISTING,
+			excluded_presence: ["occupancy"],
+			excluded_zones: [{ mac: "AA", zone_index: 2 }],
+			excluded_zone_groups: ["rest_of_room"],
+		};
+		await el.updateComplete;
+		const sl = sensorList(el);
+		expect(sl.excludedPresence).toEqual(["occupancy"]);
+		expect(sl.excludedZones).toEqual([{ mac: "AA", zone_index: 2 }]);
+		expect(sl.excludedZoneGroups).toEqual(["rest_of_room"]);
+	});
+
+	it("exclusions-changed event updates the draft and Save emits all three fields", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		el.sourcesByMac = { AA: SOURCE_AA };
+		el.existingGroup = EXISTING;
+		await el.updateComplete;
+
+		const sl = sensorList(el);
+		sl.dispatchEvent(
+			new CustomEvent("exclusions-changed", {
+				detail: {
+					excluded_presence: ["occupancy"],
+					excluded_zones: [{ mac: "AA", zone_index: 2 }],
+					excluded_zone_groups: ["rest_of_room"],
+				},
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		await el.updateComplete;
+
+		const detail = new Promise<Record<string, unknown>>((resolve) => {
+			el.addEventListener("save", (e) => resolve((e as CustomEvent).detail), {
+				once: true,
+			});
+		});
+		saveBtn(el).click();
+		const payload = await detail;
+		expect(payload.excluded_presence).toEqual(["occupancy"]);
+		expect(payload.excluded_zones).toEqual([{ mac: "AA", zone_index: 2 }]);
+		expect(payload.excluded_zone_groups).toEqual(["rest_of_room"]);
+	});
+
+	it("dirty round-trips on an exclusion change-then-revert", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		el.sourcesByMac = { AA: SOURCE_AA };
+		const seen: boolean[] = [];
+		el.addEventListener("dirty-changed", (e) =>
+			seen.push((e as CustomEvent).detail.dirty),
+		);
+		el.existingGroup = EXISTING; // load -> pristine, no emit
+		await el.updateComplete;
+
+		// Make it dirty via exclusion change
+		const sl = sensorList(el);
+		sl.dispatchEvent(
+			new CustomEvent("exclusions-changed", {
+				detail: {
+					excluded_presence: ["occupancy"],
+					excluded_zones: [],
+					excluded_zone_groups: [],
+				},
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		await el.updateComplete;
+
+		// Revert
+		sl.dispatchEvent(
+			new CustomEvent("exclusions-changed", {
+				detail: {
+					excluded_presence: [],
+					excluded_zones: [],
+					excluded_zone_groups: [],
+				},
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		await el.updateComplete;
+
+		expect(seen).toEqual([true, false]);
+	});
+
+	it("a fresh group's payload has empty exclusion sets", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		await el.updateComplete;
+		setName(el, "New group");
+		setToggle(el, "AA", true);
+		await el.updateComplete;
+
+		const detail = new Promise<Record<string, unknown>>((resolve) => {
+			el.addEventListener("save", (e) => resolve((e as CustomEvent).detail), {
+				once: true,
+			});
+		});
+		saveBtn(el).click();
+		const payload = await detail;
+		expect(payload.excluded_presence).toEqual([]);
+		expect(payload.excluded_zones).toEqual([]);
+		expect(payload.excluded_zone_groups).toEqual([]);
+	});
+
+	it("removing a source also drops its excluded zones from the draft", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		el.sourcesByMac = { AA: SOURCE_AA, BB: SOURCE_BB };
+		el.existingGroup = {
+			...EXISTING,
+			sources: [SOURCE_AA, SOURCE_BB],
+			excluded_presence: [],
+			excluded_zones: [
+				{ mac: "AA", zone_index: 2 },
+				{ mac: "BB", zone_index: 3 },
+			],
+			excluded_zone_groups: [],
+		};
+		await el.updateComplete;
+		setToggle(el, "BB", false);
+		await el.updateComplete;
+
+		const detail = new Promise<Record<string, unknown>>((resolve) => {
+			el.addEventListener("save", (e) => resolve((e as CustomEvent).detail), {
+				once: true,
+			});
+		});
+		saveBtn(el).click();
+		const payload = await detail;
+		// BB's excluded zone should be dropped
+		expect(payload.excluded_zones).toEqual([{ mac: "AA", zone_index: 2 }]);
+	});
+
+	it("falls back to empty arrays when existingGroup lacks excluded_* fields (BWC)", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		el.sourcesByMac = { AA: SOURCE_AA };
+		// Simulate an older backend payload missing the excluded_* fields
+		el.existingGroup = {
+			id: "g-old",
+			name: "Old group",
+			area_id: null,
+			sources: [SOURCE_AA],
+			zone_groups: [],
+			exposed_entities: { presence: [], zones: [] },
+		} as unknown as DeviceGroup; // cast to bypass TS strictness
+		await el.updateComplete;
+		const sl = sensorList(el);
+		expect(sl.excludedPresence).toEqual([]);
+		expect(sl.excludedZones).toEqual([]);
+		expect(sl.excludedZoneGroups).toEqual([]);
 	});
 
 	// Keep last: registering HA elements is global for the test environment, so
-	// this exercises the ha-input/ha-switch branches inside the primitives while
-	// every test above covers the ha-textfield/checkbox fallbacks. The editor
-	// now delegates to epp-field / epp-toggle, which render the HA-native widget
-	// in their own shadow root when it is registered.
-	it("uses HA-native ha-input and ha-switch (via the primitives) when registered", async () => {
+	// this exercises the ha-input branch inside epp-field while every test above
+	// covers the ha-textfield fallback. The editor delegates to epp-field, which
+	// renders the HA-native widget in its own shadow root when it is registered.
+	it("uses the HA-native ha-input (via epp-field) for the name when registered", async () => {
 		if (!customElements.get("ha-input")) {
 			customElements.define("ha-input", class extends HTMLElement {});
-		}
-		if (!customElements.get("ha-switch")) {
-			customElements.define("ha-switch", class extends HTMLElement {});
 		}
 		const el = await fixture();
 		el.availableDevices = DEVICES;
 		await el.updateComplete;
-		// The editor composes the primitives...
 		const field = el.shadowRoot!.querySelector(
 			'epp-field[data-testid="name-field"]',
 		) as HTMLElement;
-		const toggles = [
-			...el.shadowRoot!.querySelectorAll(
-				'epp-toggle[data-testid="device-toggle"]',
-			),
-		] as HTMLElement[];
 		expect(field).not.toBeNull();
-		expect(toggles.length).toBe(2);
-		// ...and the primitives use the HA-native widgets when registered.
 		await (field as HTMLElement & { updateComplete: Promise<unknown> })
 			.updateComplete;
 		expect(field.shadowRoot!.querySelector("ha-input")).not.toBeNull();
-		for (const t of toggles) {
-			await (t as HTMLElement & { updateComplete: Promise<unknown> })
-				.updateComplete;
-			expect(t.shadowRoot!.querySelector("ha-switch")).not.toBeNull();
-		}
 	});
 });
 

@@ -15,6 +15,7 @@ from homeassistant.helpers.event import async_track_state_change_event
 
 from ..const import NUM_ZONE_SLOTS
 from ..const import PRESENCE_SLOTS
+from ..const import REST_OF_ROOM_ID
 from ._aggregation import or_presence
 from ._registry import resolve_entity_id
 
@@ -218,29 +219,60 @@ class Aggregator:
 
     def _recompute_all(self) -> None:
         sources = self._def["sources"]
+        excluded_presence = set(self._def.get("excluded_presence", []))
+        excluded_zone_keys = {(z["mac"], z["zone_index"]) for z in self._def.get("excluded_zones", [])}
+        excluded_zg_ids = set(self._def.get("excluded_zone_groups", []))
+
         # Presence: expose a slot only if at least one source has that entity
-        # enabled (registered + not disabled), matching derive_exposed_entities.
+        # enabled (registered + not disabled), matching derive_exposed_entities,
+        # and the slot is not excluded.
         presence: dict[str, bool | None] = {}
         for slot in PRESENCE_SLOTS:
+            if slot in excluded_presence:
+                continue
             if not any(self._entity_enabled(m, slot) for m in sources):
                 continue
             presence[slot] = or_presence([self._state_of(m, slot) for m in sources])
-        # Zone groups
+
+        # Zone groups (explicit named merges, minus excluded ids).
         zg_state: dict[str, bool | None] = {}
         grouped_keys: set[tuple[str, int]] = set()
         for zg in self._def.get("zone_groups", []):
             states = []
             for m in zg["members"]:
+                # Members stay merged even when the group is excluded, so they
+                # don't fall back to passthroughs.
                 grouped_keys.add((m["mac"], m["zone_index"]))
                 states.append(self._state_of(m["mac"], f"zone_{m['zone_index']}_presence"))
+            if zg["id"] in excluded_zg_ids:
+                continue
             zg_state[zg["id"]] = or_presence(states)
-        # Passthroughs: enabled (registered + not disabled) zone entities, not in
-        # a group, with a configured zone name. Disabled zones are skipped so we
-        # don't materialise permanently-unavailable helpers.
+
+        # Implicit combined Rest of Room: OR of every enabled source zone 0,
+        # synthesised unless excluded and only when a source HAS a zone 0.
+        if REST_OF_ROOM_ID not in excluded_zg_ids:
+            # Unlike the projection (which emits a greyed available=False row so
+            # the editor can preview a Rest of room whose zone-0 entities are all
+            # disabled), the aggregator only wires up the entity when at least one
+            # source's zone-0 entity is enabled — it never creates a
+            # permanently-unavailable sensor.
+            ror_states: list[str | None] = []
+            for mac in sources:
+                if not self._entity_enabled(mac, "zone_0_presence"):
+                    continue
+                ror_states.append(self._state_of(mac, "zone_0_presence"))
+            if ror_states:
+                zg_state[REST_OF_ROOM_ID] = or_presence(ror_states)
+
+        # Passthroughs: enabled (registered + not disabled) zone entities with a
+        # configured name, not in a group, not excluded. Zone 0 is NEVER a
+        # passthrough — it only flows through the combined Rest of Room.
         passthroughs: dict[tuple[str, int], bool | None] = {}
         for mac in sources:
-            for i in range(NUM_ZONE_SLOTS):  # incl. zone 0 "rest of room"
+            for i in range(1, NUM_ZONE_SLOTS):  # skip zone 0
                 if (mac, i) in grouped_keys:
+                    continue
+                if (mac, i) in excluded_zone_keys:
                     continue
                 if not self._entity_enabled(mac, f"zone_{i}_presence"):
                     continue

@@ -586,3 +586,126 @@ async def test_passthrough_zone_entity_uses_configured_zone_name(
     assert state.attributes.get("friendly_name", "").endswith("Bed Left"), (
         f"Expected entity name 'Bed Left', got friendly_name={state.attributes.get('friendly_name')!r}"
     )
+
+
+from custom_components.eppgrid.const import REST_OF_ROOM_ID  # noqa: E402
+
+
+async def test_combined_rest_of_room_entity_created_and_ors_zone_zero(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    enable_custom_integrations,
+) -> None:
+    """The implicit combined Rest of Room is created via the zone-group path with
+    id rest_of_room and ORs every source's zone 0."""
+    er_ = er.async_get(hass)
+    a0 = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence")
+    b0 = er_.async_get_or_create("binary_sensor", "esphome", "11:22:33:44:55:66-binary_sensor-zone_0_presence")
+    hass.states.async_set(a0.entity_id, STATE_OFF)
+    hass.states.async_set(b0.entity_id, STATE_OFF)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    manager = hass.data[DOMAIN]
+    group = await manager.device_groups.async_create(
+        name="Combined", sources=["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"]
+    )
+    await hass.async_block_till_done()
+
+    uid = f"eppgrid_device_group_{group['id']}_zone_group_{REST_OF_ROOM_ID}"
+    eid = er_.async_get_entity_id("binary_sensor", DOMAIN, uid)
+    assert eid is not None
+    assert hass.states.get(eid).attributes["friendly_name"].endswith("Zone Rest of Room")
+
+    hass.states.async_set(b0.entity_id, STATE_ON)
+    await hass.async_block_till_done()
+    assert hass.states.get(eid).state == STATE_ON
+
+
+async def test_no_per_device_zone_zero_passthrough_entity(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    enable_custom_integrations,
+) -> None:
+    """Per-device zone-0 passthroughs are no longer created — only the combined
+    Rest of Room exists."""
+    er_ = er.async_get(hass)
+    a0 = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence")
+    hass.states.async_set(a0.entity_id, STATE_OFF)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    manager = hass.data[DOMAIN]
+    group = await manager.device_groups.async_create(name="G", sources=["AA:BB:CC:DD:EE:FF"])
+    await hass.async_block_till_done()
+
+    stale = f"eppgrid_device_group_{group['id']}_zone_pass_AA:BB:CC:DD:EE:FF_0"
+    assert er_.async_get_entity_id("binary_sensor", DOMAIN, stale) is None
+
+
+async def test_excluding_rest_of_room_removes_its_entity(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    enable_custom_integrations,
+) -> None:
+    """Adding rest_of_room to excluded_zone_groups (via update) reconciles the
+    combined RoR entity away."""
+    er_ = er.async_get(hass)
+    a0 = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence")
+    hass.states.async_set(a0.entity_id, STATE_OFF)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    manager = hass.data[DOMAIN]
+    group = await manager.device_groups.async_create(name="G", sources=["AA:BB:CC:DD:EE:FF"])
+    await hass.async_block_till_done()
+
+    uid = f"eppgrid_device_group_{group['id']}_zone_group_{REST_OF_ROOM_ID}"
+    assert er_.async_get_entity_id("binary_sensor", DOMAIN, uid) is not None
+
+    await manager.device_groups.async_update(
+        id=group["id"],
+        name="G",
+        sources=["AA:BB:CC:DD:EE:FF"],
+        area_id=None,
+        zone_groups=[],
+        excluded_zone_groups=[REST_OF_ROOM_ID],
+    )
+    await hass.async_block_till_done()
+
+    assert er_.async_get_entity_id("binary_sensor", DOMAIN, uid) is None
+
+
+async def test_excluding_a_presence_slot_removes_its_entity(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    enable_custom_integrations,
+) -> None:
+    er_ = er.async_get(hass)
+    a = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy")
+    hass.states.async_set(a.entity_id, STATE_OFF)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    manager = hass.data[DOMAIN]
+    group = await manager.device_groups.async_create(name="G", sources=["AA:BB:CC:DD:EE:FF"])
+    await hass.async_block_till_done()
+
+    uid = f"eppgrid_device_group_{group['id']}_occupancy"
+    assert er_.async_get_entity_id("binary_sensor", DOMAIN, uid) is not None
+
+    await manager.device_groups.async_update(
+        id=group["id"],
+        name="G",
+        sources=["AA:BB:CC:DD:EE:FF"],
+        area_id=None,
+        zone_groups=[],
+        excluded_presence=["occupancy"],
+    )
+    await hass.async_block_till_done()
+
+    assert er_.async_get_entity_id("binary_sensor", DOMAIN, uid) is None

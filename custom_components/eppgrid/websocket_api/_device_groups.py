@@ -86,13 +86,25 @@ def _candidate_sources(hass: HomeAssistant, manager: Any) -> list[dict[str, Any]
 def _serialize_group(hass: HomeAssistant, group: dict[str, Any], manager: Any) -> dict[str, Any]:
     """Return the full WS payload for a device group, with exposed_entities."""
     sources = _build_sources(hass, group["sources"], manager)
+    excluded_presence = group.get("excluded_presence", [])
+    excluded_zones = group.get("excluded_zones", [])
+    excluded_zone_groups = group.get("excluded_zone_groups", [])
     return {
         "id": group["id"],
         "name": group["name"],
         "area_id": group["area_id"],
         "sources": [_serialize_source(s, manager) for s in sources],
         "zone_groups": group["zone_groups"],
-        "exposed_entities": derive_exposed_entities(sources, group["zone_groups"]),
+        "excluded_presence": excluded_presence,
+        "excluded_zones": excluded_zones,
+        "excluded_zone_groups": excluded_zone_groups,
+        "exposed_entities": derive_exposed_entities(
+            sources,
+            group["zone_groups"],
+            excluded_presence=excluded_presence,
+            excluded_zones=excluded_zones,
+            excluded_zone_groups=excluded_zone_groups,
+        ),
     }
 
 
@@ -116,6 +128,39 @@ def websocket_list_device_groups(
     )
 
 
+# -- shared member schemas ---------------------------------------------------
+
+_ZONE_GROUP_SCHEMA = vol.Schema(
+    {
+        vol.Required("id"): vol.All(str, vol.Length(min=1, max=64)),
+        vol.Required("name"): vol.All(str, vol.Length(min=1, max=128)),
+        vol.Required("members"): vol.All(
+            [
+                vol.Schema(
+                    {
+                        vol.Required("mac"): MAC_SCHEMA,
+                        # Manual merges cover named zones 1-7 only. Zone 0
+                        # (Rest of room) is combined implicitly by the
+                        # projection and is never a stored zone_group member.
+                        vol.Required("zone_index"): vol.All(int, vol.Range(min=1, max=7)),
+                    }
+                )
+            ],
+            vol.Length(min=0, max=16),
+        ),
+    }
+)
+
+_EXCLUDED_ZONE_SCHEMA = vol.Schema(
+    {
+        vol.Required("mac"): MAC_SCHEMA,
+        # Excludable passthrough zones are the named zones 1-7; zone 0 (Rest
+        # of room) is excluded via excluded_zone_groups ("rest_of_room").
+        vol.Required("zone_index"): vol.All(int, vol.Range(min=1, max=7)),
+    }
+)
+
+
 # -- create -----------------------------------------------------------------
 
 _CREATE_SCHEMA = {
@@ -126,6 +171,12 @@ _CREATE_SCHEMA = {
         vol.Length(min=1, max=MAX_SOURCES_PER_DEVICE_GROUP),
     ),
     vol.Optional("area_id"): vol.Any(None, vol.All(str, vol.Length(min=1, max=128))),
+    vol.Optional("zone_groups", default=list): vol.All(
+        [_ZONE_GROUP_SCHEMA], vol.Length(max=MAX_ZONE_GROUPS_PER_DEVICE_GROUP)
+    ),
+    vol.Optional("excluded_presence", default=list): [str],
+    vol.Optional("excluded_zones", default=list): [_EXCLUDED_ZONE_SCHEMA],
+    vol.Optional("excluded_zone_groups", default=list): [str],
 }
 
 
@@ -144,6 +195,10 @@ async def websocket_create_device_group(
             name=msg["name"],
             sources=msg["sources"],
             area_id=msg.get("area_id"),
+            zone_groups=msg["zone_groups"],
+            excluded_presence=msg["excluded_presence"],
+            excluded_zones=msg["excluded_zones"],
+            excluded_zone_groups=msg["excluded_zone_groups"],
         )
     except ValueError as e:
         connection.send_error(msg["id"], "invalid_input", str(e))
@@ -152,25 +207,6 @@ async def websocket_create_device_group(
 
 
 # -- update -----------------------------------------------------------------
-
-_ZONE_GROUP_SCHEMA = vol.Schema(
-    {
-        vol.Required("id"): vol.All(str, vol.Length(min=1, max=64)),
-        vol.Required("name"): vol.All(str, vol.Length(min=1, max=128)),
-        vol.Required("members"): vol.All(
-            [
-                vol.Schema(
-                    {
-                        vol.Required("mac"): MAC_SCHEMA,
-                        # zone 0 is the "rest of room" zone; 1-7 are named zones.
-                        vol.Required("zone_index"): vol.All(int, vol.Range(min=0, max=7)),
-                    }
-                )
-            ],
-            vol.Length(min=0, max=16),
-        ),
-    }
-)
 
 _UPDATE_SCHEMA = {
     vol.Required("type"): "eppgrid/update_device_group",
@@ -182,6 +218,9 @@ _UPDATE_SCHEMA = {
     ),
     vol.Required("area_id"): vol.Any(None, vol.All(str, vol.Length(min=1, max=128))),
     vol.Required("zone_groups"): vol.All([_ZONE_GROUP_SCHEMA], vol.Length(max=MAX_ZONE_GROUPS_PER_DEVICE_GROUP)),
+    vol.Optional("excluded_presence", default=list): [str],
+    vol.Optional("excluded_zones", default=list): [_EXCLUDED_ZONE_SCHEMA],
+    vol.Optional("excluded_zone_groups", default=list): [str],
 }
 
 
@@ -202,6 +241,9 @@ async def websocket_update_device_group(
             sources=msg["sources"],
             area_id=msg["area_id"],
             zone_groups=msg["zone_groups"],
+            excluded_presence=msg["excluded_presence"],
+            excluded_zones=msg["excluded_zones"],
+            excluded_zone_groups=msg["excluded_zone_groups"],
         )
     except KeyError:
         connection.send_error(msg["id"], "not_found", "device group not found")

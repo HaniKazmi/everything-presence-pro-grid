@@ -105,6 +105,85 @@ class TestCreate:
         msg = await client.receive_json()
         assert msg["success"] is False
 
+    async def test_create_persists_zone_groups_and_exclusions(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        """create must persist the full config in one step — historically it
+        dropped zone_groups. Verify via the manager's stored record so this
+        test does not depend on _serialize_group (covered in B5)."""
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "G",
+                "sources": ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"],
+                "zone_groups": [
+                    {
+                        "id": "zg1",
+                        "name": "Beds",
+                        "members": [
+                            {"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 1},
+                            {"mac": "11:22:33:44:55:66", "zone_index": 1},
+                        ],
+                    }
+                ],
+                "excluded_presence": ["motion_presence"],
+                "excluded_zones": [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2}],
+                "excluded_zone_groups": ["rest_of_room"],
+            }
+        )
+        msg = await client.receive_json()
+        assert msg["success"] is True
+        gid = msg["result"]["device_group"]["id"]
+
+        stored = hass.data[DOMAIN].device_groups.get_group(gid)
+        assert stored["zone_groups"][0]["id"] == "zg1"
+        assert stored["excluded_presence"] == ["motion_presence"]
+        assert stored["excluded_zones"] == [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2}]
+        assert stored["excluded_zone_groups"] == ["rest_of_room"]
+
+    async def test_create_accepts_exclusion_fields(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "G",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+                "zone_groups": [],
+                "excluded_presence": ["motion_presence"],
+                "excluded_zones": [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2}],
+                "excluded_zone_groups": ["rest_of_room"],
+            }
+        )
+        msg = await client.receive_json()
+        assert msg["success"] is True
+
+    async def test_create_rejects_excluded_zone_index_0(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "G",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+                "excluded_zones": [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 0}],
+            }
+        )
+        msg = await client.receive_json()
+        assert msg["success"] is False
+
 
 class TestUpdate:
     async def test_update_full_payload(
@@ -138,14 +217,84 @@ class TestUpdate:
         assert msg["result"]["device_group"]["name"] == "New"
         assert msg["result"]["device_group"]["sources"][0]["mac"] == "AA:BB:CC:DD:EE:FF"
 
-    async def test_update_accepts_zone_0_rest_of_room_member(
+    async def test_update_round_trips_exclusions(
         self,
         hass: HomeAssistant,
         setup_with_sources: None,
         hass_ws_client: WebSocketGenerator,
     ) -> None:
-        """A merged zone may include zone 0 (rest of room) — zone_index 0 must
-        pass schema validation."""
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "G",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
+        created = (await client.receive_json())["result"]["device_group"]
+
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/update_device_group",
+                "group_id": created["id"],
+                "name": "G",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+                "area_id": None,
+                "zone_groups": [],
+                "excluded_presence": ["occupancy", "static_presence"],
+                "excluded_zones": [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 4}],
+                "excluded_zone_groups": ["rest_of_room"],
+            }
+        )
+        msg = await client.receive_json()
+        assert msg["success"] is True
+
+        stored = hass.data[DOMAIN].device_groups.get_group(created["id"])
+        assert stored["excluded_presence"] == ["occupancy", "static_presence"]
+        assert stored["excluded_zones"] == [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 4}]
+        assert stored["excluded_zone_groups"] == ["rest_of_room"]
+
+    async def test_update_accepts_exclusion_fields(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "G",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
+        created = (await client.receive_json())["result"]["device_group"]
+
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/update_device_group",
+                "group_id": created["id"],
+                "name": "G",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+                "area_id": None,
+                "zone_groups": [],
+                "excluded_presence": ["occupancy"],
+                "excluded_zones": [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 3}],
+                "excluded_zone_groups": ["rest_of_room"],
+            }
+        )
+        msg = await client.receive_json()
+        assert msg["success"] is True
+
+    async def test_update_rejects_zone_0_in_zone_group_member(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        """Manual merges are zones 1-7 only; Rest of room (zone 0) is now an
+        implicit combined group synthesised by the projection, never a stored
+        zone_group member. zone_index 0 must fail schema validation."""
         client = await hass_ws_client(hass)
         await client.send_json_auto_id(
             {
@@ -173,8 +322,8 @@ class TestUpdate:
             }
         )
         msg = await client.receive_json()
-        assert msg["success"] is True
-        assert msg["result"]["device_group"]["zone_groups"][0]["members"][0]["zone_index"] == 0
+        assert msg["success"] is False
+        assert msg["error"]["code"] == "invalid_format"
 
 
 class TestDelete:
@@ -300,3 +449,41 @@ class TestSubscribe:
         events = [m for m in msgs if m.get("type") == "event"]
         assert events, "expected a subscription event after create"
         assert len(events[0]["event"]["device_groups"]) == 1
+
+
+class TestSerialize:
+    async def test_serialize_group_surfaces_exclusions_and_prunes_exposed(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        """The serialized group must echo the exclusion fields, and an excluded
+        presence slot must not appear in exposed_entities.presence."""
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "Baseline",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
+        baseline = (await client.receive_json())["result"]["device_group"]
+        assert "occupancy" in baseline["exposed_entities"]["presence"]
+        assert baseline["excluded_presence"] == []
+        assert baseline["excluded_zones"] == []
+        assert baseline["excluded_zone_groups"] == []
+
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "Excluded",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+                "excluded_presence": ["occupancy"],
+                "excluded_zone_groups": ["rest_of_room"],
+            }
+        )
+        excluded = (await client.receive_json())["result"]["device_group"]
+        assert excluded["excluded_presence"] == ["occupancy"]
+        assert excluded["excluded_zone_groups"] == ["rest_of_room"]
+        assert "occupancy" not in excluded["exposed_entities"]["presence"]

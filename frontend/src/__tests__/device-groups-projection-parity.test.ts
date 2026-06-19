@@ -31,6 +31,11 @@ interface ParityScenario {
 	name: string;
 	sources: DeviceGroupSourceState[];
 	zone_groups: DeviceGroupZoneGroup[];
+	excluded?: {
+		presence?: string[];
+		zones?: { mac: string; zone_index: number }[];
+		zoneGroups?: string[];
+	};
 	expected: DeviceGroupExposedEntities;
 }
 
@@ -56,6 +61,7 @@ describe("device-groups projection parity (shared fixture drives Python + TS)", 
 			const result = deriveExposedEntities(
 				scenario.sources,
 				scenario.zone_groups,
+				scenario.excluded,
 			);
 			expect(result).toEqual(scenario.expected);
 		});
