@@ -140,6 +140,35 @@ describe("epp-flasher-view inline event handlers", () => {
 		expect((panel as any)._panelTab).toBe("config");
 	});
 
+	it("@flash-complete captures the flashed MAC into _pendingSetupMac before reset", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		// Active USB state carrying a MAC (the just-flashed device).
+		ctrl.usbFlashState = {
+			step: "complete",
+			variant: "ethernet-ble-co2",
+			mac: "AA:BB:CC:DD:EE:99",
+		};
+		vi.spyOn(panel as any, "_loadDevices").mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("flash-complete", { bubbles: true }),
+		);
+
+		expect((panel as any)._pendingSetupMac).toBe("AA:BB:CC:DD:EE:99");
+	});
+
+	it("@flash-complete sets _pendingSetupMac to null when usbFlashState is null", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.usbFlashState = null;
+		vi.spyOn(panel as any, "_loadDevices").mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("flash-complete", { bubbles: true }),
+		);
+
+		expect((panel as any)._pendingSetupMac).toBeNull();
+	});
+
 	it("@usb-flash calls the controller's handleUsbFlash with variant", () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		const spy = vi.spyOn(ctrl, "handleUsbFlash").mockResolvedValue(undefined);

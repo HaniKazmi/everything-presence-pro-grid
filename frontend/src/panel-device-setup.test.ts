@@ -1,0 +1,401 @@
+import { render } from "lit";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { EPPGridPanel } from "./eppgrid-panel.js";
+import "./eppgrid-panel.js";
+import type { DeviceInfo } from "./types.js";
+
+function makeDeviceInfo(over: Partial<DeviceInfo> = {}): DeviceInfo {
+	return {
+		mac: "AA:BB:CC:DD:EE:FF",
+		name: "Auto",
+		host: "1.2.3.4",
+		available: true,
+		configured: false,
+		area: null,
+		firmware_status: "compatible",
+		current_connection_count: 0,
+		onboarded: false,
+		...over,
+	};
+}
+
+function createPanel(): EPPGridPanel {
+	const el = new EPPGridPanel();
+	(el as never as { hass: unknown }).hass = {
+		callWS: vi.fn().mockResolvedValue({ devices: [] }),
+		connection: { subscribeMessage: vi.fn().mockResolvedValue(vi.fn()) },
+	};
+	(el as never as { _localize: (k: string) => string })._localize = ((
+		k: string,
+	) => k) as never;
+	return el;
+}
+
+describe("panel device setup", () => {
+	it("calls configure_device on setup-complete", async () => {
+		const panel = createPanel();
+		const callWS = (
+			panel as never as { hass: { callWS: ReturnType<typeof vi.fn> } }
+		).hass.callWS;
+		await (
+			panel as never as {
+				_onDeviceSetupComplete: (e: CustomEvent) => Promise<void>;
+			}
+		)._onDeviceSetupComplete(
+			new CustomEvent("setup-complete", {
+				detail: {
+					mac: "AA:BB:CC:DD:EE:FF",
+					name: "Bed",
+					areaId: "a1",
+					calibrate: false,
+				},
+			}),
+		);
+		expect(callWS).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "eppgrid/configure_device",
+				mac: "AA:BB:CC:DD:EE:FF",
+				area_id: "a1",
+			}),
+		);
+		expect((panel as never as { _setupOpen: boolean })._setupOpen).toBe(false);
+	});
+
+	it("calls configure_device (mac only) on setup-skip", async () => {
+		const panel = createPanel();
+		const callWS = (
+			panel as never as { hass: { callWS: ReturnType<typeof vi.fn> } }
+		).hass.callWS;
+		await (
+			panel as never as {
+				_onDeviceSetupSkip: (e: CustomEvent) => Promise<void>;
+			}
+		)._onDeviceSetupSkip(
+			new CustomEvent("setup-skip", { detail: { mac: "AA:BB:CC:DD:EE:FF" } }),
+		);
+		expect(callWS).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "eppgrid/configure_device",
+				mac: "AA:BB:CC:DD:EE:FF",
+			}),
+		);
+	});
+
+	it("sends name:null to configure_device when name is blank", async () => {
+		const panel = createPanel();
+		const callWS = (
+			panel as never as { hass: { callWS: ReturnType<typeof vi.fn> } }
+		).hass.callWS;
+		await (
+			panel as never as {
+				_onDeviceSetupComplete: (e: CustomEvent) => Promise<void>;
+			}
+		)._onDeviceSetupComplete(
+			new CustomEvent("setup-complete", {
+				detail: {
+					mac: "AA:BB:CC:DD:EE:FF",
+					name: "",
+					areaId: null,
+					calibrate: false,
+				},
+			}),
+		);
+		expect(callWS).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "eppgrid/configure_device",
+				mac: "AA:BB:CC:DD:EE:FF",
+				name: null,
+				area_id: null,
+			}),
+		);
+	});
+
+	it("hands off to calibration when calibrate is true", async () => {
+		const panel = createPanel();
+		const selectSpy = vi.fn().mockReturnValue(undefined);
+		(
+			panel as never as { _selectDeviceForCalibration: (mac: string) => void }
+		)._selectDeviceForCalibration = selectSpy as never;
+		await (
+			panel as never as {
+				_onDeviceSetupComplete: (e: CustomEvent) => Promise<void>;
+			}
+		)._onDeviceSetupComplete(
+			new CustomEvent("setup-complete", {
+				detail: {
+					mac: "AA:BB:CC:DD:EE:FF",
+					name: "Bed",
+					areaId: null,
+					calibrate: true,
+				},
+			}),
+		);
+		expect(selectSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:FF");
+	});
+
+	it("does not hand off to calibration when calibrate is false", async () => {
+		const panel = createPanel();
+		const selectSpy = vi.fn();
+		(
+			panel as never as { _selectDeviceForCalibration: (mac: string) => void }
+		)._selectDeviceForCalibration = selectSpy as never;
+		await (
+			panel as never as {
+				_onDeviceSetupComplete: (e: CustomEvent) => Promise<void>;
+			}
+		)._onDeviceSetupComplete(
+			new CustomEvent("setup-complete", {
+				detail: {
+					mac: "AA:BB:CC:DD:EE:FF",
+					name: "Bed",
+					areaId: null,
+					calibrate: false,
+				},
+			}),
+		);
+		expect(selectSpy).not.toHaveBeenCalled();
+	});
+
+	it("renders a banner when an un-onboarded device exists", () => {
+		const panel = createPanel();
+		(panel as never as { _devices: DeviceInfo[] })._devices = [
+			makeDeviceInfo({ onboarded: false }),
+		];
+		const tpl = (
+			panel as never as { _renderSetupBanner: () => unknown }
+		)._renderSetupBanner();
+		expect(tpl).toBeTruthy();
+		(panel as never as { _devices: DeviceInfo[] })._devices = [
+			makeDeviceInfo({ onboarded: true }),
+		];
+		// nothing renders -> falsy-ish sentinel; assert it differs from the banner case
+		const tpl2 = (
+			panel as never as { _renderSetupBanner: () => unknown }
+		)._renderSetupBanner();
+		expect(tpl2).not.toBe(tpl);
+	});
+
+	it("does not render a banner while the setup dialog is open", () => {
+		const panel = createPanel();
+		(panel as never as { _devices: DeviceInfo[] })._devices = [
+			makeDeviceInfo({ onboarded: false }),
+		];
+		(panel as never as { _setupOpen: boolean })._setupOpen = true;
+		const tpl = (
+			panel as never as { _renderSetupBanner: () => unknown }
+		)._renderSetupBanner();
+		const empty = (
+			panel as never as { _renderSetupBanner: () => unknown }
+		)._renderSetupBanner();
+		// Both calls return the same `nothing` sentinel when the dialog is open.
+		expect(tpl).toBe(empty);
+	});
+
+	it("opens the dialog via _openDeviceSetup", () => {
+		const panel = createPanel();
+		const dev = makeDeviceInfo();
+		(
+			panel as never as { _openDeviceSetup: (d: DeviceInfo) => void }
+		)._openDeviceSetup(dev);
+		expect((panel as never as { _setupOpen: boolean })._setupOpen).toBe(true);
+		expect(
+			(panel as never as { _setupDevice: DeviceInfo })._setupDevice.mac,
+		).toBe(dev.mac);
+	});
+
+	it("auto-opens setup for the pending flashed mac when it appears", () => {
+		const panel = createPanel();
+		(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac =
+			"AA:BB:CC:DD:EE:FF";
+		(panel as never as { _devices: DeviceInfo[] })._devices = [
+			makeDeviceInfo({ onboarded: false }),
+		];
+		(
+			panel as never as { _maybeOpenPendingSetup: () => void }
+		)._maybeOpenPendingSetup();
+		expect((panel as never as { _setupOpen: boolean })._setupOpen).toBe(true);
+		expect(
+			(panel as never as { _setupDevice: DeviceInfo })._setupDevice.mac,
+		).toBe("AA:BB:CC:DD:EE:FF");
+		expect(
+			(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac,
+		).toBeNull();
+	});
+
+	it("does not auto-open when the pending device is already onboarded", () => {
+		const panel = createPanel();
+		(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac =
+			"AA:BB:CC:DD:EE:FF";
+		(panel as never as { _devices: DeviceInfo[] })._devices = [
+			makeDeviceInfo({ onboarded: true }),
+		];
+		(
+			panel as never as { _maybeOpenPendingSetup: () => void }
+		)._maybeOpenPendingSetup();
+		expect((panel as never as { _setupOpen: boolean })._setupOpen).toBe(false);
+		// Pending mac stays set until a matching un-onboarded device appears.
+		expect(
+			(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac,
+		).toBe("AA:BB:CC:DD:EE:FF");
+	});
+
+	it("does not auto-open when there is no pending mac", () => {
+		const panel = createPanel();
+		(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac =
+			null;
+		(panel as never as { _devices: DeviceInfo[] })._devices = [
+			makeDeviceInfo({ onboarded: false }),
+		];
+		(
+			panel as never as { _maybeOpenPendingSetup: () => void }
+		)._maybeOpenPendingSetup();
+		expect((panel as never as { _setupOpen: boolean })._setupOpen).toBe(false);
+	});
+
+	it("does not re-open while the dialog is already open", () => {
+		const panel = createPanel();
+		(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac =
+			"AA:BB:CC:DD:EE:FF";
+		(panel as never as { _setupOpen: boolean })._setupOpen = true;
+		(panel as never as { _devices: DeviceInfo[] })._devices = [
+			makeDeviceInfo({ onboarded: false }),
+		];
+		(
+			panel as never as { _maybeOpenPendingSetup: () => void }
+		)._maybeOpenPendingSetup();
+		// Pending mac is untouched because we bailed out early.
+		expect(
+			(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac,
+		).toBe("AA:BB:CC:DD:EE:FF");
+	});
+});
+
+describe("panel device setup — calibrate handoff", () => {
+	it("switches device, persists, loads config, and navigates for a new mac", () => {
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+		a._selectedMac = "OLD:MAC";
+		// Stub the device-selection + nav collaborators so the real
+		// _selectDeviceForCalibration body runs without touching live controllers.
+		const closeSpy = vi.fn();
+		const loadSpy = vi.fn().mockResolvedValue(undefined);
+		const applySpy = vi.fn();
+		a._closeDeviceSession = closeSpy as never;
+		a._loadDeviceConfig = loadSpy as never;
+		a._applyView = applySpy as never;
+		(a._deviceCtrl as { showRoomCalibrationTutorial: boolean }) = {
+			showRoomCalibrationTutorial: false,
+		} as never;
+		(a._selectDeviceForCalibration as (mac: string) => void)(
+			"AA:BB:CC:DD:EE:FF",
+		);
+		expect(closeSpy).toHaveBeenCalled();
+		expect(a._selectedMac).toBe("AA:BB:CC:DD:EE:FF");
+		expect(loadSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:FF");
+		expect(applySpy).toHaveBeenCalledWith(
+			expect.objectContaining({ view: "calibrate" }),
+		);
+	});
+
+	it("navigates to the tutorial view when the tutorial is not yet dismissed", () => {
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+		a._selectedMac = "AA:BB:CC:DD:EE:FF";
+		const closeSpy = vi.fn();
+		const loadSpy = vi.fn().mockResolvedValue(undefined);
+		const applySpy = vi.fn();
+		a._closeDeviceSession = closeSpy as never;
+		a._loadDeviceConfig = loadSpy as never;
+		a._applyView = applySpy as never;
+		(a._deviceCtrl as { showRoomCalibrationTutorial: boolean }) = {
+			showRoomCalibrationTutorial: true,
+		} as never;
+		// Same mac as current selection -> skip the device-switch branch.
+		(a._selectDeviceForCalibration as (mac: string) => void)(
+			"AA:BB:CC:DD:EE:FF",
+		);
+		expect(closeSpy).not.toHaveBeenCalled();
+		expect(loadSpy).not.toHaveBeenCalled();
+		expect(applySpy).toHaveBeenCalledWith(
+			expect.objectContaining({ view: "tutorial" }),
+		);
+	});
+});
+
+describe("panel device setup — banner rendering", () => {
+	const containers: HTMLDivElement[] = [];
+
+	afterEach(() => {
+		for (const c of containers) c.remove();
+		containers.length = 0;
+	});
+
+	function renderTo(tpl: unknown): HTMLDivElement {
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		containers.push(c);
+		render(tpl, c);
+		return c;
+	}
+
+	it("the banner action button opens the setup dialog when clicked", () => {
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+		a._devices = [makeDeviceInfo({ onboarded: false, name: "New Sensor" })];
+		const openSpy = vi.fn();
+		a._openDeviceSetup = openSpy as never;
+		const c = renderTo((a._renderSetupBanner as () => unknown).call(panel));
+		const banner = c.querySelector(".setup-banner");
+		expect(banner).not.toBeNull();
+		const btn = banner!.querySelector("epp-button") as HTMLElement;
+		expect(btn).not.toBeNull();
+		btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		expect(openSpy).toHaveBeenCalledTimes(1);
+		expect((openSpy.mock.calls[0][0] as DeviceInfo).mac).toBe(
+			"AA:BB:CC:DD:EE:FF",
+		);
+	});
+
+	it("renders the banner inside the live overview", () => {
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+		a._devices = [makeDeviceInfo({ onboarded: false })];
+		a._selectedMac = "AA:BB:CC:DD:EE:FF";
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		const c = renderTo((a._renderLiveOverview as () => unknown).call(panel));
+		expect(c.querySelector(".setup-banner")).not.toBeNull();
+	});
+
+	it("hosts the dialog and wires its setup-complete / setup-skip events", () => {
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+		a._setupOpen = true;
+		a._setupDevice = makeDeviceInfo();
+		const completeSpy = vi.fn();
+		const skipSpy = vi.fn();
+		a._onDeviceSetupComplete = completeSpy as never;
+		a._onDeviceSetupSkip = skipSpy as never;
+		const c = renderTo((a._renderGlobalDialogs as () => unknown).call(panel));
+		const host = c.querySelector("epp-device-setup") as HTMLElement;
+		expect(host).not.toBeNull();
+		host.dispatchEvent(
+			new CustomEvent("setup-complete", {
+				detail: {
+					mac: "AA:BB:CC:DD:EE:FF",
+					name: "X",
+					areaId: null,
+					calibrate: false,
+				},
+				bubbles: true,
+			}),
+		);
+		host.dispatchEvent(
+			new CustomEvent("setup-skip", {
+				detail: { mac: "AA:BB:CC:DD:EE:FF" },
+				bubbles: true,
+			}),
+		);
+		expect(completeSpy).toHaveBeenCalledTimes(1);
+		expect(skipSpy).toHaveBeenCalledTimes(1);
+	});
+});

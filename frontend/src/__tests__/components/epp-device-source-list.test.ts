@@ -22,6 +22,7 @@ const DEVICES: DeviceInfo[] = [
 		area: "Kitchen",
 		firmware_status: "compatible",
 		current_connection_count: null,
+		onboarded: false,
 	},
 	{
 		mac: "BB",
@@ -32,6 +33,7 @@ const DEVICES: DeviceInfo[] = [
 		area: null,
 		firmware_status: "compatible",
 		current_connection_count: null,
+		onboarded: false,
 	},
 ];
 
@@ -153,6 +155,7 @@ describe("epp-device-source-list", () => {
 				area: "Downstairs",
 				firmware_status: "compatible",
 				current_connection_count: null,
+				onboarded: false,
 			},
 		];
 		el.selectedMacs = ["28:05:A5:11:22:33"];

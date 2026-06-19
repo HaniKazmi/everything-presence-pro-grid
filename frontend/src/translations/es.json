@@ -449,6 +449,20 @@
 			"port_closed": "Conexión serie perdida — puede que el dispositivo se haya desconectado. Vuelve a conectarlo e inténtalo de nuevo."
 		}
 	},
+	"device_setup": {
+		"title": "Configura tu dispositivo",
+		"name_help": "Dale a este sensor un nombre que reconozcas, como \"Salón\".",
+		"name_label": "Nombre del dispositivo",
+		"area_help": "Asígnalo a un área para que se agrupe con el resto de esa habitación.",
+		"area_label": "Área",
+		"next": "Siguiente",
+		"back": "Atrás",
+		"skip": "Omitir por ahora",
+		"later": "Calibraré más tarde",
+		"calibrate_now": "Calibrar ahora",
+		"banner": "Nuevo dispositivo \"{name}\" — termina de configurarlo",
+		"banner_action": "Configurar"
+	},
 	"connection": {
 		"connecting": "Conectando al dispositivo...",
 		"offline": "El dispositivo no está disponible",

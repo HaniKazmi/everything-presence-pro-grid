@@ -3,6 +3,7 @@ import { property, state } from "lit/decorators.js";
 
 import "./ui/index.js";
 import "./components/epp-configuration-dialogs.js";
+import "./components/epp-device-setup.js";
 import "./components/epp-flasher-view.js";
 import "./components/epp-furniture-sidebar.js";
 import "./components/epp-grid.js";
@@ -777,6 +778,14 @@ export class EPPGridPanel extends LitElement {
 	// Multi-device support
 	@state() private _devices: DeviceInfo[] = [];
 	@state() _selectedMac = "";
+
+	// Post-flash device-setup wizard. `_setupOpen`/`_setupDevice` drive the
+	// <epp-device-setup> dialog host; `_pendingSetupMac` remembers the MAC of a
+	// just-flashed device so we can auto-open the wizard once that device shows
+	// up (un-onboarded) in the refreshed device list.
+	@state() _setupOpen = false;
+	@state() _setupDevice: DeviceInfo | null = null;
+	_pendingSetupMac: string | null = null;
 	@state() private _loading = true;
 	// Tracks which device we've successfully loaded config for, so
 	// reconnect paths can re-establish the live stream without refetching
@@ -1160,6 +1169,9 @@ export class EPPGridPanel extends LitElement {
 					this._loadDeviceConfig(this._selectedMac).catch(() => {});
 				}
 			}
+			// A just-flashed device usually arrives via this push (not the
+			// flasher's _loadDevices()), so check here too.
+			this._maybeOpenPendingSetup();
 		};
 		this._deviceCtrl.onSelectedAvailable = (mac) => {
 			this._ensureSession(mac);
@@ -1199,6 +1211,7 @@ export class EPPGridPanel extends LitElement {
 		await this._deviceCtrl.subscribeDeviceList();
 		this._devices = this._deviceCtrl.devices;
 		this._selectedMac = this._deviceCtrl.selectedMac;
+		this._maybeOpenPendingSetup();
 	}
 
 	private _isSelectedDeviceAvailable(): boolean {
@@ -1211,6 +1224,110 @@ export class EPPGridPanel extends LitElement {
 		await this._deviceCtrl.loadDevices();
 		this._devices = this._deviceCtrl.devices;
 		this._selectedMac = this._deviceCtrl.selectedMac;
+		this._maybeOpenPendingSetup();
+	}
+
+	// -- Post-flash device setup --
+
+	private _openDeviceSetup(device: DeviceInfo): void {
+		this._setupDevice = device;
+		this._setupOpen = true;
+	}
+
+	private async _onDeviceSetupComplete(e: CustomEvent): Promise<void> {
+		const { mac, name, areaId, calibrate } = e.detail as {
+			mac: string;
+			name: string;
+			areaId: string | null;
+			calibrate: boolean;
+		};
+		this._setupOpen = false;
+		this._setupDevice = null;
+		try {
+			await this.hass.callWS({
+				type: "eppgrid/configure_device",
+				mac,
+				name: name || null,
+				area_id: areaId,
+			});
+		} catch {
+			// Device stays un-onboarded; the banner will re-offer setup.
+		}
+		await this._loadDevices();
+		if (calibrate) {
+			this._selectDeviceForCalibration(mac);
+		}
+	}
+
+	private async _onDeviceSetupSkip(e: CustomEvent): Promise<void> {
+		const { mac } = e.detail as { mac: string };
+		this._setupOpen = false;
+		this._setupDevice = null;
+		try {
+			await this.hass.callWS({ type: "eppgrid/configure_device", mac });
+		} catch {
+			// best effort
+		}
+		await this._loadDevices();
+	}
+
+	/**
+	 * Auto-open the setup wizard for a just-flashed device once it appears,
+	 * un-onboarded, in the device list. `_pendingSetupMac` is set from the
+	 * flasher's captured MAC at flash-complete; we clear it the moment we open
+	 * so this only fires once.
+	 */
+	private _maybeOpenPendingSetup(): void {
+		if (!this._pendingSetupMac || this._setupOpen) return;
+		const dev = this._devices.find((d) => d.mac === this._pendingSetupMac);
+		if (dev && !dev.onboarded) {
+			this._pendingSetupMac = null;
+			this._openDeviceSetup(dev);
+		}
+	}
+
+	/**
+	 * Hand the just-configured device off to the room-calibration flow. Reuses
+	 * the panel's existing device-selection path (the header <ha-select>'s
+	 * @selected handler) and the existing "Calibrate room" navigation
+	 * (`_changePlacement`), so the device is loaded and the view switched
+	 * exactly as if the user had picked it and clicked Calibrate.
+	 */
+	private _selectDeviceForCalibration(mac: string): void {
+		if (mac && mac !== this._selectedMac) {
+			// Same selection side effects as the header <ha-select> @selected
+			// handler: tear down the old session, switch the MAC, persist it,
+			// drop the previous device's furniture clipboard, and load config.
+			this._closeDeviceSession();
+			this._selectedMac = mac;
+			persistSelectedMac(mac);
+			this._furnitureClipboard = null;
+			this._loadDeviceConfig(mac).catch(() => {});
+		}
+		// Same navigation the "Calibrate room" action uses: tutorial first if the
+		// user hasn't dismissed it, otherwise straight to the corner-marking
+		// calibrate view. Keep the current sidebar sub-tab, exactly as
+		// _changePlacement does.
+		this._applyView({
+			view: this._deviceCtrl.showRoomCalibrationTutorial
+				? "tutorial"
+				: "calibrate",
+			sidebarTab: this._sidebarTab,
+		});
+	}
+
+	private _renderSetupBanner() {
+		if (this._setupOpen) return nothing;
+		const pending = this._devices.find((d) => !d.onboarded);
+		if (!pending) return nothing;
+		return html`
+			<div class="setup-banner">
+				<span>${this._localize("device_setup.banner", { name: pending.name })}</span>
+				<epp-button variant="primary" @click=${() => this._openDeviceSetup(pending)}>
+					${this._localize("device_setup.banner_action")}
+				</epp-button>
+			</div>
+		`;
 	}
 
 	private async _loadDeviceConfig(mac: string): Promise<void> {
@@ -1778,6 +1895,18 @@ export class EPPGridPanel extends LitElement {
       margin: 0;
     }
 
+    .setup-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--epp-space-3);
+      padding: var(--epp-space-3) var(--epp-space-4);
+      margin-bottom: var(--epp-space-3);
+      background: var(--epp-surface-2);
+      border: 1px solid var(--epp-border);
+      border-radius: var(--epp-radius-md);
+    }
+
     .loading-container {
       display: flex;
       align-items: center;
@@ -2074,6 +2203,14 @@ export class EPPGridPanel extends LitElement {
 					@click=${this._deleteCalibration}
 				>${this._localize("common.delete")}</epp-button>
 			</epp-dialog>
+      <epp-device-setup
+				.open=${this._setupOpen}
+				.device=${this._setupDevice}
+				.hass=${this.hass}
+				.localize=${this._localize}
+				@setup-complete=${(e: CustomEvent) => this._onDeviceSetupComplete(e)}
+				@setup-skip=${(e: CustomEvent) => this._onDeviceSetupSkip(e)}
+			></epp-device-setup>
     `;
 	}
 
@@ -2194,6 +2331,14 @@ export class EPPGridPanel extends LitElement {
 					.otaStates=${this._flasherCtrl.otaStates}
 					.cancelledDeviceIpHint=${this._flasherCtrl.cancelledDeviceIpHint}
 					@flash-complete=${() => {
+						// Capture the flashed MAC before resetUsbState() clears it so
+						// _maybeOpenPendingSetup can auto-open the wizard once the new
+						// device appears (un-onboarded) in the refreshed list.
+						// usbFlashState may be null (flash-complete with no active USB
+						// state) — optional-chain so the handoff degrades to "no
+						// auto-open" rather than throwing.
+						this._pendingSetupMac =
+							this._flasherCtrl.usbFlashState?.mac ?? null;
 						void this._flasherCtrl.resetUsbState();
 						this._loadDevices();
 						this._panelTab = "config";
@@ -2882,6 +3027,7 @@ export class EPPGridPanel extends LitElement {
 				}
 			}}>
         ${this._renderHeader()}
+        ${this._renderSetupBanner()}
         <div class="editor-shell">
           <div class="grid-column">
             <div class="grid-container" style="position: relative;">
