@@ -1294,25 +1294,30 @@ export class EPPGridPanel extends LitElement {
 	 * exactly as if the user had picked it and clicked Calibrate.
 	 */
 	private _selectDeviceForCalibration(mac: string): void {
-		if (mac && mac !== this._selectedMac) {
-			// Same selection side effects as the header <ha-select> @selected
-			// handler: tear down the old session, switch the MAC, persist it,
-			// drop the previous device's furniture clipboard, and load config.
-			this._closeDeviceSession();
-			this._selectedMac = mac;
-			persistSelectedMac(mac);
-			this._furnitureClipboard = null;
-			this._loadDeviceConfig(mac).catch(() => {});
-		}
-		// Same navigation the "Calibrate room" action uses: tutorial first if the
-		// user hasn't dismissed it, otherwise straight to the corner-marking
-		// calibrate view. Keep the current sidebar sub-tab, exactly as
-		// _changePlacement does.
-		this._applyView({
-			view: this._deviceCtrl.showRoomCalibrationTutorial
-				? "tutorial"
-				: "calibrate",
-			sidebarTab: this._sidebarTab,
+		// Route through the same guard as the header <ha-select> @selected
+		// handler and _changePlacement so that when _dirty is true the
+		// unsaved-changes dialog is raised and edits are not silently discarded.
+		this._navGuard.guardNavigation(() => {
+			if (mac && mac !== this._selectedMac) {
+				// Same selection side effects as the header <ha-select> @selected
+				// handler: tear down the old session, switch the MAC, persist it,
+				// drop the previous device's furniture clipboard, and load config.
+				this._closeDeviceSession();
+				this._selectedMac = mac;
+				persistSelectedMac(mac);
+				this._furnitureClipboard = null;
+				this._loadDeviceConfig(mac).catch(() => {});
+			}
+			// Same navigation the "Calibrate room" action uses: tutorial first if the
+			// user hasn't dismissed it, otherwise straight to the corner-marking
+			// calibrate view. Keep the current sidebar sub-tab, exactly as
+			// _changePlacement does.
+			this._applyView({
+				view: this._deviceCtrl.showRoomCalibrationTutorial
+					? "tutorial"
+					: "calibrate",
+				sidebarTab: this._sidebarTab,
+			});
 		});
 	}
 

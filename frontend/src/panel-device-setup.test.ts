@@ -320,6 +320,30 @@ describe("panel device setup — calibrate handoff", () => {
 			expect.objectContaining({ view: "tutorial" }),
 		);
 	});
+
+	it("raises the unsaved-changes dialog and does NOT navigate when dirty", () => {
+		// Mirrors the _changePlacement dirty-state test in panel-nav-guard.test.ts:
+		// _selectDeviceForCalibration must route through guardNavigation so that
+		// unsaved edits are not silently discarded.
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+		// Use the same mac so the device-switch branch is skipped; only the
+		// navigation half is under test here.
+		a._selectedMac = "AA:BB:CC:DD:EE:FF";
+		a._dirty = true;
+		const applySpy = vi.fn();
+		a._applyView = applySpy as never;
+		(a._deviceCtrl as { showRoomCalibrationTutorial: boolean }) = {
+			showRoomCalibrationTutorial: false,
+		} as never;
+		(a._selectDeviceForCalibration as (mac: string) => void)(
+			"AA:BB:CC:DD:EE:FF",
+		);
+		// The guard must have raised the dialog…
+		expect(a._showUnsavedDialog).toBe(true);
+		// …and must NOT have performed the view transition yet.
+		expect(applySpy).not.toHaveBeenCalled();
+	});
 });
 
 describe("panel device setup — banner rendering", () => {
