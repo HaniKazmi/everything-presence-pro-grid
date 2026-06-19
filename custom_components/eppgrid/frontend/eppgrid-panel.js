@@ -1525,13 +1525,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
         <div class="card-content">
           ${this._hasWebSerial?J:N`<div class="browser-warning">
                 ${this.localize(this._isSecureContext?"flasher.usb_browser_warning":"flasher.usb_insecure_warning")}
-                <a
-                  href=${ts}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="browser-warning-link"
-                  >${this.localize("flasher.usb_web_flasher_link")}</a
-                >
+                <a href=${ts} target="_blank" rel="noopener noreferrer" class="browser-warning-link">${this.localize("flasher.usb_web_flasher_link")}</a>
               </div>`}
           <div class="usb-actions">
             <div class="usb-action${e}" aria-disabled=${t} @click=${this._onUsbConnect}>

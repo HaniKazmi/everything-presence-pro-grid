@@ -1056,13 +1056,7 @@ export class EppFlasherView extends LitElement {
 										? "flasher.usb_browser_warning"
 										: "flasher.usb_insecure_warning",
 								)}
-                <a
-                  href=${WEB_FLASHER_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="browser-warning-link"
-                  >${this.localize("flasher.usb_web_flasher_link")}</a
-                >
+                <a href=${WEB_FLASHER_URL} target="_blank" rel="noopener noreferrer" class="browser-warning-link">${this.localize("flasher.usb_web_flasher_link")}</a>
               </div>`
 							: nothing
 					}
