@@ -1621,4 +1621,19 @@ describe("MAC capture in beforeFlash hook", () => {
 		);
 		expect(macCalls).toHaveLength(0);
 	});
+
+	it("MAC survives into the complete state (not just the flashing state)", async () => {
+		// Regression test: updateUsbState replaces state wholesale, so MAC set
+		// during beforeFlash was silently lost before the complete transition.
+		// Fix: store in _flashedMac and re-inject into every step:"complete" call.
+		const flow = flowOf(ctrl);
+		vi.spyOn(flow, "_addToHaWithRetry").mockResolvedValue({ type: "added" });
+		(flow as { _flashedMac: string })._flashedMac = "AA:BB:CC:DD:EE:FF";
+
+		await flow._addToHa("1.2.3.4");
+
+		expect(ctrl.usbFlashState).toEqual(
+			expect.objectContaining({ step: "complete", mac: "AA:BB:CC:DD:EE:FF" }),
+		);
+	});
 });

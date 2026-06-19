@@ -67,6 +67,7 @@ export class UsbFlashFlow {
 	// serial locks before close().
 	private _wifiCheckAbort: AbortController | null = null;
 	private _wifiCheckPromise: Promise<unknown> | null = null;
+	private _flashedMac: string | undefined;
 
 	constructor(host: UsbFlashHost) {
 		this._host = host;
@@ -203,6 +204,7 @@ export class UsbFlashFlow {
 			this._serialPort = port;
 
 			// Step 2: Flash firmware
+			this._flashedMac = undefined;
 			host.updateUsbState({ step: "flashing", progress: 0 });
 			await flashFirmware(
 				port,
@@ -230,6 +232,7 @@ export class UsbFlashFlow {
 								});
 							await host.deleteEsphomeDevice(matched.esphome_config_entry_id);
 						}
+						this._flashedMac = mac.toUpperCase();
 						host.updateUsbState({ step: "flashing", mac: mac.toUpperCase() });
 					},
 				},
@@ -244,7 +247,11 @@ export class UsbFlashFlow {
 				await port.close().catch(() => {});
 				this._serialPort = null;
 				host.opRunning = false;
-				host.updateUsbState({ step: "complete", variant });
+				host.updateUsbState({
+					step: "complete",
+					variant,
+					mac: this._flashedMac,
+				});
 				return;
 			}
 
@@ -524,7 +531,7 @@ export class UsbFlashFlow {
 		const haAdd = await this._addToHaWithRetry(ip);
 		if (host.opId !== myOp) return;
 
-		host.updateUsbState({ step: "complete", ip, haAdd });
+		host.updateUsbState({ step: "complete", ip, haAdd, mac: this._flashedMac });
 	}
 
 	async handleRetryHaAdd(): Promise<void> {
@@ -537,7 +544,7 @@ export class UsbFlashFlow {
 		host.updateUsbState({ step: "wifi_configured", ip });
 		const haAdd = await this._addToHaWithRetry(ip);
 		if (host.opId !== myOp) return;
-		host.updateUsbState({ step: "complete", ip, haAdd });
+		host.updateUsbState({ step: "complete", ip, haAdd, mac: this._flashedMac });
 	}
 
 	handleUsbRetry(): void {
