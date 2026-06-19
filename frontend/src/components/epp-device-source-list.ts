@@ -75,11 +75,10 @@ export class EppDeviceSourceList extends LitElement {
 	}
 
 	render() {
-		const added = this.availableDevices.filter((d) =>
-			this.selectedMacs.includes(d.mac),
-		);
+		const selected = new Set(this.selectedMacs);
+		const added = this.availableDevices.filter((d) => selected.has(d.mac));
 		const candidates = this.availableDevices.filter(
-			(d) => !this.selectedMacs.includes(d.mac),
+			(d) => !selected.has(d.mac),
 		);
 		const empty = added.length === 0 && this.missingSources.length === 0;
 		return html`

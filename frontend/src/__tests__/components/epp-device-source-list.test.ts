@@ -36,6 +36,10 @@ const DEVICES: DeviceInfo[] = [
 ];
 
 describe("epp-device-source-list", () => {
+	it("is registered as a custom element", () => {
+		expect(customElements.get("epp-device-source-list")).toBeDefined();
+	});
+
 	it("add-picker offers only not-yet-added devices", async () => {
 		const el = await fixture();
 		el.availableDevices = DEVICES;
@@ -122,6 +126,9 @@ describe("epp-device-source-list", () => {
 		expect(
 			el.shadowRoot!.querySelector('[data-testid="no-devices"]'),
 		).not.toBeNull();
+		expect(
+			el.shadowRoot!.querySelector('[data-testid="missing-warning"]'),
+		).toBeNull();
 	});
 
 	it("hides the add-picker when every device is already added", async () => {

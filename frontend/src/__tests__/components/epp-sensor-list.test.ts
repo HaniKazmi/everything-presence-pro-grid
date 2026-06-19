@@ -456,6 +456,11 @@ describe("epp-sensor-list — list mode", () => {
 		const el = await fixture();
 		el.zoneGroups = [{ id: "g1", name: "Empty", members: [] }];
 		await el.updateComplete;
+		// The row still renders (with its name) — only the sub-line is suppressed,
+		// so assert the row exists rather than letting a non-rendered row pass.
+		const row = $(el, '[data-testid="merged-zone"]') as HTMLElement;
+		expect(row).not.toBeNull();
+		expect(row.querySelector(".sensor-name")!.textContent).toBe("Empty");
 		expect($(el, '[data-testid="merged-members"]')).toBeNull();
 	});
 
