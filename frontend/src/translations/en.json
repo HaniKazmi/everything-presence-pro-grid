@@ -449,6 +449,20 @@
 			"port_closed": "Serial connection lost — the device may have been unplugged. Reconnect it and try again."
 		}
 	},
+	"device_setup": {
+		"title": "Set up your device",
+		"name_help": "Give this sensor a name you'll recognise, like \"Living Room\".",
+		"name_label": "Device name",
+		"area_help": "Assign it to an area so it groups with the rest of that room.",
+		"area_label": "Area",
+		"next": "Next",
+		"back": "Back",
+		"skip": "Skip for now",
+		"later": "I'll calibrate later",
+		"calibrate_now": "Calibrate now",
+		"banner": "New device \"{name}\" — finish setting it up",
+		"banner_action": "Set up"
+	},
 	"connection": {
 		"connecting": "Connecting to device...",
 		"offline": "Device is offline",
