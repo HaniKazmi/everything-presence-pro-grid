@@ -374,6 +374,8 @@
 		"usb_wifi_title": "Configure WiFi",
 		"usb_wifi_desc": "Set up WiFi on an already flashed device.",
 		"usb_browser_warning": "USB flashing requires Chrome or Edge browser.",
+		"usb_insecure_warning": "USB flashing needs a secure (HTTPS) connection to Home Assistant — it's blocked over plain HTTP.",
+		"usb_web_flasher_link": "Flash from your browser instead",
 		"select_variant": "Select firmware variant:",
 		"cancelling": "Cancelling...",
 		"wifi": "WiFi",

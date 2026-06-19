@@ -363,6 +363,48 @@ describe("render() browser warning", () => {
 		(cards[0] as HTMLElement).click();
 		expect((el as any)._showUsbFlash).toBe(true);
 	});
+
+	it("links to the hosted web flasher when Web Serial is unavailable", () => {
+		const el = createView();
+		(el as any)._hasWebSerial = false;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const link = c.querySelector(".browser-warning a") as HTMLAnchorElement;
+		expect(link).not.toBeNull();
+		expect(link.getAttribute("href")).toContain("user-guide/web-flasher/");
+		expect(link.getAttribute("target")).toBe("_blank");
+		expect(link.getAttribute("rel")).toContain("noopener");
+		expect(link.textContent).toContain("flasher.usb_web_flasher_link");
+	});
+
+	it("explains the insecure-context cause when not a secure context", () => {
+		// Accessing HA over plain HTTP (e.g. http://homeassistant.local:8123)
+		// is the common reason navigator.serial is missing — Chrome only
+		// exposes Web Serial in a secure context. The message must say so
+		// rather than wrongly blaming the browser.
+		const el = createView();
+		(el as any)._hasWebSerial = false;
+		(el as any)._isSecureContext = false;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const warning = c.querySelector(".browser-warning") as HTMLElement;
+		expect(warning.textContent).toContain("flasher.usb_insecure_warning");
+		expect(warning.textContent).not.toContain("flasher.usb_browser_warning");
+	});
+
+	it("shows the browser-requirement message when secure but unsupported", () => {
+		const el = createView();
+		(el as any)._hasWebSerial = false;
+		(el as any)._isSecureContext = true;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const warning = c.querySelector(".browser-warning") as HTMLElement;
+		expect(warning.textContent).toContain("flasher.usb_browser_warning");
+		expect(warning.textContent).not.toContain("flasher.usb_insecure_warning");
+	});
 });
 
 describe("OTA error popover dismissal", () => {

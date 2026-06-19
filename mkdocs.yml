@@ -51,6 +51,13 @@ plugins:
       enable_creation_date: true
       type: date
 
+# ESP Web Tools powers the browser firmware flasher on user-guide/web-flasher.md.
+# Loaded as a module site-wide so the <esp-web-install-button> custom element is
+# defined regardless of how the page is reached (direct load or instant navigation).
+extra_javascript:
+  - path: https://unpkg.com/esp-web-tools@10/dist/web/install-button.js
+    type: module
+
 markdown_extensions:
   - admonition
   - attr_list
@@ -78,6 +85,7 @@ nav:
     - Hardware: user-guide/hardware.md
     - Installation: user-guide/installation.md
     - Flashing firmware: user-guide/flashing-firmware.md
+    - Web flasher: user-guide/web-flasher.md
     - Placement: user-guide/placement.md
     - Calibration: user-guide/calibration.md
     - Live overview: user-guide/live-overview.md

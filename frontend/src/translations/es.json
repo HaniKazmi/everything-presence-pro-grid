@@ -374,6 +374,8 @@
 		"usb_wifi_title": "Configurar WiFi",
 		"usb_wifi_desc": "Configura el WiFi en un dispositivo que ya tiene firmware instalado.",
 		"usb_browser_warning": "La instalación por USB requiere el navegador Chrome o Edge.",
+		"usb_insecure_warning": "La instalación por USB necesita una conexión segura (HTTPS) a Home Assistant — está bloqueada por HTTP sin cifrar.",
+		"usb_web_flasher_link": "Instala desde tu navegador",
 		"select_variant": "Selecciona la variante de firmware:",
 		"cancelling": "Cancelando...",
 		"wifi": "WiFi",
