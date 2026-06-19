@@ -452,6 +452,40 @@ describe("epp-sensor-list — list mode", () => {
 		expect(sub).toBe("Bed · Sensor 1, Bed · Sensor 2");
 	});
 
+	it("merged-zone row with no members renders no sub-line", async () => {
+		const el = await fixture();
+		el.zoneGroups = [{ id: "g1", name: "Empty", members: [] }];
+		await el.updateComplete;
+		expect($(el, '[data-testid="merged-members"]')).toBeNull();
+	});
+
+	it("labels a merged member from an unknown device gracefully", async () => {
+		const el = await fixture();
+		el.sources = [
+			{
+				mac: "AA",
+				name: "Sensor 1",
+				available: true,
+				enabled_presence: [],
+				zones: [{ index: 3, name: "Bed", enabled: true }],
+			},
+		];
+		el.zoneGroups = [
+			{
+				id: "zg_x",
+				name: "Bed",
+				members: [
+					{ mac: "AA", zone_index: 3 },
+					{ mac: "ZZ", zone_index: 9 },
+				],
+			},
+		];
+		await el.updateComplete;
+		const sub = $(el, '[data-testid="merged-members"]')!.textContent!.trim();
+		expect(sub).toContain("Bed · Sensor 1");
+		expect(sub).toContain("Zone 9 · Unknown device");
+	});
+
 	// Keep last in this block: registering ha-switch is global for the test env.
 	it("uses ha-switch for presence/zone/RoR toggles when registered", async () => {
 		if (!customElements.get("ha-switch")) {
