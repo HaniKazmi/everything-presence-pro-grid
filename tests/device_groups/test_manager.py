@@ -265,6 +265,24 @@ class TestFullPayload:
                 zone_groups=[{"id": "zg1", "name": "RoR", "members": [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 0}]}],
             )
 
+    async def test_zone_index_out_of_range_in_zone_group_rejected(self, manager: DeviceGroupManager) -> None:
+        """zone_groups members must be zone index 1-7; values above 7 are rejected."""
+        with pytest.raises(ValueError, match="zone_index"):
+            await manager.async_create(
+                name="A",
+                sources=["AA:BB:CC:DD:EE:FF"],
+                zone_groups=[{"id": "zg1", "name": "X", "members": [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 8}]}],
+            )
+
+    async def test_non_int_zone_index_in_zone_group_rejected(self, manager: DeviceGroupManager) -> None:
+        """A non-integer zone_index is rejected (would break grouping keys)."""
+        with pytest.raises(ValueError, match="zone_index"):
+            await manager.async_create(
+                name="A",
+                sources=["AA:BB:CC:DD:EE:FF"],
+                zone_groups=[{"id": "zg1", "name": "X", "members": [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": "2"}]}],
+            )
+
     async def test_reserved_rest_of_room_id_rejected_on_create(self, manager: DeviceGroupManager) -> None:
         """A zone_group with id 'rest_of_room' collides with the synthesised combined
         Rest of Room and must be rejected."""

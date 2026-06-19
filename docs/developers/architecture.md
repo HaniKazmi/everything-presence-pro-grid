@@ -369,11 +369,14 @@ Frontend side: `controllers/device-groups-controller.ts` is the WS client
 wired into the panel's **Device Groups** tab, and the
 `components/epp-device-group-editor.ts` composes the two-section editor. It
 carries the exclusion sets (`excludedPresence`, `excludedZones`,
-`excludedZoneGroups`) in its draft state, computing exposed entities via the
-mirrored projection function before every save. The two editor sections are:
+`excludedZoneGroups`) in its draft state and emits the full group payload
+(sources + zone_groups + exclusions) on save; the backend recomputes the
+exposed entities. The two editor sections are:
 
-- `components/epp-device-source-list.ts` — the **Devices** section: per-device
-  availability badge and master toggle; emits `source-toggled`.
+- `components/epp-device-source-list.ts` — the **Devices** section: an
+  add-device dropdown (only not-yet-added devices) above a list of the included
+  devices, each with an availability badge and a delete button; emits
+  `source-toggled` (add / remove).
 - `components/epp-sensor-list.ts` (replaces `epp-zone-merge-list.ts`) — the
   **Sensors** section: presence rows with coverage indicators, the combined Rest
   of room row, passthrough zones, merged zones, and the List ⇄ Merge mode;

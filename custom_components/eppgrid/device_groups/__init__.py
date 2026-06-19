@@ -237,6 +237,13 @@ class DeviceGroupManager:
                 if "mac" not in m or "zone_index" not in m:
                     raise ValueError("zone group member needs mac and zone_index")
                 # Rest of room (zone 0) is the implicit combined group, never a
-                # manual merge member: zone_groups are restricted to index 1-7.
-                if m["zone_index"] == 0:
-                    raise ValueError("zone group member zone_index must be 1-7 (zone 0 is the combined Rest of Room)")
+                # manual merge member: zone_groups are restricted to an int index
+                # 1-7. Reject non-ints / out-of-range here too (not just at the WS
+                # layer) so a programmatic caller can't persist keys that break
+                # grouping. (bool is an int subclass but True/False == 1/0, so the
+                # range check handles it without a separate guard.)
+                zi = m["zone_index"]
+                if not isinstance(zi, int) or not (1 <= zi <= 7):
+                    raise ValueError(
+                        "zone group member zone_index must be an int 1-7 (zone 0 is the combined Rest of Room)"
+                    )
