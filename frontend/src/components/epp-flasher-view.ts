@@ -12,6 +12,7 @@ import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { property, state } from "lit/decorators.js";
 import { literal, html as staticHtml } from "lit/static-html.js";
 import { DocumentListenerGroup } from "../lib/document-listeners.js";
+import { WEB_FLASHER_URL } from "../lib/help-url.js";
 import "../ui/epp-button.js";
 import "../ui/epp-field.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
@@ -313,6 +314,15 @@ const flasherStyles = css`
     color: var(--epp-warning, var(--warning-color, #ff9800));
   }
 
+  .browser-warning-link {
+    color: var(--epp-accent, var(--primary-color, #03a9f4));
+    text-decoration: none;
+  }
+
+  .browser-warning-link:hover {
+    text-decoration: underline;
+  }
+
   .usb-select-label {
     margin: 0 0 var(--epp-space-3, 12px);
     font-size: var(--epp-font-base, 14px);
@@ -513,6 +523,11 @@ export class EppFlasherView extends LitElement {
 
 	@state() private _hasWebSerial: boolean =
 		typeof navigator !== "undefined" && "serial" in navigator;
+	// navigator.serial is [SecureContext]-gated, so over plain HTTP it's absent
+	// and _hasWebSerial is false. Track the secure-context flag separately so we
+	// can tell the user *why* (insecure connection vs. unsupported browser).
+	@state() private _isSecureContext: boolean =
+		typeof window === "undefined" || window.isSecureContext;
 	@state() private _showUsbFlash = false;
 	@state() private _cancelling = false;
 
@@ -1036,7 +1051,18 @@ export class EppFlasherView extends LitElement {
           ${
 						!this._hasWebSerial
 							? html`<div class="browser-warning">
-                ${this.localize("flasher.usb_browser_warning")}
+                ${this.localize(
+									this._isSecureContext
+										? "flasher.usb_browser_warning"
+										: "flasher.usb_insecure_warning",
+								)}
+                <a
+                  href=${WEB_FLASHER_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="browser-warning-link"
+                  >${this.localize("flasher.usb_web_flasher_link")}</a
+                >
               </div>`
 							: nothing
 					}

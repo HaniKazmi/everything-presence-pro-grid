@@ -3,6 +3,11 @@ import type { SidebarTab, ViewMode } from "./view-hash.js";
 export const DOCS_BASE_URL =
 	"https://clintongormley.github.io/everything-presence-pro-grid/";
 
+// Browser-based firmware flasher hosted on the docs site. It runs over HTTPS
+// (a secure context), so Web Serial works there even when Home Assistant is
+// reached over plain HTTP — where the in-panel USB flasher is unavailable.
+export const WEB_FLASHER_URL = `${DOCS_BASE_URL}user-guide/web-flasher/`;
+
 export type PanelTab = "config" | "flasher" | "device-groups";
 
 export interface HelpUrlState {
