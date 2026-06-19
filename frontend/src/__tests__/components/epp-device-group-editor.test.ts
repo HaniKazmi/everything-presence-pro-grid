@@ -38,22 +38,6 @@ function nameField(
 function sourceList(el: EppDeviceGroupEditor): HTMLElement {
 	return el.shadowRoot!.querySelector("epp-device-source-list") as HTMLElement;
 }
-function deviceToggles(el: EppDeviceGroupEditor): HTMLElement[] {
-	const sl = sourceList(el);
-	if (!sl) return [];
-	return [
-		...sl.shadowRoot!.querySelectorAll('[data-testid="device-toggle"]'),
-	] as HTMLElement[];
-}
-function toggle(
-	el: EppDeviceGroupEditor,
-	mac: string,
-): HTMLElement & { checked: boolean } {
-	const sl = sourceList(el);
-	return sl.shadowRoot!.querySelector(
-		`[data-testid="device-toggle"][data-mac="${mac}"]`,
-	) as HTMLElement & { checked: boolean };
-}
 function actionBtn(el: EppDeviceGroupEditor, label: string): HTMLElement {
 	return [...el.shadowRoot!.querySelectorAll("epp-button")].find(
 		(b) => b.textContent?.trim() === label,
@@ -185,19 +169,14 @@ describe("epp-device-group-editor", () => {
 		expect(nameField(el).label).toBe("Device name");
 	});
 
-	it("renders a toggle for every available device (via epp-device-source-list)", async () => {
+	it("passes every available device to epp-device-source-list", async () => {
 		const el = await fixture();
 		el.availableDevices = DEVICES;
 		await el.updateComplete;
-		// Wait for child to render
-		await (sourceList(el) as HTMLElement & { updateComplete: Promise<unknown> })
-			.updateComplete;
-		const toggles = deviceToggles(el);
-		expect(toggles.length).toBe(2);
-		expect(toggles.map((t) => t.getAttribute("data-mac"))).toEqual([
-			"AA",
-			"BB",
-		]);
+		const sl = sourceList(el) as HTMLElement & {
+			availableDevices: DeviceInfo[];
+		};
+		expect(sl.availableDevices.map((d) => d.mac)).toEqual(["AA", "BB"]);
 	});
 
 	it("frames the editor in an ha-card", async () => {
@@ -205,64 +184,6 @@ describe("epp-device-group-editor", () => {
 		el.availableDevices = DEVICES;
 		await el.updateComplete;
 		expect(el.shadowRoot!.querySelector("ha-card")).not.toBeNull();
-	});
-
-	it("shows each source device's name but not its mac (via source-list child shadow)", async () => {
-		const el = await fixture();
-		el.availableDevices = [
-			{ ...DEVICES[0], mac: "28:05:A5:11:22:33", name: "Kitchen" },
-		];
-		await el.updateComplete;
-		const sl = sourceList(el);
-		await (sl as HTMLElement & { updateComplete: Promise<unknown> })
-			.updateComplete;
-		const row = sl.shadowRoot!.querySelector(".source-row") as HTMLElement;
-		expect(row.textContent).toContain("Kitchen");
-		expect(row.textContent).not.toContain("28:05:A5:11:22:33");
-	});
-
-	it("shows the device's area name in parentheses after the name", async () => {
-		const el = await fixture();
-		el.availableDevices = [
-			{ ...DEVICES[0], name: "Kitchen", area: "Downstairs" },
-		];
-		await el.updateComplete;
-		const sl = sourceList(el);
-		await (sl as HTMLElement & { updateComplete: Promise<unknown> })
-			.updateComplete;
-		const name = sl.shadowRoot!.querySelector(".source-name") as HTMLElement;
-		expect(name.textContent!.trim()).toContain("Kitchen (Downstairs)");
-	});
-
-	it("puts all the source rows in a single box (inside epp-device-source-list)", async () => {
-		const el = await fixture();
-		el.availableDevices = DEVICES;
-		await el.updateComplete;
-		const sl = sourceList(el);
-		await (sl as HTMLElement & { updateComplete: Promise<unknown> })
-			.updateComplete;
-		const boxes = sl.shadowRoot!.querySelectorAll(".source-box");
-		expect(boxes.length).toBe(1);
-		expect(boxes[0].querySelectorAll(".source-row").length).toBe(2);
-	});
-
-	it("renders the device name before its toggle in the row", async () => {
-		const el = await fixture();
-		el.availableDevices = DEVICES;
-		await el.updateComplete;
-		const sl = sourceList(el);
-		await (sl as HTMLElement & { updateComplete: Promise<unknown> })
-			.updateComplete;
-		const row = sl.shadowRoot!.querySelector(".source-row") as HTMLElement;
-		const name = row.querySelector(".source-name") as HTMLElement;
-		const tog = row.querySelector(
-			'[data-testid="device-toggle"]',
-		) as HTMLElement;
-		expect(name).not.toBeNull();
-		// name comes before the toggle in document order (toggle sits on the right)
-		expect(
-			name.compareDocumentPosition(tog) & Node.DOCUMENT_POSITION_FOLLOWING,
-		).toBeTruthy();
 	});
 
 	it("does not render a 'Basics' heading", async () => {
@@ -301,11 +222,8 @@ describe("epp-device-group-editor", () => {
 		el.existingGroup = EXISTING;
 		await el.updateComplete;
 		expect(nameField(el).value).toBe("Bedroom");
-		const sl = sourceList(el);
-		await (sl as HTMLElement & { updateComplete: Promise<unknown> })
-			.updateComplete;
-		expect(toggle(el, "AA").checked).toBe(true);
-		expect(toggle(el, "BB").checked).toBe(false);
+		const sl = sourceList(el) as HTMLElement & { selectedMacs: string[] };
+		expect(sl.selectedMacs).toEqual(["AA"]);
 	});
 
 	it("enables Save once a name and a source are chosen", async () => {
@@ -362,25 +280,16 @@ describe("epp-device-group-editor", () => {
 		expect(seen).toEqual([true, false]);
 	});
 
-	it("flags a missing source device with a warning + a removable row", async () => {
+	it("passes missing source devices to epp-device-source-list", async () => {
 		const el = await fixture();
-		el.availableDevices = DEVICES; // AA, BB — note: 28:DEAD is gone
+		el.availableDevices = DEVICES;
 		el.sourcesByMac = { AA: SOURCE_AA };
 		el.existingGroup = EXISTING_WITH_MISSING;
 		await el.updateComplete;
-		const sl = sourceList(el);
-		await (sl as HTMLElement & { updateComplete: Promise<unknown> })
-			.updateComplete;
-		// a warning note is shown inside source-list shadow
-		expect(
-			sl.shadowRoot!.querySelector('[data-testid="missing-warning"]'),
-		).not.toBeNull();
-		// the missing device is listed as its own row (with a toggle to drop it)
-		const row = sl.shadowRoot!.querySelector('[data-testid="missing-source"]');
-		expect(row).toBeNull(); // epp-device-source-list uses data-testid="device-row" not "missing-source"
-		// but there is a row for the dead MAC
-		const deadToggle = toggle(el, "28:DEAD");
-		expect(deadToggle).not.toBeNull();
+		const sl = sourceList(el) as HTMLElement & {
+			missingSources: { mac: string; name: string }[];
+		};
+		expect(sl.missingSources.map((s) => s.mac)).toContain("28:DEAD");
 	});
 
 	it("toggling off a missing source drops it from the save payload", async () => {
@@ -796,44 +705,23 @@ describe("epp-device-group-editor", () => {
 	});
 
 	// Keep last: registering HA elements is global for the test environment, so
-	// this exercises the ha-input/ha-switch branches inside the primitives while
-	// every test above covers the ha-textfield/checkbox fallbacks. The editor
-	// now delegates to epp-field / epp-toggle, which render the HA-native widget
-	// in their own shadow root when it is registered.
-	it("uses HA-native ha-input and ha-switch (via the primitives) when registered", async () => {
+	// this exercises the ha-input branch inside epp-field while every test above
+	// covers the ha-textfield fallback. The editor delegates to epp-field, which
+	// renders the HA-native widget in its own shadow root when it is registered.
+	it("uses the HA-native ha-input (via epp-field) for the name when registered", async () => {
 		if (!customElements.get("ha-input")) {
 			customElements.define("ha-input", class extends HTMLElement {});
-		}
-		if (!customElements.get("ha-switch")) {
-			customElements.define("ha-switch", class extends HTMLElement {});
 		}
 		const el = await fixture();
 		el.availableDevices = DEVICES;
 		await el.updateComplete;
-		// The editor composes the primitives...
 		const field = el.shadowRoot!.querySelector(
 			'epp-field[data-testid="name-field"]',
 		) as HTMLElement;
-		// toggles are now inside epp-device-source-list's shadow DOM
-		const sl = sourceList(el);
-		await (sl as HTMLElement & { updateComplete: Promise<unknown> })
-			.updateComplete;
-		const toggles = [
-			...sl.shadowRoot!.querySelectorAll(
-				'epp-toggle[data-testid="device-toggle"]',
-			),
-		] as HTMLElement[];
 		expect(field).not.toBeNull();
-		expect(toggles.length).toBe(2);
-		// ...and the primitives use the HA-native widgets when registered.
 		await (field as HTMLElement & { updateComplete: Promise<unknown> })
 			.updateComplete;
 		expect(field.shadowRoot!.querySelector("ha-input")).not.toBeNull();
-		for (const t of toggles) {
-			await (t as HTMLElement & { updateComplete: Promise<unknown> })
-				.updateComplete;
-			expect(t.shadowRoot!.querySelector("ha-switch")).not.toBeNull();
-		}
 	});
 });
 

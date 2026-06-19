@@ -133,4 +133,29 @@ describe("epp-device-source-list", () => {
 			el.shadowRoot!.querySelector('[data-testid="add-picker"]'),
 		).toBeNull();
 	});
+
+	it("shows device name with area in parentheses inside a single box, never the mac", async () => {
+		const el = await fixture();
+		el.availableDevices = [
+			{
+				mac: "28:05:A5:11:22:33",
+				name: "Kitchen",
+				host: null,
+				available: true,
+				configured: true,
+				area: "Downstairs",
+				firmware_status: "compatible",
+				current_connection_count: null,
+			},
+		];
+		el.selectedMacs = ["28:05:A5:11:22:33"];
+		await el.updateComplete;
+		const boxes = el.shadowRoot!.querySelectorAll(".source-box");
+		expect(boxes).toHaveLength(1);
+		const row = boxes[0].querySelector(
+			'[data-testid="device-row"]',
+		) as HTMLElement;
+		expect(row.textContent).toContain("Kitchen (Downstairs)");
+		expect(row.textContent).not.toContain("28:05:A5:11:22:33");
+	});
 });
