@@ -428,6 +428,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_subscribe_device_list)
     websocket_api.async_register_command(hass, websocket_list_devices)
     websocket_api.async_register_command(hass, websocket_set_show_room_calibration_tutorial)
+    websocket_api.async_register_command(hass, websocket_configure_device)
     websocket_api.async_register_command(hass, websocket_get_config)
     websocket_api.async_register_command(hass, websocket_set_setup)
     websocket_api.async_register_command(hass, websocket_set_room_layout)
@@ -562,6 +563,7 @@ from ._devices import _build_entity_key_map  # noqa: E402, F401
 from ._devices import _entity_key_for_object_id  # noqa: E402, F401
 from ._devices import _get_entity_states  # noqa: E402, F401
 from ._devices import _object_id_from_unique_id  # noqa: E402, F401
+from ._devices import websocket_configure_device  # noqa: E402
 from ._devices import websocket_delete_configuration  # noqa: E402
 from ._devices import websocket_get_config  # noqa: E402
 from ._devices import websocket_list_configurations  # noqa: E402

@@ -15,6 +15,7 @@ from aioesphomeapi import TextSensorState
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from ..const import DOMAIN
@@ -147,6 +148,47 @@ async def websocket_set_show_room_calibration_tutorial(
     manager.store.show_room_calibration_tutorial = new_value
     await manager.store.async_save()
     manager.fire_device_list_changed()
+    connection.send_result(msg["id"])
+
+
+# -- configure_device --
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/configure_device",
+        vol.Required("mac"): MAC_SCHEMA,
+        vol.Optional("name"): vol.Any(str, None),
+        vol.Optional("area_id"): vol.Any(str, None),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+@_require_manager
+async def websocket_configure_device(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+    manager: Any,
+) -> None:
+    """Set a device's name + area in the HA registry and mark it onboarded."""
+    if not _require_known_device(connection, manager, msg):
+        return
+    mac = msg["mac"]
+    device = manager.devices[mac]
+    updates: dict[str, Any] = {}
+    name = msg.get("name")
+    area_id = msg.get("area_id")
+    if name:
+        updates["name_by_user"] = name
+    if area_id:
+        updates["area_id"] = area_id
+    if updates and device.device_id:
+        dr.async_get(hass).async_update_device(device.device_id, **updates)
+    device_config = manager.store.devices.setdefault(mac, {})
+    device_config["onboarded"] = True
+    await manager.store.async_save()
+    manager._fire_device_list_changed()
     connection.send_result(msg["id"])
 
 

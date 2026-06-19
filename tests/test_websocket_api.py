@@ -6221,3 +6221,89 @@ class TestFlashablePayload:
         assert payload["firmware_base_url"] == "/api/eppgrid/firmware"
         assert payload["latest_firmware_version"] == f"v{FIRMWARE_VERSION}"
         assert "integration_version" in payload
+
+
+class TestConfigureDevice:
+    """Tests for eppgrid/configure_device."""
+
+    async def _make_device(self, hass):
+        from homeassistant.helpers import device_registry as dr
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        dev_reg = dr.async_get(hass)
+        return dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="everything-presence-pro-aabbcc",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+
+    async def test_configure_device_sets_name_area_onboarded(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        from homeassistant.helpers import area_registry as ar
+        from homeassistant.helpers import device_registry as dr
+
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import websocket_configure_device
+
+        mock_dm = await setup_integration(hass, config_entry)
+        device = await self._make_device(hass)
+        area = ar.async_get(hass).async_create("Bedroom")
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm.devices[mac] = ManagedDevice(mac=mac, name="x", host="192.168.1.50", device_id=device.id)
+        mock_dm.store.devices = {}
+
+        connection = MagicMock()
+        msg = {"id": 1, "type": "eppgrid/configure_device", "mac": mac, "name": "Bedroom Sensor", "area_id": area.id}
+        await call_async_handler(hass, websocket_configure_device, connection, msg)
+
+        updated = dr.async_get(hass).async_get(device.id)
+        assert updated.name_by_user == "Bedroom Sensor"
+        assert updated.area_id == area.id
+        assert mock_dm.store.devices[mac]["onboarded"] is True
+        mock_dm.store.async_save.assert_awaited()
+        mock_dm._fire_device_list_changed.assert_called()
+        connection.send_result.assert_called_once_with(1)
+
+    async def test_configure_device_skip_marks_onboarded_only(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        from homeassistant.helpers import device_registry as dr
+
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import websocket_configure_device
+
+        mock_dm = await setup_integration(hass, config_entry)
+        device = await self._make_device(hass)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm.devices[mac] = ManagedDevice(mac=mac, name="x", host="192.168.1.50", device_id=device.id)
+        mock_dm.store.devices = {}
+
+        connection = MagicMock()
+        msg = {"id": 2, "type": "eppgrid/configure_device", "mac": mac}
+        await call_async_handler(hass, websocket_configure_device, connection, msg)
+
+        updated = dr.async_get(hass).async_get(device.id)
+        assert updated.name_by_user is None
+        assert updated.area_id is None
+        assert mock_dm.store.devices[mac]["onboarded"] is True
+        mock_dm._fire_device_list_changed.assert_called()
+        connection.send_result.assert_called_once_with(2)
+
+    async def test_configure_device_unknown_mac_errors(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        from custom_components.eppgrid.websocket_api import websocket_configure_device
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {}
+
+        connection = MagicMock()
+        msg = {"id": 3, "type": "eppgrid/configure_device", "mac": "11:22:33:44:55:66", "name": "x"}
+        await call_async_handler(hass, websocket_configure_device, connection, msg)
+
+        connection.send_error.assert_called_once()
+        connection.send_result.assert_not_called()
