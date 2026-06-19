@@ -6265,7 +6265,7 @@ class TestConfigureDevice:
         assert updated.area_id == area.id
         assert mock_dm.store.devices[mac]["onboarded"] is True
         mock_dm.store.async_save.assert_awaited()
-        mock_dm._fire_device_list_changed.assert_called()
+        mock_dm.fire_device_list_changed.assert_called()
         connection.send_result.assert_called_once_with(1)
 
     async def test_configure_device_skip_marks_onboarded_only(
@@ -6290,7 +6290,8 @@ class TestConfigureDevice:
         assert updated.name_by_user is None
         assert updated.area_id is None
         assert mock_dm.store.devices[mac]["onboarded"] is True
-        mock_dm._fire_device_list_changed.assert_called()
+        mock_dm.store.async_save.assert_awaited()
+        mock_dm.fire_device_list_changed.assert_called()
         connection.send_result.assert_called_once_with(2)
 
     async def test_configure_device_unknown_mac_errors(

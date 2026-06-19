@@ -188,7 +188,7 @@ async def websocket_configure_device(
     device_config = manager.store.devices.setdefault(mac, {})
     device_config["onboarded"] = True
     await manager.store.async_save()
-    manager._fire_device_list_changed()
+    manager.fire_device_list_changed()
     connection.send_result(msg["id"])
 
 

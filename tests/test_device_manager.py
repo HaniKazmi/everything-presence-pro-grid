@@ -1413,6 +1413,33 @@ class TestDeviceManager:
 
         assert manager.list_devices()[0]["onboarded"] is True
 
+    async def test_list_devices_onboarded_false_flag_overrides_name_inference(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A stored onboarded=False flag overrides inferred True from name_by_user."""
+        dev_reg = dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.54"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:04")},
+            name="everything-presence-pro-aabb04",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        # name_by_user would normally infer onboarded=True…
+        dev_reg.async_update_device(device.id, name_by_user="My Sensor")
+        manager.devices["AA:BB:CC:DD:EE:04"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:04",
+            name="everything-presence-pro-aabb04",
+            host="192.168.1.54",
+            device_id=device.id,
+        )
+        # …but explicit stored flag wins.
+        manager._store.devices["AA:BB:CC:DD:EE:04"] = {"onboarded": False}
+
+        assert manager.list_devices()[0]["onboarded"] is False
+
     async def test_list_devices_reports_live_availability_not_stale_flag(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
