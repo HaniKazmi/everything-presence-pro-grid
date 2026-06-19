@@ -3953,38 +3953,52 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 			font-size: var(--epp-font-base, 14px);
 			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 		}
-	`,e([Ae({type:Boolean})],Vs.prototype,"open",void 0),e([Ae()],Vs.prototype,"heading",void 0),e([Ae()],Vs.prototype,"message",void 0),e([Ae()],Vs.prototype,"confirmLabel",void 0),e([Ae()],Vs.prototype,"cancelLabel",void 0),e([Ae({type:Boolean})],Vs.prototype,"danger",void 0),e([Ae({type:Boolean})],Vs.prototype,"hideCancel",void 0),customElements.define("epp-confirm-dialog",Vs);class Xs extends ce{constructor(){super(...arguments),this.availableDevices=[],this.selectedMacs=[],this.missingSources=[]}render(){return N`
+	`,e([Ae({type:Boolean})],Vs.prototype,"open",void 0),e([Ae()],Vs.prototype,"heading",void 0),e([Ae()],Vs.prototype,"message",void 0),e([Ae()],Vs.prototype,"confirmLabel",void 0),e([Ae()],Vs.prototype,"cancelLabel",void 0),e([Ae({type:Boolean})],Vs.prototype,"danger",void 0),e([Ae({type:Boolean})],Vs.prototype,"hideCancel",void 0),customElements.define("epp-confirm-dialog",Vs);class Xs extends ce{constructor(){super(...arguments),this.availableDevices=[],this.selectedMacs=[],this.missingSources=[]}_label(e){return e.area?`${e.name} (${e.area})`:e.name}render(){const e=this.availableDevices.filter(e=>this.selectedMacs.includes(e.mac)),t=this.availableDevices.filter(e=>!this.selectedMacs.includes(e.mac)),i=0===e.length&&0===this.missingSources.length;return N`
+			${t.length?this._renderAddPicker(t):J}
 			<div class="source-box">
-				${this.availableDevices.map(e=>this._renderDeviceRow(e))}
+				${i?N`<p class="empty" data-testid="no-devices">No devices added yet.</p>`:J}
+				${e.map(e=>this._renderAddedRow(e))}
 				${this.missingSources.map(e=>this._renderMissingRow(e))}
 			</div>
 			${this.missingSources.length?N`<div class="missing-warning" data-testid="missing-warning">
 							<ha-icon icon="mdi:alert"></ha-icon>
-							Some source devices no longer exist. Turn them off and save
-							to remove them.
+							Some source devices no longer exist. Remove them and save.
 						</div>`:J}
-		`}_renderDeviceRow(e){const t=e.area?`${e.name} (${e.area})`:e.name,i=e.available?N`<span class="badge online" data-testid="device-badge">● Online</span>`:N`<span class="badge offline" data-testid="device-badge">● Offline</span>`;return N`<div class="source-row" data-testid="device-row">
-			<span class="source-name">${t}</span>
-			${i}
-			<epp-toggle
-				data-testid="device-toggle"
-				data-mac=${e.mac}
-				.checked=${this.selectedMacs.includes(e.mac)}
-				@value-changed=${t=>{t.stopPropagation(),this._emitSourceToggled(e.mac,t.detail.value)}}
-			></epp-toggle>
+		`}_renderAddPicker(e){const t=e.map(e=>({value:e.mac,label:this._label(e)}));return customElements.get("ha-select")?N`<ha-select
+				class="add-picker"
+				data-testid="add-picker"
+				label="Add a device"
+				.value=${""}
+				.options=${t}
+				@selected=${e=>this._add(e.detail.value)}
+				@closed=${e=>e.stopPropagation()}
+			></ha-select>`:N`<select
+			class="add-picker"
+			data-testid="add-picker"
+			data-value=""
+			@change=${e=>this._add(e.target.value)}
+		>
+			<option value="" disabled selected>Add a device</option>
+			${t.map(e=>N`<option value=${e.value}>${e.label}</option>`)}
+		</select>`}updated(){const e=this.renderRoot.querySelector("select.add-picker");e&&""!==e.value&&(e.value="")}_add(e){e&&this._emitSourceToggled(e,!0)}_renderAddedRow(e){const t=e.available?N`<span class="badge online" data-testid="device-badge">● Online</span>`:N`<span class="badge offline" data-testid="device-badge">● Offline</span>`;return N`<div class="source-row" data-testid="device-row">
+			<span class="source-name">${this._label(e)}</span>
+			${t} ${this._renderDelete(e.mac)}
 		</div>`}_renderMissingRow(e){return N`<div class="source-row missing" data-testid="device-row">
 			<span class="source-name">${e.name}</span>
 			<span class="badge missing" data-testid="device-badge">⚠ no longer exists</span>
-			<epp-toggle
-				data-testid="device-toggle"
-				data-mac=${e.mac}
-				.checked=${!0}
-				@value-changed=${t=>{t.stopPropagation(),this._emitSourceToggled(e.mac,t.detail.value)}}
-			></epp-toggle>
-		</div>`}_emitSourceToggled(e,t){this.dispatchEvent(new CustomEvent("source-toggled",{detail:{mac:e,on:t},bubbles:!0,composed:!0}))}}Xs.styles=a`
+			${this._renderDelete(e.mac)}
+		</div>`}_renderDelete(e){return N`<epp-tooltip content="Remove device">
+			<epp-icon-button
+				data-testid="device-delete"
+				data-mac=${e}
+				icon="mdi:delete"
+				label="Remove device"
+				variant="danger"
+				@click=${()=>this._emitSourceToggled(e,!1)}
+			></epp-icon-button>
+		</epp-tooltip>`}_emitSourceToggled(e,t){this.dispatchEvent(new CustomEvent("source-toggled",{detail:{mac:e,on:t},bubbles:!0,composed:!0}))}}Xs.styles=a`
 		:host { display: block; }
-		/* source-box / source-row / source-name / missing-* — token styles
-		   ported verbatim from epp-device-group-editor */
+		.add-picker { display: block; width: 100%; margin-bottom: var(--epp-space-2, 8px); }
 		.source-box {
 			border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
 			border-radius: var(--epp-radius-md, 10px);
@@ -4009,6 +4023,12 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 		.source-row.missing .source-name {
 			color: var(--epp-warning, var(--warning-color, #ff9800));
 		}
+		.empty {
+			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
+			font-size: var(--epp-font-sm, 13px);
+			padding: 6px 0;
+			margin: 0;
+		}
 		.missing-warning {
 			display: flex;
 			align-items: center;
@@ -4018,20 +4038,10 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 			color: var(--epp-warning, var(--warning-color, #ff9800));
 		}
 		.missing-warning ha-icon { --mdc-icon-size: 18px; }
-		/* Availability badges */
-		.badge {
-			font-size: var(--epp-font-sm, 13px);
-			white-space: nowrap;
-		}
-		.badge.online {
-			color: var(--epp-success, var(--success-color, #43a047));
-		}
-		.badge.offline {
-			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
-		}
-		.badge.missing {
-			color: var(--epp-warning, var(--warning-color, #ff9800));
-		}
+		.badge { font-size: var(--epp-font-sm, 13px); white-space: nowrap; }
+		.badge.online { color: var(--epp-success, var(--success-color, #43a047)); }
+		.badge.offline { color: var(--epp-text-muted, var(--secondary-text-color, #757575)); }
+		.badge.missing { color: var(--epp-warning, var(--warning-color, #ff9800)); }
 	`,e([Ae({attribute:!1})],Xs.prototype,"availableDevices",void 0),e([Ae({attribute:!1})],Xs.prototype,"selectedMacs",void 0),e([Ae({attribute:!1})],Xs.prototype,"missingSources",void 0),customElements.get("epp-device-source-list")||customElements.define("epp-device-source-list",Xs);const qs=[{id:"edit",label:"Edit",icon:"mdi:pencil"},{divider:!0},{id:"delete",label:"Delete",icon:"mdi:delete",danger:!0}],er={occupancy:"Occupancy",static_presence:"Static presence",motion_presence:"Motion presence",target_presence:"Target presence",mmwave_presence:"mmWave presence"};function tr(e,t){return`${e} · ${t}`}const ir=["occupancy","static_presence","motion_presence","target_presence","mmwave_presence"],sr="rest_of_room";function rr(e,t){return`${e}|${t}`}function or(e){const t=e.lastIndexOf("|");return{mac:e.slice(0,t),zone_index:Number(e.slice(t+1))}}function ar(e,t){return e.mac===t.mac&&e.zone_index===t.zone_index}class nr extends ce{constructor(){super(...arguments),this.sources=[],this.zoneGroups=[],this.excludedPresence=[],this.excludedZones=[],this.excludedZoneGroups=[],this._mode="list",this._merge=null}render(){const e="merge"===this._mode,t=ir.filter(e=>this.sources.some(t=>t.enabled_presence.includes(e))),i=this.sources.some(e=>e.zones.some(e=>0===e.index)),s=e?this._checkableZones():this._passthroughZones(),r=[];for(const i of t)r.push(this._renderPresence(i,e));i&&r.push(this._renderRoom(e));for(const t of s)r.push(e?this._renderZoneCheck(t):this._renderZone(t));if(!e)for(const e of this.zoneGroups)r.push(this._renderMergedGroup(e));return N`
 			${this._renderHeader()}
 			${r.length?N`<div class="sensor-box">${r}</div>`:N`<p class="empty">No sensors.</p>`}
@@ -4058,7 +4068,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 					Merge zones
 				</button>
 			</div>
-		</div>`}_toList(){this._mode="list",this._merge=null}_toMerge(){this._mode="merge",this._merge={editingId:null,name:"",checked:new Set}}_renderPresence(e,t){const i=!this.excludedPresence.includes(e),s=function(e,t){const i=[],s=[];for(const r of t)r.enabled_presence.includes(e)?i.push(r.name):s.push(r.name);return{provided:i,missing:s}}(e,this.sources),r=[...s.provided.map(e=>`${e} ✓`),...s.missing.map(e=>`${e} ✗ off in HA`)].join(" · ");return N`<div
+		</div>`}_toList(){this._mode="list",this._merge=null}_toMerge(){this._mode="merge",this._merge={editingId:null,name:"",checked:new Set}}_renderPresence(e,t){const i=!this.excludedPresence.includes(e),s=function(e,t){const i=[],s=[];for(const r of t)r.enabled_presence.includes(e)?i.push(r.name):s.push(r.name);return{provided:i,missing:s}}(e,this.sources);return N`<div
 			class="sensor-row ${t?"disabled":""}"
 			data-testid="presence-row"
 			data-slot=${e}
@@ -4067,7 +4077,9 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 				<div class="sensor-label">
 					<span class="sensor-name">${er[e]??e}</span>
 				</div>
-				<div class="coverage" data-testid="coverage">${r}</div>
+				<div class="coverage" data-testid="coverage">
+					${this._renderCoverage(s.provided,s.missing)}
+				</div>
 			</div>
 			<epp-toggle
 				data-testid="presence-toggle"
@@ -4075,14 +4087,17 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 				.disabled=${t}
 				@value-changed=${t=>{t.stopPropagation(),this.excludedPresence=lr(this.excludedPresence,e,!t.detail.value,(e,t)=>e===t),this._emitExclusions()}}
 			></epp-toggle>
-		</div>`}_renderRoom(e){const t=!this.excludedZoneGroups.includes(sr);return N`<div
+		</div>`}_renderCoverage(e,t){const i=[...e.map(e=>({name:e,off:!1})),...t.map(e=>({name:e,off:!0}))];return i.map((e,t)=>N`${t>0?" · ":J}<span
+						class=${e.off?"off":""}
+						data-testid=${e.off?"coverage-off":"coverage-on"}
+						>${e.name}</span
+					>`)}_renderRoom(e){const t=!this.excludedZoneGroups.includes(sr);return N`<div
 			class="sensor-row ${e?"disabled":""}"
 			data-testid="rest-of-room-row"
 		>
 			<div class="sensor-main">
 				<div class="sensor-label">
 					<span class="sensor-name">${"Zone Rest of Room"}</span>
-					<span class="chip">combined</span>
 				</div>
 			</div>
 			<epp-toggle
@@ -4158,12 +4173,13 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 				.value=${e}
 				@value-changed=${e=>{e.stopPropagation(),this._merge={...this._merge,name:e.detail.value}}}
 			></epp-field>
-		`}_renderMergedGroup(e){const t=e.members.map(e=>this._resolveMember(e).deviceName).join(", "),i=t?`${e.name} · ${t}`:e.name;return N`<div class="sensor-row merged-zone" data-testid="merged-zone">
+		`}_renderMergedGroup(e){const t=e.members.map(e=>{const t=this._resolveMember(e);return tr(t.zoneName,t.deviceName)}).join(", ");return N`<div class="sensor-row merged-zone" data-testid="merged-zone">
 			<div class="sensor-main">
 				<div class="sensor-label">
-					<span class="sensor-name">${i}</span>
+					<span class="sensor-name">${e.name}</span>
 					<span class="chip zone">merged</span>
 				</div>
+				${t?N`<div class="coverage" data-testid="merged-members">${t}</div>`:J}
 			</div>
 			<epp-kebab-menu
 				.items=${qs}
@@ -4219,6 +4235,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 				color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 				font-size: var(--epp-font-sm, 13px);
 			}
+			.coverage .off { text-decoration: line-through; }
 			.sensor-row epp-toggle { flex-shrink: 0; }
 			.sensor-row ha-checkbox,
 			.sensor-row input[type="checkbox"] {
