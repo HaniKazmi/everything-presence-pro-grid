@@ -272,6 +272,13 @@ describe("_handleUsbFlash", () => {
 	});
 
 	it("skips WiFi provisioning for ethernet variants and sets complete", async () => {
+		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
+			async (_port: any, _variant: any, _onProgress: any, options: any) => {
+				if (options?.beforeFlash) {
+					await options.beforeFlash("AA:BB:CC:DD:EE:FF");
+				}
+			},
+		);
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		await ctrl.handleUsbFlash("ethernet");
@@ -285,6 +292,14 @@ describe("_handleUsbFlash", () => {
 		// Port should be closed and nulled
 		expect(mockPort.close).toHaveBeenCalled();
 		expect(ctrl.serialPort).toBeNull();
+		// MAC captured during beforeFlash must survive into the complete state
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			mac: "AA:BB:CC:DD:EE:FF",
+		});
 	});
 
 	it("swallows port.close() error for ethernet variants", async () => {
@@ -1402,6 +1417,8 @@ describe("_handleRetryHaAdd", () => {
 		};
 		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({ type: "added" });
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+		// Simulate a MAC captured during the original flash
+		(flowOf(ctrl) as { _flashedMac: string })._flashedMac = "AA:BB:CC:DD:EE:FF";
 
 		await ctrl.handleRetryHaAdd();
 
@@ -1411,6 +1428,11 @@ describe("_handleRetryHaAdd", () => {
 			step: "complete",
 			ip: "192.168.1.42",
 			haAdd: { type: "added" },
+		});
+		// MAC must survive through the retry into the new complete state
+		expect(updateSpy.mock.calls[1][0]).toMatchObject({
+			step: "complete",
+			mac: "AA:BB:CC:DD:EE:FF",
 		});
 	});
 
