@@ -73,6 +73,38 @@ jobs:
         run: mkdocs build --strict
       - name: Copy firmware manifests into site
         run: cp -r fw site/fw
+      - name: Verify web flasher manifests are present
+        run: |
+          # docs/user-guide/web-flasher.md links firmware via
+          # <esp-web-install-button manifest="../../fw/latest/{variant}.json">.
+          # mkdocs --strict can't validate raw-HTML attribute paths, so confirm
+          # the referenced manifests were actually staged — this catches a
+          # variant-name drift between the page and stage-firmware.sh before it
+          # ships a 404-ing flash button. Skip on the no-release bootstrap.
+          if [ ! -d site/fw/latest ]; then
+            echo "No staged firmware (no release yet) — skipping web flasher manifest check"
+            exit 0
+          fi
+          count=0
+          fail=0
+          while IFS= read -r rel; do
+            count=$((count + 1))
+            target="site/user-guide/web-flasher/${rel}"
+            if [ ! -f "$target" ]; then
+              echo "::error::web-flasher.md references ${rel} but ${target} is missing — variant drift with stage-firmware.sh?"
+              fail=1
+            else
+              echo "ok: ${rel}"
+            fi
+          done < <(grep -oE 'manifest="[^"]*"' docs/user-guide/web-flasher.md \
+            | sed -E 's/manifest="([^"]*)"/\1/')
+          if [ "$count" -eq 0 ]; then
+            echo "::error::No manifest references found in docs/user-guide/web-flasher.md"
+            exit 1
+          fi
+          if [ "$fail" -ne 0 ]; then
+            exit 1
+          fi
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

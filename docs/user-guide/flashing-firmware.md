@@ -2,9 +2,13 @@
 
 The first flash of Everything Presence Pro Grid firmware happens over USB from your browser. Once flashed, future updates happen over the air — see [Firmware upgrades](firmware-upgrades.md).
 
+!!! tip "Flash buttons greyed out?"
+    The in-panel **Flash Firmware** and **Configure WiFi** buttons only work when you open Home Assistant over a **secure (HTTPS)** connection. If you reach Home Assistant over plain HTTP (for example `http://homeassistant.local:8123`), your browser blocks USB access and the buttons are disabled. In that case, use the **[Web flasher](web-flasher.md)** instead — it runs over HTTPS and works regardless of how you reach Home Assistant.
+
 ## Prerequisites
 
 - **Chrome or Edge browser.** Flashing uses the Web Serial API, which only works in Chromium-based browsers.
+- **A secure connection to Home Assistant.** Web Serial needs HTTPS; over plain HTTP the panel's flash buttons are disabled — use the [Web flasher](web-flasher.md) instead.
 - **A data USB cable.** Charge-only cables show no ports in the browser picker.
 - **The device plugged into the same computer** as the Chrome/Edge browser.
 

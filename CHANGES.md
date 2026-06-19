@@ -22,6 +22,12 @@ and firmware downloads, see the
 
 ### Improvements
 
+- **Flash firmware from your browser over HTTPS.** When the in-panel USB
+  flasher is unavailable — most often because you reach Home Assistant over
+  plain HTTP, which browsers block from USB access — the panel now explains why
+  and links to a new web flasher that runs over HTTPS and flashes either
+  firmware variant directly, instead of showing a misleading "requires Chrome
+  or Edge" message.
 - **More reliable firmware updates.** Updates now succeed on devices that were
   low on memory and previously failed with a connection error — the device is
   restarted to free memory before the update runs. If an update still can't
