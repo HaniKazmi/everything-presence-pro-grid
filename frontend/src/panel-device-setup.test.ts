@@ -434,6 +434,22 @@ describe("panel device setup — banner rendering", () => {
 		expect(c.querySelector(".setup-banner")).not.toBeNull();
 	});
 
+	it("constrains the setup-banner from growing to an equal flex share", () => {
+		// Cascade-regression guard (layout can't be computed in happy-dom):
+		// `.tab-layout > :not(.tab-bar) { flex: 1 }` makes every config-tab child
+		// grow to an equal vertical share. The banner is such a child, so without
+		// an override it grew to ~half the page. Verified visually in Chromium
+		// (banner 383px -> 48px after the override); this guard just prevents the
+		// override rule from being silently deleted.
+		const cssText = (EPPGridPanel.styles as unknown as { cssText: string }[])
+			.map((s) => s.cssText)
+			.join("\n")
+			.replace(/\s+/g, " ");
+		expect(cssText).toMatch(
+			/\.tab-layout > \.setup-banner \{[^}]*flex: 0 0 auto/,
+		);
+	});
+
 	it("hosts the dialog and wires its setup-complete / setup-skip events", () => {
 		const panel = createPanel();
 		const a = panel as never as Record<string, unknown>;

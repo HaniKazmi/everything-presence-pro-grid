@@ -2039,6 +2039,16 @@ export class EPPGridPanel extends LitElement {
       overflow: auto;
     }
 
+    /* Thin chrome banners (the new-device setup signpost) must shrink-wrap to
+       their content, not take an equal flex share of the column. The rule above
+       gives every non-tab-bar child flex:1, so without this the banner grew to
+       ~half the page alongside the main content. Placed after that rule so it
+       wins at equal (0,2,0) specificity. */
+    .tab-layout > .setup-banner {
+      flex: 0 0 auto;
+      overflow: visible;
+    }
+
     .tab-bar {
       display: flex;
       border-bottom: 1px solid var(--divider-color, #e0e0e0);
