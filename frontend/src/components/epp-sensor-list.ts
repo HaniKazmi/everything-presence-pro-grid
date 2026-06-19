@@ -121,6 +121,7 @@ export class EppSensorList extends LitElement {
 				color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 				font-size: var(--epp-font-sm, 13px);
 			}
+			.coverage .off { text-decoration: line-through; }
 			.sensor-row epp-toggle { flex-shrink: 0; }
 			.sensor-row ha-checkbox,
 			.sensor-row input[type="checkbox"] {
@@ -253,10 +254,6 @@ export class EppSensorList extends LitElement {
 	private _renderPresence(slot: PresenceSlot, disabled: boolean) {
 		const checked = !this.excludedPresence.includes(slot);
 		const cov = presenceCoverage(slot, this.sources);
-		const coverage = [
-			...cov.provided.map((n) => `${n} ✓`),
-			...cov.missing.map((n) => `${n} ✗ off in HA`),
-		].join(" · ");
 		return html`<div
 			class="sensor-row ${disabled ? "disabled" : ""}"
 			data-testid="presence-row"
@@ -266,7 +263,9 @@ export class EppSensorList extends LitElement {
 				<div class="sensor-label">
 					<span class="sensor-name">${PRESENCE_LABELS[slot] ?? slot}</span>
 				</div>
-				<div class="coverage" data-testid="coverage">${coverage}</div>
+				<div class="coverage" data-testid="coverage">
+					${this._renderCoverage(cov.provided, cov.missing)}
+				</div>
 			</div>
 			<epp-toggle
 				data-testid="presence-toggle"
@@ -286,6 +285,22 @@ export class EppSensorList extends LitElement {
 		</div>`;
 	}
 
+	// Provider names (plain) then off-in-HA names (struck), joined by " · ".
+	private _renderCoverage(provided: string[], missing: string[]) {
+		const parts = [
+			...provided.map((n) => ({ name: n, off: false })),
+			...missing.map((n) => ({ name: n, off: true })),
+		];
+		return parts.map(
+			(p, i) =>
+				html`${i > 0 ? " · " : nothing}<span
+						class=${p.off ? "off" : ""}
+						data-testid=${p.off ? "coverage-off" : "coverage-on"}
+						>${p.name}</span
+					>`,
+		);
+	}
+
 	private _renderRoom(disabled: boolean) {
 		const checked = !this.excludedZoneGroups.includes(REST_OF_ROOM_ID);
 		return html`<div
@@ -295,7 +310,6 @@ export class EppSensorList extends LitElement {
 			<div class="sensor-main">
 				<div class="sensor-label">
 					<span class="sensor-name">${REST_OF_ROOM_NAME}</span>
-					<span class="chip">combined</span>
 				</div>
 			</div>
 			<epp-toggle
@@ -431,15 +445,18 @@ export class EppSensorList extends LitElement {
 
 	private _renderMergedGroup(g: DeviceGroupZoneGroup) {
 		const members = g.members
-			.map((m) => this._resolveMember(m).deviceName)
+			.map((m) => {
+				const e = this._resolveMember(m);
+				return zoneRowLabel(e.zoneName, e.deviceName);
+			})
 			.join(", ");
-		const label = members ? `${g.name} · ${members}` : g.name;
 		return html`<div class="sensor-row merged-zone" data-testid="merged-zone">
 			<div class="sensor-main">
 				<div class="sensor-label">
-					<span class="sensor-name">${label}</span>
+					<span class="sensor-name">${g.name}</span>
 					<span class="chip zone">merged</span>
 				</div>
+				${members ? html`<div class="coverage" data-testid="merged-members">${members}</div>` : nothing}
 			</div>
 			<epp-kebab-menu
 				.items=${EDIT_DELETE_KEBAB_ITEMS}

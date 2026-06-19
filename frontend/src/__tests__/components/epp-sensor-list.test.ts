@@ -164,45 +164,59 @@ describe("epp-sensor-list — list mode", () => {
 		expect((await detail).excluded_presence).toEqual([]);
 	});
 
-	it("coverage line shows providers, and flags a missing provider", async () => {
+	it("coverage shows providers plain and off-in-HA providers struck through", async () => {
 		const el = await fixture();
-		el.sources = TWO_SOURCES;
-		el.zoneGroups = [];
+		el.sources = [
+			{
+				mac: "AA",
+				name: "Kitchen",
+				available: true,
+				enabled_presence: ["occupancy"],
+				zones: [],
+			},
+			{
+				mac: "BB",
+				name: "Lounge",
+				available: true,
+				enabled_presence: [],
+				zones: [],
+			},
+		];
 		await el.updateComplete;
-		const occRow = $(
+		const row = $(
 			el,
 			'[data-testid="presence-row"][data-slot="occupancy"]',
 		) as HTMLElement;
-		const occCov = occRow.querySelector(
-			'[data-testid="coverage"]',
-		) as HTMLElement;
-		expect(occCov.textContent).toContain("Left");
-		expect(occCov.textContent).toContain("Right");
-		const staticRow = $(
-			el,
-			'[data-testid="presence-row"][data-slot="static_presence"]',
-		) as HTMLElement;
-		const staticCov = staticRow.querySelector(
-			'[data-testid="coverage"]',
-		) as HTMLElement;
-		expect(staticCov.textContent).toContain("Left"); // provider
-		expect(staticCov.textContent).toContain("Right"); // missing one named
-		expect(staticCov.textContent).toContain("off in HA"); // missing marker
+		const on = [...row.querySelectorAll('[data-testid="coverage-on"]')].map(
+			(s) => s.textContent,
+		);
+		const off = [...row.querySelectorAll('[data-testid="coverage-off"]')].map(
+			(s) => s.textContent,
+		);
+		expect(on).toEqual(["Kitchen"]);
+		expect(off).toEqual(["Lounge"]);
+		// No glyph/label cruft.
+		const text = row.querySelector('[data-testid="coverage"]')!.textContent!;
+		expect(text).not.toMatch(/✓|✗|off in HA/);
 	});
 
-	it("renders exactly one combined Rest of room row, default ON", async () => {
+	it("renders exactly one Rest of room row, default ON, with no 'combined' chip", async () => {
 		const el = await fixture();
-		el.sources = TWO_SOURCES;
-		el.zoneGroups = [];
+		el.sources = [
+			{
+				mac: "AA",
+				name: "Kitchen",
+				available: true,
+				enabled_presence: [],
+				zones: [{ index: 0, name: "Rest of room", enabled: true }],
+			},
+		];
 		await el.updateComplete;
 		const rows = $all(el, '[data-testid="rest-of-room-row"]');
-		expect(rows.length).toBe(1);
+		expect(rows).toHaveLength(1);
 		expect(rows[0].textContent).toContain(REST_OF_ROOM_NAME);
-		expect(rows[0].textContent).toContain("combined");
-		const t = $(el, '[data-testid="rest-of-room-toggle"]') as HTMLElement & {
-			checked: boolean;
-		};
-		expect(t.checked).toBe(true);
+		expect(rows[0].textContent).not.toContain("combined");
+		expect(rows[0].querySelector(".chip")).toBeNull();
 	});
 
 	it("toggling Rest of room off opts out the rest_of_room group", async () => {
@@ -401,27 +415,41 @@ describe("epp-sensor-list — list mode", () => {
 		expect(keys).toEqual(["AA|2"]);
 	});
 
-	it("labels a merged member from an unknown device gracefully", async () => {
+	it("merged-zone row shows a device+zone sub-line per member", async () => {
 		const el = await fixture();
-		el.sources = TWO_SOURCES;
+		el.sources = [
+			{
+				mac: "AA",
+				name: "Sensor 1",
+				available: true,
+				enabled_presence: [],
+				zones: [{ index: 3, name: "Bed", enabled: true }],
+			},
+			{
+				mac: "BB",
+				name: "Sensor 2",
+				available: true,
+				enabled_presence: [],
+				zones: [{ index: 4, name: "Bed", enabled: true }],
+			},
+		];
 		el.zoneGroups = [
-			{ id: "g1", name: "Mixed", members: [{ mac: "ZZ", zone_index: 9 }] },
+			{
+				id: "zg_x",
+				name: "Bed",
+				members: [
+					{ mac: "AA", zone_index: 3 },
+					{ mac: "BB", zone_index: 4 },
+				],
+			},
 		];
 		await el.updateComplete;
-		const text = $(el, '[data-testid="merged-zone"]')!.textContent!;
-		expect(text).toContain("Unknown device");
-	});
-
-	it("renders a merged zone with no members as just its name", async () => {
-		const el = await fixture();
-		el.sources = TWO_SOURCES;
-		el.zoneGroups = [{ id: "g1", name: "Empty", members: [] }];
-		await el.updateComplete;
-		const text = $(el, '[data-testid="merged-zone"]')!
-			.textContent!.replace(/\s+/g, " ")
-			.trim();
-		expect(text).toContain("Empty");
-		expect(text).not.toContain("·");
+		const row = $(el, '[data-testid="merged-zone"]') as HTMLElement;
+		expect(row.querySelector(".sensor-name")!.textContent).toBe("Bed");
+		const sub = row
+			.querySelector('[data-testid="merged-members"]')!
+			.textContent!.trim();
+		expect(sub).toBe("Bed · Sensor 1, Bed · Sensor 2");
 	});
 
 	// Keep last in this block: registering ha-switch is global for the test env.
