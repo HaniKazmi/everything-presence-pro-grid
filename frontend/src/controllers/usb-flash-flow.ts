@@ -230,6 +230,7 @@ export class UsbFlashFlow {
 								});
 							await host.deleteEsphomeDevice(matched.esphome_config_entry_id);
 						}
+						host.updateUsbState({ step: "flashing", mac: mac.toUpperCase() });
 					},
 				},
 			);

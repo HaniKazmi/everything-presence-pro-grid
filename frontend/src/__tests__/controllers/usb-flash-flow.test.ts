@@ -1575,3 +1575,50 @@ describe("flasher-cancel handler", () => {
 		expect(mockPort.close).toHaveBeenCalledTimes(1);
 	});
 });
+
+describe("MAC capture in beforeFlash hook", () => {
+	let ctrl: FlasherController;
+	let mockPort: ReturnType<typeof makeMockPort>;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetServiceMocks();
+		ctrl = createCtrl();
+		mockPort = makeMockPort();
+
+		vi.stubGlobal("navigator", {
+			...navigator,
+			serial: {
+				requestPort: vi.fn().mockResolvedValue(mockPort),
+			},
+		});
+	});
+
+	it("calls updateUsbState with the uppercased MAC when beforeFlash receives one", async () => {
+		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
+			async (_port: any, _variant: any, _onProgress: any, options: any) => {
+				await options?.beforeFlash?.("aa:bb:cc:dd:ee:ff");
+			},
+		);
+
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await ctrl.handleUsbFlash("eppgrid-wifi");
+
+		expect(updateSpy).toHaveBeenCalledWith(
+			expect.objectContaining({ mac: "AA:BB:CC:DD:EE:FF" }),
+		);
+	});
+
+	it("does not call updateUsbState with mac when beforeFlash receives undefined", async () => {
+		// Default mock passes undefined; the guard must not emit a mac field.
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await ctrl.handleUsbFlash("eppgrid-wifi");
+
+		const macCalls = (updateSpy.mock.calls as any[][]).filter(
+			(c) => c[0].mac !== undefined,
+		);
+		expect(macCalls).toHaveLength(0);
+	});
+});
