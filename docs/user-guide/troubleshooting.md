@@ -15,7 +15,7 @@ Each device has six diagnostic entities under **Settings → Devices & services 
 
 **How to diagnose**: open HA history for **Heap Min Free** and **Uptime**. If `Uptime` dropped to 0 around the unavailable window, the device rebooted — check `Reset Reason` for the cause. If `Uptime` kept climbing through the unavailable window, the device stayed up and you have a network problem (WiFi, router, HA connectivity), not a firmware problem.
 
-A `Heap Min Free` reading below ~5 KB means the device has come close to running out of memory at some point this uptime cycle. If reboots correlate, you likely have an OOM problem — see the next section.
+A `Heap Min Free` reading below ~5 KB means the device has come close to running out of memory at some point this uptime cycle. If reboots correlate, you likely have an OOM problem — BLE scanning is the dominant heap consumer on this firmware, so the first thing to try is [Free up memory by disabling BLE](#free-up-memory-by-disabling-ble) below.
 
 ## Free up memory by disabling BLE
 
