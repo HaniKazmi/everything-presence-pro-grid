@@ -5222,6 +5222,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
+					${this._renderSetupBanner()}
 					<div class="protocol-fullpage protocol-fullpage-info">
 						<ha-icon icon="mdi:connection"></ha-icon>
 						<p>${this._localize("connection.connecting")}</p>
@@ -5231,15 +5232,17 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
+					${this._renderSetupBanner()}
 					${this._renderConnectionBanner()}
 				</div>
 			</div>`;if(!o&&!e)return N`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
+					${this._renderSetupBanner()}
 					${this._renderProtocolBanner()}
 				</div>
-			</div>`;const n="settings"===this._view?this._renderSettings(a):"editor"===this._view&&this._perspective?this._renderEditor():this._renderLiveOverview();return N`<div class="tab-layout">${this._renderTabBar()}${this._renderControllerErrorBanner()}${n}</div>`}async _onWizardSave(e){const t=e.currentTarget,{perspective:i,roomWidth:s,roomDepth:r}=e.detail;try{await this.hass.callWS({type:"eppgrid/set_setup",mac:this._selectedMac,perspective:i,room_width:s,room_depth:r})}catch(e){return console.error("Failed to save calibration",e),void t.saveFailed()}this._perspective=i,this._roomWidth=s,this._roomDepth=r,this._initGridFromRoom(),this._furniture=[],this._view="live",this._entitiesConfig={...this._entitiesConfig,zone_presence:!0},await this._gridCtrl.applyLayout().catch(e=>{console.error("Failed to apply layout after calibration",e)})}async _deleteCalibration(){this._showDeleteCalibrationDialog=!1,this._perspective=null,this._roomWidth=0,this._roomDepth=0,this._grid=new Uint8Array(ui),this._zoneConfigs=Cs,this._furniture=[],this._entitiesConfig={...this._entitiesConfig,zone_presence:!1,target_xy:!1},this._targetAutoDistance&&(this._targetMaxDistance=vs.target_max_distance),this._staticAutoDistance&&(this._staticMinDistance=vs.static_min_distance,this._staticMaxDistance=vs.static_max_distance);try{(this._targetAutoDistance||this._staticAutoDistance)&&await this.hass.callWS({type:"eppgrid/set_settings",mac:this._selectedMac,...this._buildSettingsPayload()}),await this.hass.callWS({type:"eppgrid/set_setup",mac:this._selectedMac,perspective:[0,0,0,0,0,0,0,0],room_width:0,room_depth:0}),await this.hass.callWS({type:"eppgrid/set_room_layout",mac:this._selectedMac,grid_bytes:Array.from(this._grid),zone_slots:this._zoneConfigs.map((e,t)=>0===t?Kl(e,0):null),furniture:[]})}catch(e){console.error("Failed to delete calibration",e)}this._dirty=!1,this._view="live"}_changePlacement(){this._navGuard.guardNavigation(()=>this._applyView({view:this._deviceCtrl.showRoomCalibrationTutorial?"tutorial":"calibrate",sidebarTab:this._sidebarTab}))}async _onDismissTutorial(){const e=this._deviceCtrl.showRoomCalibrationTutorial;this._deviceCtrl.setShowRoomCalibrationTutorial(!1);try{await this.hass.callWS({type:"eppgrid/set_show_room_calibration_tutorial",value:!1})}catch(t){console.error("Failed to persist show_room_calibration_tutorial",t),this._deviceCtrl.setShowRoomCalibrationTutorial(e)}}_renderHeader(){return this._devices.length?N`
+			</div>`;const n="settings"===this._view?this._renderSettings(a):"editor"===this._view&&this._perspective?this._renderEditor():this._renderLiveOverview();return N`<div class="tab-layout">${this._renderTabBar()}${this._renderControllerErrorBanner()}${this._renderSetupBanner()}${n}</div>`}async _onWizardSave(e){const t=e.currentTarget,{perspective:i,roomWidth:s,roomDepth:r}=e.detail;try{await this.hass.callWS({type:"eppgrid/set_setup",mac:this._selectedMac,perspective:i,room_width:s,room_depth:r})}catch(e){return console.error("Failed to save calibration",e),void t.saveFailed()}this._perspective=i,this._roomWidth=s,this._roomDepth=r,this._initGridFromRoom(),this._furniture=[],this._view="live",this._entitiesConfig={...this._entitiesConfig,zone_presence:!0},await this._gridCtrl.applyLayout().catch(e=>{console.error("Failed to apply layout after calibration",e)})}async _deleteCalibration(){this._showDeleteCalibrationDialog=!1,this._perspective=null,this._roomWidth=0,this._roomDepth=0,this._grid=new Uint8Array(ui),this._zoneConfigs=Cs,this._furniture=[],this._entitiesConfig={...this._entitiesConfig,zone_presence:!1,target_xy:!1},this._targetAutoDistance&&(this._targetMaxDistance=vs.target_max_distance),this._staticAutoDistance&&(this._staticMinDistance=vs.static_min_distance,this._staticMaxDistance=vs.static_max_distance);try{(this._targetAutoDistance||this._staticAutoDistance)&&await this.hass.callWS({type:"eppgrid/set_settings",mac:this._selectedMac,...this._buildSettingsPayload()}),await this.hass.callWS({type:"eppgrid/set_setup",mac:this._selectedMac,perspective:[0,0,0,0,0,0,0,0],room_width:0,room_depth:0}),await this.hass.callWS({type:"eppgrid/set_room_layout",mac:this._selectedMac,grid_bytes:Array.from(this._grid),zone_slots:this._zoneConfigs.map((e,t)=>0===t?Kl(e,0):null),furniture:[]})}catch(e){console.error("Failed to delete calibration",e)}this._dirty=!1,this._view="live"}_changePlacement(){this._navGuard.guardNavigation(()=>this._applyView({view:this._deviceCtrl.showRoomCalibrationTutorial?"tutorial":"calibrate",sidebarTab:this._sidebarTab}))}async _onDismissTutorial(){const e=this._deviceCtrl.showRoomCalibrationTutorial;this._deviceCtrl.setShowRoomCalibrationTutorial(!1);try{await this.hass.callWS({type:"eppgrid/set_show_room_calibration_tutorial",value:!1})}catch(t){console.error("Failed to persist show_room_calibration_tutorial",t),this._deviceCtrl.setShowRoomCalibrationTutorial(e)}}_renderHeader(){return this._devices.length?N`
       <div class="panel-header">
         <ha-select
           .value=${this._selectedMac}
@@ -5334,7 +5337,6 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
           ></epp-wizard>`;return N`
       <div class="panel panel--grid" @click=${e=>{e.target instanceof Element&&this._targetMenu&&!e.target.closest(".target-menu")&&this._closeTargetMenu()}}>
         ${this._renderHeader()}
-        ${this._renderSetupBanner()}
         <div class="editor-shell">
           <div class="grid-column">
             <div class="grid-container" style="position: relative;">
