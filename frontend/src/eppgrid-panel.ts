@@ -2524,6 +2524,7 @@ export class EPPGridPanel extends LitElement {
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
+					${this._renderSetupBanner()}
 					<div class="protocol-fullpage protocol-fullpage-info">
 						<ha-icon icon="mdi:connection"></ha-icon>
 						<p>${this._localize("connection.connecting")}</p>
@@ -2537,6 +2538,7 @@ export class EPPGridPanel extends LitElement {
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
+					${this._renderSetupBanner()}
 					${this._renderConnectionBanner()}
 				</div>
 			</div>`;
@@ -2547,6 +2549,7 @@ export class EPPGridPanel extends LitElement {
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
+					${this._renderSetupBanner()}
 					${this._renderProtocolBanner()}
 				</div>
 			</div>`;
@@ -2559,7 +2562,7 @@ export class EPPGridPanel extends LitElement {
 					? this._renderEditor()
 					: this._renderLiveOverview();
 
-		return html`<div class="tab-layout">${this._renderTabBar()}${this._renderControllerErrorBanner()}${content}</div>`;
+		return html`<div class="tab-layout">${this._renderTabBar()}${this._renderControllerErrorBanner()}${this._renderSetupBanner()}${content}</div>`;
 	}
 
 	/**
@@ -3032,7 +3035,6 @@ export class EPPGridPanel extends LitElement {
 				}
 			}}>
         ${this._renderHeader()}
-        ${this._renderSetupBanner()}
         <div class="editor-shell">
           <div class="grid-column">
             <div class="grid-container" style="position: relative;">

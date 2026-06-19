@@ -1,4 +1,4 @@
-import { render } from "lit";
+import { html, render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EPPGridPanel } from "./eppgrid-panel.js";
 import "./eppgrid-panel.js";
@@ -380,13 +380,57 @@ describe("panel device setup — banner rendering", () => {
 		);
 	});
 
-	it("renders the banner inside the live overview", () => {
+	it("renders the banner in the config tab (live overview state)", () => {
+		// The banner is rendered by _renderTabContent (between the tab-bar and content),
+		// not inside _renderLiveOverview itself, so it appears for all config-tab views.
 		const panel = createPanel();
 		const a = panel as never as Record<string, unknown>;
 		a._devices = [makeDeviceInfo({ onboarded: false })];
 		a._selectedMac = "AA:BB:CC:DD:EE:FF";
 		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		const c = renderTo((a._renderLiveOverview as () => unknown).call(panel));
+		a._panelTab = "config";
+		a._view = "live";
+		a._loading = false;
+		a._haConnected = true;
+		(a._deviceCtrl as Record<string, unknown>) = {
+			connectionFailed: false,
+			reconnecting: false,
+		};
+		a._initRetryCount = 3;
+		a._renderTabBar = (() => html`<div class="tab-bar"></div>`) as never;
+		a._renderControllerErrorBanner = (() => html``) as never;
+		a._renderHeader = (() => html``) as never;
+		a._renderLiveOverview = (() =>
+			html`<div class="live-overview"></div>`) as never;
+		const c = renderTo((a._renderTabContent as () => unknown).call(panel));
+		expect(c.querySelector(".setup-banner")).not.toBeNull();
+	});
+
+	it("renders the banner in the offline state (connectionFailed)", () => {
+		// Regression: _renderSetupBanner was only called inside _renderLiveOverview,
+		// so a freshly-flashed device (offline ~7-50s while booting) never showed the
+		// signpost banner. The fix hoists it to _renderTabContent for all config-tab
+		// states. This test verifies the offline early-return branch includes the banner.
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+		a._devices = [makeDeviceInfo({ onboarded: false, name: "New Sensor" })];
+		a._selectedMac = "AA:BB:CC:DD:EE:FF";
+		// Simulate the connectionFailed branch (isOffline path triggers the same branch).
+		(a._deviceCtrl as Record<string, unknown>) = {
+			connectionFailed: true,
+			reconnecting: false,
+		};
+		a._haConnected = true;
+		a._loading = false;
+		a._view = "live";
+		a._panelTab = "config";
+		a._initRetryCount = 3;
+		// Stub collaborators called from _renderTabContent.
+		a._renderTabBar = (() => html`<div class="tab-bar"></div>`) as never;
+		a._renderHeader = (() => html``) as never;
+		a._renderConnectionBanner = (() =>
+			html`<div class="connection-banner"></div>`) as never;
+		const c = renderTo((a._renderTabContent as () => unknown).call(panel));
 		expect(c.querySelector(".setup-banner")).not.toBeNull();
 	});
 
