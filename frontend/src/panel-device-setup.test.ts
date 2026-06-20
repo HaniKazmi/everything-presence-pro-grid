@@ -195,79 +195,100 @@ describe("panel calibration gate", () => {
 	});
 });
 
-describe("panel device setup — calibrate handoff", () => {
-	it("switches device, persists, loads config, and navigates for a new mac", () => {
+describe("panel — _onDeviceReadyForSetup and _waitForDevice", () => {
+	it("_waitForDevice matches by host===ip", async () => {
 		const panel = createPanel();
+		const dev = makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", host: "1.2.3.4" });
 		const a = panel as never as Record<string, unknown>;
-		a._selectedMac = "OLD:MAC";
-		// Stub the device-selection + nav collaborators so the real
-		// _selectDeviceForCalibration body runs without touching live controllers.
-		const closeSpy = vi.fn();
-		const loadSpy = vi.fn().mockResolvedValue(undefined);
-		const applySpy = vi.fn();
-		a._closeDeviceSession = closeSpy as never;
-		a._loadDeviceConfig = loadSpy as never;
-		a._applyView = applySpy as never;
-		(a._deviceCtrl as { showRoomCalibrationTutorial: boolean }) = {
-			showRoomCalibrationTutorial: false,
-		} as never;
-		(a._selectDeviceForCalibration as (mac: string) => void)(
-			"AA:BB:CC:DD:EE:FF",
-		);
-		expect(closeSpy).toHaveBeenCalled();
-		expect(a._selectedMac).toBe("AA:BB:CC:DD:EE:FF");
-		expect(loadSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:FF");
-		expect(applySpy).toHaveBeenCalledWith(
-			expect.objectContaining({ view: "calibrate" }),
-		);
+		let call = 0;
+		a._loadDevices = vi.fn().mockImplementation(async () => {
+			if (call++ === 0) {
+				a._devices = [dev];
+			}
+		}) as never;
+		a._devices = [];
+		vi.useFakeTimers();
+		const p = (
+			a._waitForDevice as (ip: string, mac?: string) => Promise<unknown>
+		)("1.2.3.4", undefined);
+		await vi.advanceTimersByTimeAsync(0);
+		const result = await p;
+		vi.useRealTimers();
+		expect(result).toBe(dev);
 	});
 
-	it("navigates to the tutorial view when the tutorial is not yet dismissed", () => {
+	it("_waitForDevice falls back to the flashed MAC when host doesn't match", async () => {
 		const panel = createPanel();
+		const dev = makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", host: "9.9.9.9" });
 		const a = panel as never as Record<string, unknown>;
-		a._selectedMac = "AA:BB:CC:DD:EE:FF";
-		const closeSpy = vi.fn();
-		const loadSpy = vi.fn().mockResolvedValue(undefined);
-		const applySpy = vi.fn();
-		a._closeDeviceSession = closeSpy as never;
-		a._loadDeviceConfig = loadSpy as never;
-		a._applyView = applySpy as never;
-		(a._deviceCtrl as { showRoomCalibrationTutorial: boolean }) = {
-			showRoomCalibrationTutorial: true,
-		} as never;
-		// Same mac as current selection -> skip the device-switch branch.
-		(a._selectDeviceForCalibration as (mac: string) => void)(
-			"AA:BB:CC:DD:EE:FF",
-		);
-		expect(closeSpy).not.toHaveBeenCalled();
-		expect(loadSpy).not.toHaveBeenCalled();
-		expect(applySpy).toHaveBeenCalledWith(
-			expect.objectContaining({ view: "tutorial" }),
-		);
+		let call = 0;
+		a._loadDevices = vi.fn().mockImplementation(async () => {
+			if (call++ === 0) {
+				a._devices = [dev];
+			}
+		}) as never;
+		a._devices = [];
+		vi.useFakeTimers();
+		const p = (
+			a._waitForDevice as (ip: string, mac?: string) => Promise<unknown>
+		)("1.2.3.4", "AA:BB:CC:DD:EE:FF");
+		await vi.advanceTimersByTimeAsync(0);
+		const result = await p;
+		vi.useRealTimers();
+		expect(result).toBe(dev);
 	});
 
-	it("raises the unsaved-changes dialog and does NOT navigate when dirty", () => {
-		// Mirrors the _changePlacement dirty-state test in panel-nav-guard.test.ts:
-		// _selectDeviceForCalibration must route through guardNavigation so that
-		// unsaved edits are not silently discarded.
+	it("_waitForDevice returns null after max attempts", async () => {
 		const panel = createPanel();
 		const a = panel as never as Record<string, unknown>;
-		// Use the same mac so the device-switch branch is skipped; only the
-		// navigation half is under test here.
-		a._selectedMac = "AA:BB:CC:DD:EE:FF";
-		a._dirty = true;
-		const applySpy = vi.fn();
-		a._applyView = applySpy as never;
-		(a._deviceCtrl as { showRoomCalibrationTutorial: boolean }) = {
-			showRoomCalibrationTutorial: false,
-		} as never;
-		(a._selectDeviceForCalibration as (mac: string) => void)(
-			"AA:BB:CC:DD:EE:FF",
+		a._loadDevices = vi.fn().mockResolvedValue(undefined) as never;
+		a._devices = [];
+		vi.useFakeTimers();
+		const p = (a._waitForDevice as (ip: string) => Promise<unknown>)("1.2.3.4");
+		await vi.advanceTimersByTimeAsync(31000); // 30 * 1000ms
+		const result = await p;
+		vi.useRealTimers();
+		expect(result).toBeNull();
+	});
+
+	it("_onDeviceReadyForSetup selects the device, shows config, and opens the modal", async () => {
+		const panel = createPanel();
+		const dev = makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", host: "1.2.3.4" });
+		const a = panel as never as Record<string, unknown>;
+		a._waitForDevice = vi.fn().mockResolvedValue(dev) as never;
+		a._selectAndShowConfig = vi.fn() as never;
+		a._openDeviceSetup = vi.fn() as never;
+		const fakeCtrl = {
+			resetUsbState: vi.fn().mockResolvedValue(undefined),
+			updateUsbState: vi.fn(),
+		};
+		a._flasherCtrl = fakeCtrl as never;
+
+		await (
+			a._onDeviceReadyForSetup as (ip: string, mac?: string) => Promise<void>
+		)("1.2.3.4", "AA:BB:CC:DD:EE:FF");
+
+		expect(a._selectAndShowConfig).toHaveBeenCalledWith(dev.mac);
+		expect(a._openDeviceSetup).toHaveBeenCalledWith(dev);
+		expect(fakeCtrl.resetUsbState).toHaveBeenCalled();
+	});
+
+	it("_onDeviceReadyForSetup surfaces failure when device never appears", async () => {
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+		a._waitForDevice = vi.fn().mockResolvedValue(null) as never;
+		const fakeCtrl = { updateUsbState: vi.fn(), resetUsbState: vi.fn() };
+		a._flasherCtrl = fakeCtrl as never;
+		a._openDeviceSetup = vi.fn() as never;
+
+		await (a._onDeviceReadyForSetup as (ip: string) => Promise<void>)(
+			"1.2.3.4",
 		);
-		// The guard must have raised the dialog…
-		expect(a._showUnsavedDialog).toBe(true);
-		// …and must NOT have performed the view transition yet.
-		expect(applySpy).not.toHaveBeenCalled();
+
+		expect(fakeCtrl.updateUsbState).toHaveBeenCalledWith(
+			expect.objectContaining({ step: "complete", haAdd: { type: "failed" } }),
+		);
+		expect(a._openDeviceSetup).not.toHaveBeenCalled();
 	});
 });
 

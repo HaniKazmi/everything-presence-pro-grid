@@ -91,6 +91,11 @@ import { tokens } from "./ui/tokens.js";
 // ZoneSlots / INITIAL_ZONE_SLOTS moved to lib/zone-defaults.ts so the
 // controllers can import them without a circular type dep on this module.
 
+// Post-flash device polling: poll up to 30 times at 1s intervals (30s total)
+// for the newly added device to appear in the device list.
+const DEVICE_WAIT_MAX_ATTEMPTS = 30;
+const DEVICE_WAIT_DELAY_MS = 1000;
+
 // Everything Presence Pro Grid logo, inlined from custom_components/eppgrid/
 // brand/icon.svg so it ships in the bundle (no extra static path / request).
 // Sized via the .epp-logo CSS rule; viewBox preserved for crisp scaling.
@@ -609,6 +614,8 @@ export class EPPGridPanel extends LitElement {
 		const ctrl = new FlasherController(this);
 		ctrl.confirmDeleteOriginalFirmware = () =>
 			this._requestFlasherDeleteConfirm();
+		ctrl.onDeviceReadyForSetup = (ip, mac) =>
+			this._onDeviceReadyForSetup(ip, mac);
 		return ctrl;
 	})();
 	// Device groups controller — owns group CRUD and WS subscription
@@ -1261,40 +1268,66 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	/**
-	 * Hand the just-configured device off to the room-calibration flow. Reuses
-	 * the panel's existing device-selection path (the header <ha-select>'s
-	 * @selected handler) and the existing "Calibrate room" navigation
-	 * (`_changePlacement`), so the device is loaded and the view switched
-	 * exactly as if the user had picked it and clicked Calibrate.
+	 * Called by the flasher controller after the device is successfully added
+	 * to (or already present in) Home Assistant. Polls the device list for the
+	 * newly added device (matching by IP or flashed MAC), then resets the
+	 * flasher state, selects the device and navigates to the config tab, and
+	 * opens the post-flash setup modal.
 	 */
-	// TODO(Task 5): wire this back up from the post-flash flow once the routing
-	// decision is made. Not called from _onDeviceSetupComplete since Task 4
-	// removed the calibrate flag; Task 5 will re-introduce the call site.
-	private _selectDeviceForCalibration(mac: string): void {
-		// Route through the same guard as the header <ha-select> @selected
-		// handler and _changePlacement so that when _dirty is true the
-		// unsaved-changes dialog is raised and edits are not silently discarded.
+	private async _onDeviceReadyForSetup(
+		ip: string,
+		flashedMac?: string,
+	): Promise<void> {
+		const dev = await this._waitForDevice(ip, flashedMac);
+		if (!dev) {
+			this._flasherCtrl.updateUsbState({
+				step: "complete",
+				ip,
+				haAdd: { type: "failed" },
+			});
+			return;
+		}
+		await this._flasherCtrl.resetUsbState();
+		this._selectAndShowConfig(dev.mac);
+		this._openDeviceSetup(dev);
+	}
+
+	/**
+	 * Polls the device list until the device at `ip` (or with `flashedMac`)
+	 * appears, or until DEVICE_WAIT_MAX_ATTEMPTS attempts have been exhausted.
+	 * Returns the DeviceInfo on success, null on timeout.
+	 */
+	private async _waitForDevice(
+		ip: string,
+		flashedMac?: string,
+	): Promise<DeviceInfo | null> {
+		const macUpper = flashedMac?.toUpperCase();
+		for (let attempt = 0; attempt < DEVICE_WAIT_MAX_ATTEMPTS; attempt++) {
+			await this._loadDevices();
+			const dev =
+				this._devices.find((d) => d.host === ip) ??
+				(macUpper ? this._devices.find((d) => d.mac === macUpper) : undefined);
+			if (dev) return dev;
+			await new Promise((r) => setTimeout(r, DEVICE_WAIT_DELAY_MS));
+		}
+		return null;
+	}
+
+	/**
+	 * Select a device by MAC and navigate to the config/live view. Routes
+	 * through the navigation guard so unsaved edits are not silently discarded.
+	 */
+	private _selectAndShowConfig(mac: string): void {
 		this._navGuard.guardNavigation(() => {
 			if (mac && mac !== this._selectedMac) {
-				// Same selection side effects as the header <ha-select> @selected
-				// handler: tear down the old session, switch the MAC, persist it,
-				// drop the previous device's furniture clipboard, and load config.
 				this._closeDeviceSession();
 				this._selectedMac = mac;
 				persistSelectedMac(mac);
 				this._furnitureClipboard = null;
 				this._loadDeviceConfig(mac).catch(() => {});
 			}
-			// Same navigation the "Calibrate room" action uses: tutorial first if the
-			// user hasn't dismissed it, otherwise straight to the corner-marking
-			// calibrate view. Keep the current sidebar sub-tab, exactly as
-			// _changePlacement does.
-			this._applyView({
-				view: this._deviceCtrl.showRoomCalibrationTutorial
-					? "tutorial"
-					: "calibrate",
-				sidebarTab: this._sidebarTab,
-			});
+			this._panelTab = "config";
+			this._applyView({ view: "live", sidebarTab: this._sidebarTab });
 		});
 	}
 

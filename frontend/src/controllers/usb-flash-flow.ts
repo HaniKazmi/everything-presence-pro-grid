@@ -30,6 +30,18 @@ export interface UsbFlashHost {
 	 * an explicit confirmation).
 	 */
 	confirmDeleteOriginalFirmware?: () => Promise<boolean>;
+	/**
+	 * Host hook — called after the device is successfully added to (or already
+	 * present in) Home Assistant. The panel uses this to wait for the device to
+	 * appear in the device list and then open the post-flash setup modal.
+	 * When wired, the flow does NOT transition to step "complete" on success —
+	 * the hook owns the final state transition. On failure paths the flow still
+	 * transitions to "complete" with the error result so the user can retry.
+	 */
+	onDeviceReadyForSetup?: (
+		ip: string,
+		flashedMac?: string,
+	) => Promise<void> | void;
 	bumpOpId(): void;
 	updateUsbState(state: UsbFlashState): void;
 	resetUsbState(): Promise<void>;
@@ -521,10 +533,20 @@ export class UsbFlashFlow {
 		const host = this._host;
 		const myOp = host.opId;
 
+		host.updateUsbState({ step: "adding", ip, mac: this._flashedMac });
 		const haAdd = await this._addToHaWithRetry(ip);
 		if (host.opId !== myOp) return;
 
-		host.updateUsbState({ step: "complete", ip, haAdd, mac: this._flashedMac });
+		if (haAdd.type === "added" || haAdd.type === "already_added") {
+			await host.onDeviceReadyForSetup?.(ip, this._flashedMac);
+		} else {
+			host.updateUsbState({
+				step: "complete",
+				ip,
+				haAdd,
+				mac: this._flashedMac,
+			});
+		}
 	}
 
 	async handleRetryHaAdd(): Promise<void> {
@@ -537,7 +559,17 @@ export class UsbFlashFlow {
 		host.updateUsbState({ step: "wifi_configured", ip });
 		const haAdd = await this._addToHaWithRetry(ip);
 		if (host.opId !== myOp) return;
-		host.updateUsbState({ step: "complete", ip, haAdd, mac: this._flashedMac });
+
+		if (haAdd.type === "added" || haAdd.type === "already_added") {
+			await host.onDeviceReadyForSetup?.(ip, this._flashedMac);
+		} else {
+			host.updateUsbState({
+				step: "complete",
+				ip,
+				haAdd,
+				mac: this._flashedMac,
+			});
+		}
 	}
 
 	handleUsbRetry(): void {

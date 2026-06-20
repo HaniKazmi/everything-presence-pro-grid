@@ -401,6 +401,7 @@
 		"usb_step_provisioning": "Configurando WiFi...",
 		"usb_step_wifi_connecting": "Conectando al WiFi...",
 		"usb_step_reading_ip": "Detectando la dirección IP del dispositivo...",
+		"usb_step_adding": "Añadiendo dispositivo...",
 		"wifi_configured": "WiFi configurado correctamente",
 		"configure_wifi_override": "¿No es esta red? Configurar WiFi",
 		"go_to_integrations": "Ir a Integraciones",
