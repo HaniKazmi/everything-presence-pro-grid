@@ -1244,7 +1244,13 @@ export class EPPGridPanel extends LitElement {
 		this._setupDevice = null;
 		const existing = this._devices.find((d) => d.mac === mac);
 		const nameChanged = (name || null) !== (existing?.name || null);
-		const areaChanged = (areaId ?? null) !== (existing?.area || null);
+		// NOTE: this modal is greenfield-only (a just-added device with no
+		// area), so `existing?.area` is null here and any picked `areaId`
+		// correctly reads as a change. `areaId` is an area_id while
+		// `existing.area` is the area's display name, so this comparison would
+		// be wrong if the modal were ever reused for an already-assigned
+		// device — that would need an `area_id` field on DeviceInfo.
+		const areaChanged = (areaId || null) !== (existing?.area || null);
 		if (nameChanged || areaChanged) {
 			try {
 				await this.hass.callWS({
@@ -1254,8 +1260,11 @@ export class EPPGridPanel extends LitElement {
 					area_id: areaId,
 					recreate_entity_ids: recreateEntityIds,
 				});
-			} catch {
-				// configure_device failed; the setup dialog can be reopened from the device list.
+			} catch (err) {
+				// Non-fatal: the device is added and selected, only the
+				// name/area rename failed. Log it for debugging — the user can
+				// still rename via the device's Home Assistant settings.
+				console.error("[eppgrid] configure_device failed", err);
 			}
 			await this._loadDevices();
 		}
@@ -1284,10 +1293,18 @@ export class EPPGridPanel extends LitElement {
 		// The cancel handler already cleaned up — do nothing.
 		if (this._flasherCtrl.opId !== myOp) return;
 		if (!dev) {
+			// The add to HA succeeded (we only reach here after added/
+			// already_added) — the device just didn't surface in the list
+			// within the poll window. Report success (not a failure) and let
+			// the user proceed to the config tab via the complete screen; the
+			// device appears there once discovery catches up. Reusing the
+			// add-failure UI here would mislabel a successful add and offer a
+			// pointless "retry add".
 			this._flasherCtrl.updateUsbState({
 				step: "complete",
 				ip,
-				haAdd: { type: "failed" },
+				mac: flashedMac,
+				haAdd: { type: "added" },
 			});
 			return;
 		}
@@ -1309,11 +1326,19 @@ export class EPPGridPanel extends LitElement {
 		const macUpper = flashedMac?.toUpperCase();
 		for (let attempt = 0; attempt < DEVICE_WAIT_MAX_ATTEMPTS; attempt++) {
 			if (myOp !== undefined && this._flasherCtrl.opId !== myOp) return null;
-			await this._loadDevices();
-			const dev =
-				this._devices.find((d) => d.host === ip) ??
-				(macUpper ? this._devices.find((d) => d.mac === macUpper) : undefined);
-			if (dev) return dev;
+			try {
+				await this._loadDevices();
+				const dev =
+					this._devices.find((d) => d.host === ip) ??
+					(macUpper
+						? this._devices.find((d) => d.mac === macUpper)
+						: undefined);
+				if (dev) return dev;
+			} catch {
+				// Transient list-load failure (e.g. a WebSocket blip) — keep
+				// polling rather than aborting onboarding; the device may
+				// appear on a later iteration.
+			}
 			await new Promise((r) => setTimeout(r, DEVICE_WAIT_DELAY_MS));
 		}
 		return null;
@@ -2319,7 +2344,6 @@ export class EPPGridPanel extends LitElement {
 					.flashableDevices=${this._flasherCtrl.flashableDevices}
 					.loading=${this._flasherCtrl.loading}
 					.localize=${this._localize}
-					.hass=${this.hass}
 					.usbFlashState=${this._flasherCtrl.usbFlashState}
 					.wifiNetworks=${this._flasherCtrl.wifiNetworks}
 					.firmwareVersion=${this._flasherCtrl.firmwareVersion}

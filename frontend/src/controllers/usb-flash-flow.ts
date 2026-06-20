@@ -599,9 +599,14 @@ export class UsbFlashFlow {
 	async handleFlasherCancel(): Promise<void> {
 		const host = this._host;
 		const state = host.usbFlashState;
-		// The flow pauses at wifi_configured (mid HA-add retry). A cancel from
-		// there should stash the device IP so the user can resume the HA-add later.
-		if (state?.step === "wifi_configured" && state.ip) {
+		// The flow sits at `adding` (the first HA-add attempt plus the panel's
+		// post-add device poll) or `wifi_configured` (mid HA-add retry). A
+		// cancel from either should stash the device IP so the user can resume
+		// the HA-add later.
+		if (
+			(state?.step === "adding" || state?.step === "wifi_configured") &&
+			state.ip
+		) {
 			host.setCancelledDeviceIpHint(state.ip);
 		}
 		host.opRunning = false;

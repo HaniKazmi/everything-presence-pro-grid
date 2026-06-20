@@ -511,8 +511,6 @@ export class EppFlasherView extends LitElement {
 	@property({ attribute: false }) flashableDevices: FlashableDevice[] = [];
 	@property({ type: Boolean }) loading = false;
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
-	@property({ attribute: false }) hass: { [key: string]: unknown } | null =
-		null;
 
 	@state() private _selectedVariant: "wifi" | "ethernet" = "wifi";
 	@property() firmwareVersion = "";

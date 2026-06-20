@@ -1564,6 +1564,17 @@ describe("flasher-cancel handler", () => {
 		expect(ctrl.cancelledDeviceIpHint).toBe("192.168.1.42");
 	});
 
+	it("captures IP hint when cancelling from adding state", () => {
+		// The first HA-add attempt and the panel's post-add device poll both run
+		// under the `adding` step; cancelling there must still stash the IP.
+		ctrl.serialPort = mockPort as any;
+		ctrl.updateUsbState({ step: "adding", ip: "192.168.1.43" });
+
+		ctrl.handleFlasherCancel();
+
+		expect(ctrl.cancelledDeviceIpHint).toBe("192.168.1.43");
+	});
+
 	it("does NOT capture IP hint when cancelling from other states", () => {
 		ctrl.serialPort = mockPort as any;
 		ctrl.updateUsbState({ step: "wifi_scan" });

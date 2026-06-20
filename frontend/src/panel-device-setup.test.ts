@@ -65,6 +65,40 @@ describe("panel device setup", () => {
 		expect((panel as never as { _setupOpen: boolean })._setupOpen).toBe(false);
 	});
 
+	it("logs and still refreshes when configure_device fails on setup-complete", async () => {
+		const panel = createPanel();
+		const a = panel as never as {
+			hass: { callWS: ReturnType<typeof vi.fn> };
+			_devices: DeviceInfo[];
+			_loadDevices: () => Promise<void>;
+			_onDeviceSetupComplete: (e: CustomEvent) => Promise<void>;
+			_setupOpen: boolean;
+		};
+		a.hass.callWS.mockRejectedValueOnce(new Error("ws down"));
+		a._devices = [makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", name: "Auto" })];
+		const loadSpy = vi.spyOn(a, "_loadDevices").mockResolvedValue(undefined);
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		// The rename failed, but the handler must not throw — it logs and still
+		// refreshes the device list, leaving the dialog closed.
+		await a._onDeviceSetupComplete(
+			new CustomEvent("setup-complete", {
+				detail: {
+					mac: "AA:BB:CC:DD:EE:FF",
+					name: "Bed",
+					areaId: "a1",
+					recreateEntityIds: false,
+				},
+			}),
+		);
+
+		expect(errSpy).toHaveBeenCalled();
+		expect(loadSpy).toHaveBeenCalled();
+		expect(a._setupOpen).toBe(false);
+		errSpy.mockRestore();
+		loadSpy.mockRestore();
+	});
+
 	it("does NOT call configure_device on skip (setup-skip)", async () => {
 		const panel = createPanel();
 		const callWS = (
@@ -251,6 +285,30 @@ describe("panel — _onDeviceReadyForSetup and _waitForDevice", () => {
 		expect(result).toBeNull();
 	});
 
+	it("_waitForDevice keeps polling when a list load fails transiently", async () => {
+		const panel = createPanel();
+		const dev = makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", host: "1.2.3.4" });
+		const a = panel as never as Record<string, unknown>;
+		let call = 0;
+		a._loadDevices = vi.fn().mockImplementation(async () => {
+			call++;
+			if (call === 1) throw new Error("ws blip");
+			a._devices = [dev];
+		}) as never;
+		a._devices = [];
+		vi.useFakeTimers();
+		const p = (
+			a._waitForDevice as (ip: string, mac?: string) => Promise<unknown>
+		)("1.2.3.4", undefined);
+		// First iteration's load rejects (caught), then the inter-poll sleep; the
+		// second iteration finds the device — the rejection must not abort the poll.
+		await vi.advanceTimersByTimeAsync(1000);
+		const result = await p;
+		vi.useRealTimers();
+		expect(result).toBe(dev);
+		expect(call).toBe(2);
+	});
+
 	it("_onDeviceReadyForSetup selects the device, shows config, and opens the modal", async () => {
 		const panel = createPanel();
 		const dev = makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", host: "1.2.3.4" });
@@ -273,7 +331,7 @@ describe("panel — _onDeviceReadyForSetup and _waitForDevice", () => {
 		expect(fakeCtrl.resetUsbState).toHaveBeenCalled();
 	});
 
-	it("_onDeviceReadyForSetup surfaces failure when device never appears", async () => {
+	it("_onDeviceReadyForSetup completes (added) without opening the modal when device never appears", async () => {
 		const panel = createPanel();
 		const a = panel as never as Record<string, unknown>;
 		a._waitForDevice = vi.fn().mockResolvedValue(null) as never;
@@ -285,8 +343,11 @@ describe("panel — _onDeviceReadyForSetup and _waitForDevice", () => {
 			"1.2.3.4",
 		);
 
+		// The add succeeded; only the post-add poll timed out. Report the
+		// truthful "added" complete state (not a failure) and do not open the
+		// modal for a device we couldn't locate.
 		expect(fakeCtrl.updateUsbState).toHaveBeenCalledWith(
-			expect.objectContaining({ step: "complete", haAdd: { type: "failed" } }),
+			expect.objectContaining({ step: "complete", haAdd: { type: "added" } }),
 		);
 		expect(a._openDeviceSetup).not.toHaveBeenCalled();
 	});
