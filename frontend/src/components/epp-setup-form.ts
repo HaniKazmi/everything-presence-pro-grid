@@ -59,7 +59,7 @@ export class EppSetupForm extends LitElement {
 		this._recreate = e.detail.value as boolean;
 	};
 
-	private _submit(): void {
+	private _submit = (): void => {
 		this.dispatchEvent(
 			new CustomEvent("setup-submit", {
 				detail: {
@@ -71,7 +71,7 @@ export class EppSetupForm extends LitElement {
 				composed: true,
 			}),
 		);
-	}
+	};
 
 	private _renderArea(L: LocalizeFn) {
 		return customElements.get("ha-area-picker")

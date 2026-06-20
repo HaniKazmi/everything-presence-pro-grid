@@ -1237,7 +1237,7 @@ export class EPPGridPanel extends LitElement {
 		this._setupDevice = null;
 		const existing = this._devices.find((d) => d.mac === mac);
 		const nameChanged = (name || null) !== (existing?.name || null);
-		const areaChanged = areaId !== (existing?.area ?? null);
+		const areaChanged = (areaId ?? null) !== (existing?.area || null);
 		if (nameChanged || areaChanged) {
 			try {
 				await this.hass.callWS({

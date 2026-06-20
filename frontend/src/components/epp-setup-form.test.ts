@@ -193,4 +193,16 @@ describe("epp-setup-form", () => {
 			recreateEntityIds: false,
 		});
 	});
+
+	it("emits setup-submit when the primary button is clicked (DOM click)", async () => {
+		const el = await mount("Bedroom");
+		let detail: unknown;
+		el.addEventListener("setup-submit", (e) => {
+			detail = (e as CustomEvent).detail;
+		});
+		const btn = el.shadowRoot?.querySelector("epp-button") as HTMLElement;
+		btn.click();
+		await el.updateComplete;
+		expect(detail).toBeDefined();
+	});
 });
