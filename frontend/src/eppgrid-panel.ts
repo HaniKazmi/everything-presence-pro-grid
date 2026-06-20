@@ -787,7 +787,7 @@ export class EPPGridPanel extends LitElement {
 	@state() _selectedMac = "";
 
 	// Post-flash device-setup wizard. `_setupOpen`/`_setupDevice` drive the
-	// <epp-device-setup> dialog host (the non-flash banner path).
+	// <epp-device-setup> dialog host, opened by the post-flash handoff.
 	@state() _setupOpen = false;
 	@state() _setupDevice: DeviceInfo | null = null;
 	@state() private _loading = true;
@@ -1278,7 +1278,11 @@ export class EPPGridPanel extends LitElement {
 		ip: string,
 		flashedMac?: string,
 	): Promise<void> {
-		const dev = await this._waitForDevice(ip, flashedMac);
+		const myOp = this._flasherCtrl.opId;
+		const dev = await this._waitForDevice(ip, flashedMac, myOp);
+		// If the user cancelled mid-poll, opId will have changed.
+		// The cancel handler already cleaned up — do nothing.
+		if (this._flasherCtrl.opId !== myOp) return;
 		if (!dev) {
 			this._flasherCtrl.updateUsbState({
 				step: "complete",
@@ -1300,9 +1304,11 @@ export class EPPGridPanel extends LitElement {
 	private async _waitForDevice(
 		ip: string,
 		flashedMac?: string,
+		myOp?: number,
 	): Promise<DeviceInfo | null> {
 		const macUpper = flashedMac?.toUpperCase();
 		for (let attempt = 0; attempt < DEVICE_WAIT_MAX_ATTEMPTS; attempt++) {
+			if (myOp !== undefined && this._flasherCtrl.opId !== myOp) return null;
 			await this._loadDevices();
 			const dev =
 				this._devices.find((d) => d.host === ip) ??

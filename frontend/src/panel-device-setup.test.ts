@@ -290,6 +290,49 @@ describe("panel — _onDeviceReadyForSetup and _waitForDevice", () => {
 		);
 		expect(a._openDeviceSetup).not.toHaveBeenCalled();
 	});
+
+	it("cancel mid-poll: opId bump aborts _waitForDevice and does NOT open the setup modal", async () => {
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+
+		// _loadDevices never finds the device
+		a._loadDevices = vi.fn().mockResolvedValue(undefined) as never;
+		a._devices = [];
+
+		// Track calls to _openDeviceSetup and flasher methods
+		a._openDeviceSetup = vi.fn() as never;
+		a._selectAndShowConfig = vi.fn() as never;
+
+		let opId = 1;
+		const fakeCtrl = {
+			get opId() {
+				return opId;
+			},
+			resetUsbState: vi.fn().mockResolvedValue(undefined),
+			updateUsbState: vi.fn(),
+		};
+		a._flasherCtrl = fakeCtrl as never;
+
+		vi.useFakeTimers();
+		const p = (
+			a._onDeviceReadyForSetup as (ip: string, mac?: string) => Promise<void>
+		)("1.2.3.4", "AA:BB:CC:DD:EE:FF");
+
+		// Advance a few iterations then simulate Cancel bumping opId
+		await vi.advanceTimersByTimeAsync(2500);
+		opId = 2; // user clicked Cancel → handleFlasherCancel → opId bumped
+
+		// Let the poll run to completion
+		await vi.advanceTimersByTimeAsync(31000);
+		await p;
+		vi.useRealTimers();
+
+		// Must NOT open the setup modal or call resetUsbState
+		expect(a._openDeviceSetup).not.toHaveBeenCalled();
+		expect(fakeCtrl.resetUsbState).not.toHaveBeenCalled();
+		// Must NOT surface a "failed" complete (cancel handler already cleaned up)
+		expect(fakeCtrl.updateUsbState).not.toHaveBeenCalled();
+	});
 });
 
 describe("panel device setup — dialog wiring", () => {
@@ -326,7 +369,7 @@ describe("panel device setup — dialog wiring", () => {
 					mac: "AA:BB:CC:DD:EE:FF",
 					name: "X",
 					areaId: null,
-					calibrate: false,
+					recreateEntityIds: false,
 				},
 				bubbles: true,
 			}),

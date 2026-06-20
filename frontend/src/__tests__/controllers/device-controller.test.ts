@@ -29,7 +29,6 @@ function makeDevice(mac: string, available: boolean): DeviceInfo {
 		configured: true,
 		firmware_status: "compatible",
 		current_connection_count: null,
-
 		area: null,
 	};
 }
@@ -82,7 +81,6 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
-
 					area: null,
 				},
 				{
@@ -93,7 +91,6 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
-
 					area: null,
 				},
 			];
@@ -115,7 +112,6 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
-
 					area: null,
 				},
 				{
@@ -126,7 +122,6 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
-
 					area: null,
 				},
 			];
@@ -148,7 +143,6 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
-
 					area: null,
 				},
 				{
@@ -159,7 +153,6 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
-
 					area: null,
 				},
 			];
@@ -180,7 +173,6 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
-
 					area: null,
 				},
 			];
@@ -234,7 +226,6 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
-
 					area: null,
 				},
 			];
