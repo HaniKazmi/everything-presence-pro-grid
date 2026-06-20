@@ -72,6 +72,7 @@ export type UsbFlashStep =
 	| "wifi_connecting"
 	| "reading_ip"
 	| "wifi_configured"
+	| "device_naming"
 	| "complete"
 	| "error";
 

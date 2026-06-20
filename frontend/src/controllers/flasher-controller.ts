@@ -541,4 +541,8 @@ export class FlasherController implements ReactiveController {
 	handleRetryHaAdd(): Promise<void> {
 		return this._flow.handleRetryHaAdd();
 	}
+
+	handleDeviceNaming(): Promise<void> {
+		return this._flow.handleDeviceNaming();
+	}
 }

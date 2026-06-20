@@ -312,13 +312,13 @@ export class UsbFlashFlow {
 				try {
 					skipWriter.releaseLock();
 				} catch {}
+				host.opRunning = false;
 				host.updateUsbState({
-					step: "wifi_configured",
+					step: "device_naming",
 					ip: skipIp,
 					autoSkipped: true,
+					mac: this._flashedMac,
 				});
-				host.opRunning = false;
-				await this._addToHa(skipIp);
 				return;
 			}
 
@@ -446,10 +446,8 @@ export class UsbFlashFlow {
 			await port.close().catch(() => {});
 			this._serialPort = null;
 
-			// WiFi side succeeded. Intermediate state while HA-add runs.
-			host.updateUsbState({ step: "wifi_configured", ip });
-
-			await this._addToHa(ip);
+			// WiFi side succeeded. Collect name/area before adding to HA.
+			host.updateUsbState({ step: "device_naming", ip, mac: this._flashedMac });
 		} catch (err: any) {
 			if (this._serialReader) releaseReader(this._serialReader);
 			try {
@@ -522,6 +520,13 @@ export class UsbFlashFlow {
 			remaining -= chunk;
 		}
 		return host.opId !== expectedOpId;
+	}
+
+	async handleDeviceNaming(): Promise<void> {
+		const host = this._host;
+		const ip = host.usbFlashState?.ip;
+		if (!ip) return;
+		await this._addToHa(ip);
 	}
 
 	private async _addToHa(ip: string): Promise<void> {
