@@ -6392,7 +6392,7 @@ class TestConfigureDevice:
         assert ent_reg.async_get("sensor.bedroom_temperature") is not None  # the pre-existing one
         assert ent_reg.async_get("sensor.bedroom_temperature_2") is not None  # the regenerated one
 
-    async def test_configure_device_skips_regen_when_already_named(
+    async def test_configure_device_skips_regen_when_flag_absent(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
         from homeassistant.helpers import device_registry as dr, entity_registry as er
@@ -6498,3 +6498,4 @@ class TestConfigureDevice:
         await call_async_handler(hass, websocket_configure_device, connection, msg)
 
         assert "onboarded" not in mock_dm.store.devices.get(mac, {})
+        mock_dm.store.async_save.assert_not_awaited()
