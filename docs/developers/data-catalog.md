@@ -208,12 +208,6 @@ Returns discovered EPP devices.
 
 `area` is the assigned HA area name, or `null` if the device is not in an area.
 
-### Per-device storage: `onboarded`
-
-`devices[<MAC>].onboarded` (bool, optional) — set `true` when the user completes
-or skips the in-panel device setup wizard. When absent, `list_devices()` infers
-onboarded status from the HA registry (`name_by_user` or `area_id` present).
-
 `firmware_status` is `"compatible"`, `"firmware_behind"`, or `"firmware_ahead"` — comparing the device's `Firmware Version` text sensor to the integration's `FIRMWARE_VERSION` using semver.
 
 The build flag fields (`bluetooth_enabled`, `co2_enabled`, `ethernet_enabled`, `board_revision`, `sensor_variant`, `firmware_channel`, `model`) are optional — they are only present after the device has connected and build flags have been fetched via the `get_build_flags` API action. Build flags are merged without overriding the base fields above (`mac`, `name`, `host`, `available`, `configured`, `area`, `firmware_status`, `current_connection_count`) — flag data comes from the device and must not rewrite identity fields.
@@ -227,9 +221,9 @@ Returns stored config for a device.
 
 ### `eppgrid/configure_device`
 
-Sets `name_by_user` / `area_id` on the device's HA registry entry (when provided) and stamps `onboarded: true`. Admin only.
+Sets `name_by_user` / `area_id` on the device's HA registry entry (when provided). When `name` is set and `recreate_entity_ids` is true, the device's entity IDs are regenerated from the new name's slug. Admin only.
 
-**Request:** `{ "type": "eppgrid/configure_device", "mac": str, "name"?: str, "area_id"?: str }`
+**Request:** `{ "type": "eppgrid/configure_device", "mac": str, "name"?: str, "area_id"?: str, "recreate_entity_ids"?: bool }`
 
 ### `update_firmware`
 
