@@ -154,6 +154,38 @@ async def websocket_set_show_room_calibration_tutorial(
 # -- configure_device --
 
 
+def _regenerate_entity_ids(hass: HomeAssistant, device_id: str, old_name: str | None, new_name: str) -> None:
+    """Rewrite a device's entity_ids from its old name slug to the new one.
+
+    Mirrors HA's native "rename device → update entity IDs?": for each entity on
+    the device whose id is built from the old device-name slug, swap that prefix
+    to the new name's slug, deduping collisions. Entities the user customized
+    (id not derived from the old slug) are left untouched. Caller gates this to
+    first-naming only, so it runs only while the device is greenfield.
+    """
+    from homeassistant.util import slugify
+
+    old_slug = slugify(old_name or "")
+    new_slug = slugify(new_name)
+    if not old_slug or not new_slug or old_slug == new_slug:
+        return
+
+    ent_reg = er.async_get(hass)
+    for entry in er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True):
+        domain, _, object_id = entry.entity_id.partition(".")
+        if object_id != old_slug and not object_id.startswith(f"{old_slug}_"):
+            continue
+        candidate = f"{domain}.{new_slug}{object_id[len(old_slug) :]}"
+        if candidate == entry.entity_id:
+            continue
+        unique = candidate
+        suffix = 2
+        while ent_reg.async_get(unique) is not None:
+            unique = f"{candidate}_{suffix}"
+            suffix += 1
+        ent_reg.async_update_entity(entry.entity_id, new_entity_id=unique)
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/configure_device",
@@ -176,15 +208,27 @@ async def websocket_configure_device(
         return
     mac = msg["mac"]
     device = manager.devices[mac]
-    updates: dict[str, Any] = {}
     name = msg.get("name")
     area_id = msg.get("area_id")
+
+    dev_reg = dr.async_get(hass)
+    reg_dev = dev_reg.async_get(device.device_id) if device.device_id else None
+    # Capture pre-update state: only regenerate entity ids the first time the
+    # device is named (greenfield — nothing references the old ids yet).
+    first_naming = reg_dev is not None and reg_dev.name_by_user is None
+    old_name = reg_dev.name if reg_dev is not None else None
+
+    updates: dict[str, Any] = {}
     if name:
         updates["name_by_user"] = name
     if area_id:
         updates["area_id"] = area_id
     if updates and device.device_id:
-        dr.async_get(hass).async_update_device(device.device_id, **updates)
+        dev_reg.async_update_device(device.device_id, **updates)
+
+    if name and first_naming and device.device_id:
+        _regenerate_entity_ids(hass, device.device_id, old_name, name)
+
     device_config = manager.store.devices.setdefault(mac, {})
     device_config["onboarded"] = True
     await manager.store.async_save()

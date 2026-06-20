@@ -6308,3 +6308,113 @@ class TestConfigureDevice:
 
         connection.send_error.assert_called_once()
         connection.send_result.assert_not_called()
+
+    async def _add_entity(self, hass, device_id, domain, unique_id, object_id, *, disabled=False):
+        from homeassistant.helpers import entity_registry as er
+
+        ent_reg = er.async_get(hass)
+        entry = ent_reg.async_get_or_create(
+            domain,
+            "esphome",
+            unique_id,
+            suggested_object_id=object_id,
+            device_id=device_id,
+            disabled_by=er.RegistryEntryDisabler.USER if disabled else None,
+        )
+        return entry.entity_id
+
+    async def test_configure_device_regenerates_entity_ids(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import websocket_configure_device
+
+        mock_dm = await setup_integration(hass, config_entry)
+        device = await self._make_device(hass)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm.devices[mac] = ManagedDevice(mac=mac, name="x", host="h", device_id=device.id)
+        mock_dm.store.devices = {}
+        temp = await self._add_entity(hass, device.id, "sensor", "uid-temp", "everything_presence_pro_aabbcc_temperature")
+        occ = await self._add_entity(hass, device.id, "binary_sensor", "uid-occ", "everything_presence_pro_aabbcc_occupancy")
+        dis = await self._add_entity(hass, device.id, "sensor", "uid-dis", "everything_presence_pro_aabbcc_illuminance", disabled=True)
+
+        connection = MagicMock()
+        msg = {"id": 1, "type": "eppgrid/configure_device", "mac": mac, "name": "Bedroom"}
+        await call_async_handler(hass, websocket_configure_device, connection, msg)
+
+        from homeassistant.helpers import entity_registry as er
+
+        ent_reg = er.async_get(hass)
+        assert ent_reg.async_get(temp) is None
+        assert ent_reg.async_get("sensor.bedroom_temperature") is not None
+        assert ent_reg.async_get("binary_sensor.bedroom_occupancy") is not None
+        # Disabled entities are renamed too.
+        assert ent_reg.async_get("sensor.bedroom_illuminance") is not None
+
+    async def test_configure_device_leaves_customized_entity_ids(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import websocket_configure_device
+        from homeassistant.helpers import entity_registry as er
+
+        mock_dm = await setup_integration(hass, config_entry)
+        device = await self._make_device(hass)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm.devices[mac] = ManagedDevice(mac=mac, name="x", host="h", device_id=device.id)
+        mock_dm.store.devices = {}
+        custom = await self._add_entity(hass, device.id, "sensor", "uid-c", "my_custom_thing")
+
+        connection = MagicMock()
+        msg = {"id": 1, "type": "eppgrid/configure_device", "mac": mac, "name": "Bedroom"}
+        await call_async_handler(hass, websocket_configure_device, connection, msg)
+
+        # Non-matching (user-customized) id is left untouched.
+        assert er.async_get(hass).async_get(custom) is not None
+
+    async def test_configure_device_dedupes_entity_id_collisions(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import websocket_configure_device
+        from homeassistant.helpers import entity_registry as er
+
+        mock_dm = await setup_integration(hass, config_entry)
+        device = await self._make_device(hass)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm.devices[mac] = ManagedDevice(mac=mac, name="x", host="h", device_id=device.id)
+        mock_dm.store.devices = {}
+        # Pre-existing entity that will collide with the regenerated id.
+        ent_reg = er.async_get(hass)
+        ent_reg.async_get_or_create("sensor", "other", "uid-x", suggested_object_id="bedroom_temperature")
+        await self._add_entity(hass, device.id, "sensor", "uid-temp", "everything_presence_pro_aabbcc_temperature")
+
+        connection = MagicMock()
+        msg = {"id": 1, "type": "eppgrid/configure_device", "mac": mac, "name": "Bedroom"}
+        await call_async_handler(hass, websocket_configure_device, connection, msg)
+
+        assert ent_reg.async_get("sensor.bedroom_temperature") is not None  # the pre-existing one
+        assert ent_reg.async_get("sensor.bedroom_temperature_2") is not None  # the regenerated one
+
+    async def test_configure_device_skips_regen_when_already_named(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        from homeassistant.helpers import device_registry as dr, entity_registry as er
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import websocket_configure_device
+
+        mock_dm = await setup_integration(hass, config_entry)
+        device = await self._make_device(hass)
+        dr.async_get(hass).async_update_device(device.id, name_by_user="Old Name")
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm.devices[mac] = ManagedDevice(mac=mac, name="x", host="h", device_id=device.id)
+        mock_dm.store.devices = {}
+        kept = await self._add_entity(hass, device.id, "sensor", "uid-temp", "everything_presence_pro_aabbcc_temperature")
+
+        connection = MagicMock()
+        msg = {"id": 1, "type": "eppgrid/configure_device", "mac": mac, "name": "Bedroom"}
+        await call_async_handler(hass, websocket_configure_device, connection, msg)
+
+        # Already-named device: name updated, but entity ids are NOT rewritten.
+        assert er.async_get(hass).async_get(kept) is not None
+        assert dr.async_get(hass).async_get(device.id).name_by_user == "Bedroom"
