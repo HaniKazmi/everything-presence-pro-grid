@@ -197,7 +197,7 @@ This site. MkDocs Material source.
 
 ## CI (`.github/workflows/`)
 
-- **`tests.yml`** — Python (HA 2026.5.0 floor, HA stable, HA dev), Frontend (Vitest + coverage), C++ tests (CMake + CTest, both libs).
+- **`tests.yml`** — Python (HA 2025.2.0 floor, HA stable, HA dev), Frontend (Vitest + coverage), C++ tests (CMake + CTest, both libs).
 - **`nightly.yml`** — daily (and `workflow_dispatch`) run of the Python + Frontend suites against the **latest** upstream deps (HA stable + dev, latest `aioesphomeapi`, frontend deps resolved fresh from `package.json`). Catches a breaking upstream release between commits. Separate from `tests.yml` so its noise never blocks a PR.
 - **`firmware.yml`** — compiles each firmware variant on changes under `firmware/`.
 - **`hacs.yml`** — HACS integration validation.
