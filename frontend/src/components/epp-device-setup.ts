@@ -16,14 +16,14 @@ export class EppDeviceSetup extends LitElement {
 	private _onSubmit = (e: CustomEvent) => {
 		e.stopPropagation();
 		if (!this.device) return;
-		const { name, areaId, calibrate } = e.detail as {
+		const { name, areaId, recreateEntityIds } = e.detail as {
 			name: string;
 			areaId: string | null;
-			calibrate: boolean;
+			recreateEntityIds: boolean;
 		};
 		this.dispatchEvent(
 			new CustomEvent("setup-complete", {
-				detail: { mac: this.device.mac, name, areaId, calibrate },
+				detail: { mac: this.device.mac, name, areaId, recreateEntityIds },
 				bubbles: true,
 				composed: true,
 			}),
@@ -52,7 +52,6 @@ export class EppDeviceSetup extends LitElement {
 					.hass=${this.hass}
 					.localize=${this.localize}
 					@setup-submit=${this._onSubmit}
-					@setup-skip=${this._onSkip}
 				></epp-setup-form>
 			</epp-dialog>
 		`;

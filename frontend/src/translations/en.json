@@ -455,9 +455,9 @@
 		"name_label": "Device name",
 		"area_help": "Assign it to an area so it groups with the rest of that room.",
 		"area_label": "Area",
-		"skip": "Skip for now",
-		"later": "I'll calibrate later",
-		"calibrate_now": "Calibrate now"
+		"skip_and_finish": "Skip and finish",
+		"finish": "Finish",
+		"recreate_entity_ids": "Recreate entity IDs to match new name"
 	},
 	"connection": {
 		"connecting": "Connecting to device...",

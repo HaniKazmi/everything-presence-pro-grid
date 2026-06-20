@@ -44,28 +44,153 @@ describe("epp-setup-form", () => {
 		expect((el as never as { _areaId: string | null })._areaId).toBe("area_9");
 	});
 
-	it("emits setup-submit with collected data and calibrate flag", async () => {
+	it("shows 'Skip and finish' button when nothing has changed", async () => {
 		const el = await mount("Bedroom");
-		(el as never as { _areaId: string | null })._areaId = "area_1";
+		const btn = el.shadowRoot?.querySelector("epp-button");
+		expect(btn?.textContent?.trim()).toBe("device_setup.skip_and_finish");
+	});
+
+	it("shows 'Finish' button after the name has changed", async () => {
+		const el = await mount("Bedroom");
+		const nameField = el.shadowRoot?.querySelector("epp-field") as HTMLElement;
+		nameField.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "New Name" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		await el.updateComplete;
+		const btn = el.shadowRoot?.querySelector("epp-button");
+		expect(btn?.textContent?.trim()).toBe("device_setup.finish");
+	});
+
+	it("shows 'Finish' button after only the area has changed", async () => {
+		const el = await mount("Bedroom");
+		const fields = [
+			...(el.shadowRoot?.querySelectorAll("epp-field, ha-area-picker") ?? []),
+		] as HTMLElement[];
+		fields[fields.length - 1].dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "area_1" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		await el.updateComplete;
+		const btn = el.shadowRoot?.querySelector("epp-button");
+		expect(btn?.textContent?.trim()).toBe("device_setup.finish");
+	});
+
+	it("does NOT show recreate toggle when nothing has changed", async () => {
+		const el = await mount("Bedroom");
+		const toggle = el.shadowRoot?.querySelector("[data-test='recreate']");
+		expect(toggle).toBeNull();
+	});
+
+	it("does NOT show recreate toggle when only area changed", async () => {
+		const el = await mount("Bedroom");
+		const fields = [
+			...(el.shadowRoot?.querySelectorAll("epp-field, ha-area-picker") ?? []),
+		] as HTMLElement[];
+		fields[fields.length - 1].dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "area_1" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		await el.updateComplete;
+		const toggle = el.shadowRoot?.querySelector("[data-test='recreate']");
+		expect(toggle).toBeNull();
+	});
+
+	it("shows recreate toggle (checked) when name has changed", async () => {
+		const el = await mount("Bedroom");
+		const nameField = el.shadowRoot?.querySelector("epp-field") as HTMLElement;
+		nameField.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "New Name" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		await el.updateComplete;
+		const toggle = el.shadowRoot?.querySelector(
+			"[data-test='recreate']",
+		) as HTMLElement & { checked?: boolean };
+		expect(toggle).not.toBeNull();
+		// epp-toggle exposes checked property
+		expect((toggle as never as { checked: boolean }).checked).toBe(true);
+	});
+
+	it("emits setup-submit with recreateEntityIds:true when name changed and checkbox checked", async () => {
+		const el = await mount("Bedroom");
+		// change the name
+		const nameField = el.shadowRoot?.querySelector("epp-field") as HTMLElement;
+		nameField.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "New Name" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		await el.updateComplete;
+
 		let detail: unknown;
 		el.addEventListener("setup-submit", (e) => {
 			detail = (e as CustomEvent).detail;
 		});
-		(el as never as { _submit: (c: boolean) => void })._submit(true);
+		(el as never as { _submit: () => void })._submit();
 		expect(detail).toEqual({
-			name: "Bedroom",
-			areaId: "area_1",
-			calibrate: true,
+			name: "New Name",
+			areaId: null,
+			recreateEntityIds: true,
 		});
 	});
 
-	it("emits setup-skip", async () => {
-		const el = await mount();
-		let fired = false;
-		el.addEventListener("setup-skip", () => {
-			fired = true;
+	it("emits setup-submit with recreateEntityIds:false when checkbox unchecked", async () => {
+		const el = await mount("Bedroom");
+		// change the name
+		const nameField = el.shadowRoot?.querySelector("epp-field") as HTMLElement;
+		nameField.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "New Name" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		await el.updateComplete;
+
+		// uncheck the recreate toggle
+		(el as never as { _recreate: boolean })._recreate = false;
+		await el.updateComplete;
+
+		let detail: unknown;
+		el.addEventListener("setup-submit", (e) => {
+			detail = (e as CustomEvent).detail;
 		});
-		(el as never as { _onSkip: () => void })._onSkip();
-		expect(fired).toBe(true);
+		(el as never as { _submit: () => void })._submit();
+		expect(detail).toEqual({
+			name: "New Name",
+			areaId: null,
+			recreateEntityIds: false,
+		});
+	});
+
+	it("emits setup-submit with recreateEntityIds:false when only area changed (no name change)", async () => {
+		const el = await mount("Bedroom");
+		(el as never as { _areaId: string | null })._areaId = "area_1";
+
+		let detail: unknown;
+		el.addEventListener("setup-submit", (e) => {
+			detail = (e as CustomEvent).detail;
+		});
+		(el as never as { _submit: () => void })._submit();
+		expect(detail).toEqual({
+			name: "Bedroom",
+			areaId: "area_1",
+			recreateEntityIds: false,
+		});
 	});
 });

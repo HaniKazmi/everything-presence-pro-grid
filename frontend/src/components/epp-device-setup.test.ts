@@ -47,7 +47,7 @@ describe("epp-device-setup", () => {
 		expect(el.shadowRoot?.querySelector("epp-dialog")).toBeNull();
 	});
 
-	it("re-emits child setup-submit as setup-complete with mac", async () => {
+	it("re-emits child setup-submit as setup-complete with mac and recreateEntityIds", async () => {
 		const el = await mount(makeDevice());
 		let detail: unknown;
 		el.addEventListener("setup-complete", (e) => {
@@ -56,7 +56,7 @@ describe("epp-device-setup", () => {
 		const form = el.shadowRoot?.querySelector("epp-setup-form") as HTMLElement;
 		form.dispatchEvent(
 			new CustomEvent("setup-submit", {
-				detail: { name: "Bed", areaId: "a1", calibrate: true },
+				detail: { name: "Bed", areaId: "a1", recreateEntityIds: true },
 				bubbles: true,
 				composed: true,
 			}),
@@ -65,11 +65,11 @@ describe("epp-device-setup", () => {
 			mac: "AA:BB:CC:DD:EE:FF",
 			name: "Bed",
 			areaId: "a1",
-			calibrate: true,
+			recreateEntityIds: true,
 		});
 	});
 
-	it("re-emits child setup-submit as setup-complete with calibrate=false", async () => {
+	it("re-emits child setup-submit as setup-complete with recreateEntityIds:false", async () => {
 		const el = await mount(makeDevice());
 		let detail: unknown;
 		el.addEventListener("setup-complete", (e) => {
@@ -78,25 +78,14 @@ describe("epp-device-setup", () => {
 		const form = el.shadowRoot?.querySelector("epp-setup-form") as HTMLElement;
 		form.dispatchEvent(
 			new CustomEvent("setup-submit", {
-				detail: { name: "Room", areaId: null, calibrate: false },
+				detail: { name: "Room", areaId: null, recreateEntityIds: false },
 				bubbles: true,
 				composed: true,
 			}),
 		);
-		expect((detail as { calibrate: boolean }).calibrate).toBe(false);
-	});
-
-	it("re-emits child setup-skip as setup-skip with mac", async () => {
-		const el = await mount(makeDevice());
-		let detail: unknown;
-		el.addEventListener("setup-skip", (e) => {
-			detail = (e as CustomEvent).detail;
-		});
-		const form = el.shadowRoot?.querySelector("epp-setup-form") as HTMLElement;
-		form.dispatchEvent(
-			new CustomEvent("setup-skip", { bubbles: true, composed: true }),
+		expect((detail as { recreateEntityIds: boolean }).recreateEntityIds).toBe(
+			false,
 		);
-		expect(detail).toEqual({ mac: "AA:BB:CC:DD:EE:FF" });
 	});
 
 	it("dispatches setup-skip with mac on dialog-dismiss", async () => {
@@ -130,7 +119,7 @@ describe("epp-device-setup", () => {
 		});
 		(el as never as { _onSubmit: (e: CustomEvent) => void })._onSubmit(
 			new CustomEvent("setup-submit", {
-				detail: { name: "X", areaId: null, calibrate: false },
+				detail: { name: "X", areaId: null, recreateEntityIds: false },
 			}),
 		);
 		expect(fired).toBe(false);

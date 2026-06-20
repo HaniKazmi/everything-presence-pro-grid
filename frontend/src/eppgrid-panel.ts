@@ -1227,40 +1227,37 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private async _onDeviceSetupComplete(e: CustomEvent): Promise<void> {
-		const { mac, name, areaId, calibrate } = e.detail as {
+		const { mac, name, areaId, recreateEntityIds } = e.detail as {
 			mac: string;
 			name: string;
 			areaId: string | null;
-			calibrate: boolean;
+			recreateEntityIds: boolean;
 		};
 		this._setupOpen = false;
 		this._setupDevice = null;
-		try {
-			await this.hass.callWS({
-				type: "eppgrid/configure_device",
-				mac,
-				name: name || null,
-				area_id: areaId,
-			});
-		} catch {
-			// configure_device failed; the setup dialog can be reopened from the device list.
-		}
-		await this._loadDevices();
-		if (calibrate) {
-			this._selectDeviceForCalibration(mac);
+		const existing = this._devices.find((d) => d.mac === mac);
+		const nameChanged = (name || null) !== (existing?.name || null);
+		const areaChanged = areaId !== (existing?.area ?? null);
+		if (nameChanged || areaChanged) {
+			try {
+				await this.hass.callWS({
+					type: "eppgrid/configure_device",
+					mac,
+					name: name || null,
+					area_id: areaId,
+					recreate_entity_ids: recreateEntityIds,
+				});
+			} catch {
+				// configure_device failed; the setup dialog can be reopened from the device list.
+			}
+			await this._loadDevices();
 		}
 	}
 
-	private async _onDeviceSetupDialogSkip(e: CustomEvent): Promise<void> {
-		const { mac } = e.detail as { mac: string };
+	private _onDeviceSetupDialogSkip(e: CustomEvent): void {
+		e.stopPropagation?.();
 		this._setupOpen = false;
 		this._setupDevice = null;
-		try {
-			await this.hass.callWS({ type: "eppgrid/configure_device", mac });
-		} catch {
-			// best effort
-		}
-		await this._loadDevices();
 	}
 
 	/**
@@ -1270,6 +1267,9 @@ export class EPPGridPanel extends LitElement {
 	 * (`_changePlacement`), so the device is loaded and the view switched
 	 * exactly as if the user had picked it and clicked Calibrate.
 	 */
+	// TODO(Task 5): wire this back up from the post-flash flow once the routing
+	// decision is made. Not called from _onDeviceSetupComplete since Task 4
+	// removed the calibrate flag; Task 5 will re-introduce the call site.
 	private _selectDeviceForCalibration(mac: string): void {
 		// Route through the same guard as the header <ha-select> @selected
 		// handler and _changePlacement so that when _dirty is true the

@@ -3,6 +3,7 @@ import { property, state } from "lit/decorators.js";
 import type { LocalizeFn } from "../localize.js";
 import "../ui/epp-field.js";
 import "../ui/epp-button.js";
+import "../ui/epp-toggle.js";
 
 export class EppSetupForm extends LitElement {
 	@property({ type: String }) name = "";
@@ -13,6 +14,9 @@ export class EppSetupForm extends LitElement {
 
 	@state() private _name = "";
 	@state() private _areaId: string | null = null;
+	@state() private _recreate = true;
+	private _initialName = "";
+	private _initialAreaId: string | null = null;
 	private _initialized = false;
 
 	static styles = css`
@@ -20,6 +24,7 @@ export class EppSetupForm extends LitElement {
 			display: flex;
 			justify-content: flex-end;
 			gap: var(--epp-space-3);
+			margin-top: var(--epp-space-4);
 		}
 	`;
 
@@ -27,7 +32,16 @@ export class EppSetupForm extends LitElement {
 		if (!this._initialized && changed.has("name")) {
 			this._initialized = true;
 			this._name = this.name ?? "";
+			this._initialName = this.name ?? "";
 		}
+	}
+
+	private get _nameChanged(): boolean {
+		return this._name !== this._initialName;
+	}
+
+	private get _dirty(): boolean {
+		return this._nameChanged || this._areaId !== this._initialAreaId;
 	}
 
 	private _onNameChanged = (e: CustomEvent) => {
@@ -40,21 +54,24 @@ export class EppSetupForm extends LitElement {
 		this._areaId = (e.detail.value as string) || null;
 	};
 
-	private _submit(calibrate: boolean): void {
+	private _onRecreateChanged = (e: CustomEvent) => {
+		e.stopPropagation();
+		this._recreate = e.detail.value as boolean;
+	};
+
+	private _submit(): void {
 		this.dispatchEvent(
 			new CustomEvent("setup-submit", {
-				detail: { name: this._name, areaId: this._areaId, calibrate },
+				detail: {
+					name: this._name,
+					areaId: this._areaId,
+					recreateEntityIds: this._nameChanged && this._recreate,
+				},
 				bubbles: true,
 				composed: true,
 			}),
 		);
 	}
-
-	private _onSkip = () => {
-		this.dispatchEvent(
-			new CustomEvent("setup-skip", { bubbles: true, composed: true }),
-		);
-	};
 
 	private _renderArea(L: LocalizeFn) {
 		return customElements.get("ha-area-picker")
@@ -64,6 +81,9 @@ export class EppSetupForm extends LitElement {
 
 	render() {
 		const L = this.localize;
+		const btnLabel = this._dirty
+			? L("device_setup.finish")
+			: L("device_setup.skip_and_finish");
 		return html`
 			<p>${L("device_setup.name_help")}</p>
 			<epp-field
@@ -73,10 +93,18 @@ export class EppSetupForm extends LitElement {
 			></epp-field>
 			<p>${L("device_setup.area_help")}</p>
 			${this._renderArea(L)}
+			${
+				this._nameChanged
+					? html`<epp-toggle
+						data-test="recreate"
+						.label=${L("device_setup.recreate_entity_ids")}
+						.checked=${this._recreate}
+						@value-changed=${this._onRecreateChanged}
+					></epp-toggle>`
+					: ""
+			}
 			<div class="setup-form-actions">
-				<epp-button variant="text" @click=${this._onSkip}>${L("device_setup.skip")}</epp-button>
-				<epp-button variant="neutral" @click=${() => this._submit(false)}>${L("device_setup.later")}</epp-button>
-				<epp-button variant="primary" @click=${() => this._submit(true)}>${L("device_setup.calibrate_now")}</epp-button>
+				<epp-button variant="primary" @click=${this._submit}>${btnLabel}</epp-button>
 			</div>
 		`;
 	}

@@ -455,9 +455,9 @@
 		"name_label": "Nombre del dispositivo",
 		"area_help": "Asígnalo a un área para que se agrupe con el resto de esa habitación.",
 		"area_label": "Área",
-		"skip": "Omitir por ahora",
-		"later": "Calibraré más tarde",
-		"calibrate_now": "Calibrar ahora"
+		"skip_and_finish": "Omitir y finalizar",
+		"finish": "Finalizar",
+		"recreate_entity_ids": "Recrear los IDs de entidad para que coincidan con el nuevo nombre"
 	},
 	"connection": {
 		"connecting": "Conectando al dispositivo...",

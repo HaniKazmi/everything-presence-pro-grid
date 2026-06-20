@@ -31,11 +31,15 @@ function createPanel(): EPPGridPanel {
 }
 
 describe("panel device setup", () => {
-	it("calls configure_device on setup-complete", async () => {
+	it("calls configure_device on setup-complete when something changed", async () => {
 		const panel = createPanel();
 		const callWS = (
 			panel as never as { hass: { callWS: ReturnType<typeof vi.fn> } }
 		).hass.callWS;
+		// seed _devices so the handler sees a name change (Bed ≠ Auto)
+		(panel as never as { _devices: DeviceInfo[] })._devices = [
+			makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", name: "Auto" }),
+		];
 		await (
 			panel as never as {
 				_onDeviceSetupComplete: (e: CustomEvent) => Promise<void>;
@@ -46,7 +50,7 @@ describe("panel device setup", () => {
 					mac: "AA:BB:CC:DD:EE:FF",
 					name: "Bed",
 					areaId: "a1",
-					calibrate: false,
+					recreateEntityIds: true,
 				},
 			}),
 		);
@@ -55,12 +59,13 @@ describe("panel device setup", () => {
 				type: "eppgrid/configure_device",
 				mac: "AA:BB:CC:DD:EE:FF",
 				area_id: "a1",
+				recreate_entity_ids: true,
 			}),
 		);
 		expect((panel as never as { _setupOpen: boolean })._setupOpen).toBe(false);
 	});
 
-	it("calls configure_device (mac only) on dialog setup-skip", async () => {
+	it("does NOT call configure_device on skip (setup-skip)", async () => {
 		const panel = createPanel();
 		const callWS = (
 			panel as never as { hass: { callWS: ReturnType<typeof vi.fn> } }
@@ -72,19 +77,19 @@ describe("panel device setup", () => {
 		)._onDeviceSetupDialogSkip(
 			new CustomEvent("setup-skip", { detail: { mac: "AA:BB:CC:DD:EE:FF" } }),
 		);
-		expect(callWS).toHaveBeenCalledWith(
-			expect.objectContaining({
-				type: "eppgrid/configure_device",
-				mac: "AA:BB:CC:DD:EE:FF",
-			}),
-		);
+		expect(callWS).not.toHaveBeenCalled();
+		expect((panel as never as { _setupOpen: boolean })._setupOpen).toBe(false);
 	});
 
-	it("sends name:null to configure_device when name is blank", async () => {
+	it("does NOT call configure_device on setup-complete when nothing changed", async () => {
 		const panel = createPanel();
 		const callWS = (
 			panel as never as { hass: { callWS: ReturnType<typeof vi.fn> } }
 		).hass.callWS;
+		// seed _devices with matching values — no change
+		(panel as never as { _devices: DeviceInfo[] })._devices = [
+			makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", name: "Auto", area: null }),
+		];
 		await (
 			panel as never as {
 				_onDeviceSetupComplete: (e: CustomEvent) => Promise<void>;
@@ -93,66 +98,14 @@ describe("panel device setup", () => {
 			new CustomEvent("setup-complete", {
 				detail: {
 					mac: "AA:BB:CC:DD:EE:FF",
-					name: "",
+					name: "Auto",
 					areaId: null,
-					calibrate: false,
+					recreateEntityIds: false,
 				},
 			}),
 		);
-		expect(callWS).toHaveBeenCalledWith(
-			expect.objectContaining({
-				type: "eppgrid/configure_device",
-				mac: "AA:BB:CC:DD:EE:FF",
-				name: null,
-				area_id: null,
-			}),
-		);
-	});
-
-	it("hands off to calibration when calibrate is true", async () => {
-		const panel = createPanel();
-		const selectSpy = vi.fn().mockReturnValue(undefined);
-		(
-			panel as never as { _selectDeviceForCalibration: (mac: string) => void }
-		)._selectDeviceForCalibration = selectSpy as never;
-		await (
-			panel as never as {
-				_onDeviceSetupComplete: (e: CustomEvent) => Promise<void>;
-			}
-		)._onDeviceSetupComplete(
-			new CustomEvent("setup-complete", {
-				detail: {
-					mac: "AA:BB:CC:DD:EE:FF",
-					name: "Bed",
-					areaId: null,
-					calibrate: true,
-				},
-			}),
-		);
-		expect(selectSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:FF");
-	});
-
-	it("does not hand off to calibration when calibrate is false", async () => {
-		const panel = createPanel();
-		const selectSpy = vi.fn();
-		(
-			panel as never as { _selectDeviceForCalibration: (mac: string) => void }
-		)._selectDeviceForCalibration = selectSpy as never;
-		await (
-			panel as never as {
-				_onDeviceSetupComplete: (e: CustomEvent) => Promise<void>;
-			}
-		)._onDeviceSetupComplete(
-			new CustomEvent("setup-complete", {
-				detail: {
-					mac: "AA:BB:CC:DD:EE:FF",
-					name: "Bed",
-					areaId: null,
-					calibrate: false,
-				},
-			}),
-		);
-		expect(selectSpy).not.toHaveBeenCalled();
+		expect(callWS).not.toHaveBeenCalled();
+		expect((panel as never as { _setupOpen: boolean })._setupOpen).toBe(false);
 	});
 
 	it("opens the dialog via _openDeviceSetup", () => {
