@@ -32,14 +32,10 @@ async function mount(
 }
 
 describe("epp-device-setup", () => {
-	it("initializes the name from the device and renders both fields together", async () => {
-		const el = await mount(makeDevice({ name: "Auto Name" }));
-		expect((el as never as { _name: string })._name).toBe("Auto Name");
-		// Name field + area control are both present in one screen (no stepping).
-		expect(el.shadowRoot?.querySelector("epp-field")).not.toBeNull();
-		expect(
-			el.shadowRoot?.querySelector("ha-area-picker, epp-field:nth-of-type(2)"),
-		).not.toBeNull();
+	it("renders epp-setup-form inside epp-dialog when open", async () => {
+		const el = await mount(makeDevice());
+		expect(el.shadowRoot?.querySelector("epp-dialog")).not.toBeNull();
+		expect(el.shadowRoot?.querySelector("epp-setup-form")).not.toBeNull();
 	});
 
 	it("renders nothing when closed", async () => {
@@ -47,118 +43,98 @@ describe("epp-device-setup", () => {
 		expect(el.shadowRoot?.querySelector("epp-dialog")).toBeNull();
 	});
 
-	it("updates name and areaId from field changes", async () => {
-		const el = await mount(makeDevice());
-		const fields = [
-			...(el.shadowRoot?.querySelectorAll("epp-field, ha-area-picker") ?? []),
-		] as HTMLElement[];
-		fields[0].dispatchEvent(
-			new CustomEvent("value-changed", {
-				detail: { value: "Bedroom" },
-				bubbles: true,
-				composed: true,
-			}),
-		);
-		fields[fields.length - 1].dispatchEvent(
-			new CustomEvent("value-changed", {
-				detail: { value: "area_9" },
-				bubbles: true,
-				composed: true,
-			}),
-		);
-		expect((el as never as { _name: string })._name).toBe("Bedroom");
-		expect((el as never as { _areaId: string | null })._areaId).toBe("area_9");
+	it("renders nothing when device is null", async () => {
+		const el = await mount(null);
+		expect(el.shadowRoot?.querySelector("epp-dialog")).toBeNull();
 	});
 
-	it("dispatches setup-complete with collected data and calibrate=true", async () => {
+	it("re-emits child setup-submit as setup-complete with mac", async () => {
 		const el = await mount(makeDevice());
-		(el as never as { _name: string })._name = "Bedroom";
-		(el as never as { _areaId: string | null })._areaId = "area_1";
 		let detail: unknown;
 		el.addEventListener("setup-complete", (e) => {
 			detail = (e as CustomEvent).detail;
 		});
-		(el as never as { _finish: (c: boolean) => void })._finish(true);
+		const form = el.shadowRoot?.querySelector("epp-setup-form") as HTMLElement;
+		form.dispatchEvent(
+			new CustomEvent("setup-submit", {
+				detail: { name: "Bed", areaId: "a1", calibrate: true },
+				bubbles: true,
+				composed: true,
+			}),
+		);
 		expect(detail).toEqual({
 			mac: "AA:BB:CC:DD:EE:FF",
-			name: "Bedroom",
-			areaId: "area_1",
+			name: "Bed",
+			areaId: "a1",
 			calibrate: true,
 		});
 	});
 
-	it("dispatches setup-complete with calibrate=false from 'later'", async () => {
+	it("re-emits child setup-submit as setup-complete with calibrate=false", async () => {
 		const el = await mount(makeDevice());
-		let detail: { calibrate?: boolean } = {};
+		let detail: unknown;
 		el.addEventListener("setup-complete", (e) => {
 			detail = (e as CustomEvent).detail;
 		});
-		(el as never as { _finish: (c: boolean) => void })._finish(false);
-		expect(detail.calibrate).toBe(false);
+		const form = el.shadowRoot?.querySelector("epp-setup-form") as HTMLElement;
+		form.dispatchEvent(
+			new CustomEvent("setup-submit", {
+				detail: { name: "Room", areaId: null, calibrate: false },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		expect((detail as { calibrate: boolean }).calibrate).toBe(false);
 	});
 
-	it("dispatches setup-skip with the mac", async () => {
+	it("re-emits child setup-skip as setup-skip with mac", async () => {
 		const el = await mount(makeDevice());
 		let detail: unknown;
 		el.addEventListener("setup-skip", (e) => {
 			detail = (e as CustomEvent).detail;
 		});
-		(el as never as { _onSkip: () => void })._onSkip();
+		const form = el.shadowRoot?.querySelector("epp-setup-form") as HTMLElement;
+		form.dispatchEvent(
+			new CustomEvent("setup-skip", { bubbles: true, composed: true }),
+		);
 		expect(detail).toEqual({ mac: "AA:BB:CC:DD:EE:FF" });
 	});
 
-	it("updates _name from name field value-changed", async () => {
-		const el = await mount(makeDevice({ name: "Old" }));
-		const field = el.shadowRoot?.querySelector("epp-field") as HTMLElement;
-		field.dispatchEvent(
-			new CustomEvent("value-changed", {
-				detail: { value: "New Name" },
-				bubbles: true,
-				composed: true,
+	it("dispatches setup-skip with mac on dialog-dismiss", async () => {
+		const el = await mount(makeDevice());
+		let detail: unknown;
+		el.addEventListener("setup-skip", (e) => {
+			detail = (e as CustomEvent).detail;
+		});
+		const dialog = el.shadowRoot?.querySelector("epp-dialog") as HTMLElement;
+		dialog.dispatchEvent(
+			new CustomEvent("dialog-dismiss", { bubbles: true, composed: true }),
+		);
+		expect(detail).toEqual({ mac: "AA:BB:CC:DD:EE:FF" });
+	});
+
+	it("does not dispatch when device is null on skip", async () => {
+		const el = await mount(null);
+		let fired = false;
+		el.addEventListener("setup-skip", () => {
+			fired = true;
+		});
+		(el as never as { _onSkip: () => void })._onSkip();
+		expect(fired).toBe(false);
+	});
+
+	it("does not dispatch when device is null on submit", async () => {
+		const el = await mount(null);
+		let fired = false;
+		el.addEventListener("setup-complete", () => {
+			fired = true;
+		});
+		(el as never as { _onSubmit: (e: CustomEvent) => void })._onSubmit(
+			new CustomEvent("setup-submit", {
+				detail: { name: "X", areaId: null, calibrate: false },
 			}),
 		);
-		expect((el as never as { _name: string })._name).toBe("New Name");
-	});
-
-	it("renders finish buttons (later + calibrate now) in the single form", async () => {
-		const el = await mount(makeDevice());
-		const buttons = el.shadowRoot?.querySelectorAll("epp-button");
-		const labels = Array.from(buttons ?? []).map((b) => b.textContent?.trim());
-		expect(labels).toContain("device_setup.later");
-		expect(labels).toContain("device_setup.calibrate_now");
-	});
-
-	it("clicking 'later' button dispatches setup-complete with calibrate=false", async () => {
-		const el = await mount(makeDevice());
-		let detail: { calibrate?: boolean } = {};
-		el.addEventListener("setup-complete", (e) => {
-			detail = (e as CustomEvent).detail;
-		});
-		// find the "later" button (text content = "device_setup.later")
-		const buttons = Array.from(
-			el.shadowRoot?.querySelectorAll("epp-button") ?? [],
-		) as HTMLElement[];
-		const laterBtn = buttons.find((b) =>
-			b.textContent?.includes("device_setup.later"),
-		);
-		laterBtn?.click();
-		expect(detail.calibrate).toBe(false);
-	});
-
-	it("clicking 'calibrate now' button dispatches setup-complete with calibrate=true", async () => {
-		const el = await mount(makeDevice());
-		let detail: { calibrate?: boolean } = {};
-		el.addEventListener("setup-complete", (e) => {
-			detail = (e as CustomEvent).detail;
-		});
-		const buttons = Array.from(
-			el.shadowRoot?.querySelectorAll("epp-button") ?? [],
-		) as HTMLElement[];
-		const calibrateBtn = buttons.find((b) =>
-			b.textContent?.includes("device_setup.calibrate_now"),
-		);
-		calibrateBtn?.click();
-		expect(detail.calibrate).toBe(true);
+		expect(fired).toBe(false);
 	});
 
 	it("uses default identity localize when none provided", async () => {
@@ -181,75 +157,5 @@ describe("epp-device-setup", () => {
 			.localize;
 		const probeKey = ["some", "key"].join(".");
 		expect(localize(probeKey)).toBe(probeKey);
-	});
-
-	it("clears areaId when area picker value-changed fires with empty string", async () => {
-		const el = await mount(makeDevice());
-		(el as never as { _areaId: string | null })._areaId = "area_1";
-		await el.updateComplete;
-		const fields = [
-			...(el.shadowRoot?.querySelectorAll("epp-field, ha-area-picker") ?? []),
-		] as HTMLElement[];
-		fields[fields.length - 1].dispatchEvent(
-			new CustomEvent("value-changed", {
-				detail: { value: "" },
-				bubbles: true,
-				composed: true,
-			}),
-		);
-		expect((el as never as { _areaId: string | null })._areaId).toBeNull();
-	});
-
-	it("does not dispatch when device is null on skip", async () => {
-		const el = await mount(null);
-		let fired = false;
-		el.addEventListener("setup-skip", () => {
-			fired = true;
-		});
-		(el as never as { _onSkip: () => void })._onSkip();
-		expect(fired).toBe(false);
-	});
-
-	it("does not dispatch when device is null on finish", async () => {
-		const el = await mount(null);
-		let fired = false;
-		el.addEventListener("setup-complete", () => {
-			fired = true;
-		});
-		(el as never as { _finish: (c: boolean) => void })._finish(true);
-		expect(fired).toBe(false);
-	});
-
-	it("renders ha-area-picker when it is registered", async () => {
-		// Register a stub so the guard branch is exercised
-		if (!customElements.get("ha-area-picker")) {
-			customElements.define("ha-area-picker", class extends HTMLElement {});
-		}
-		const el = await mount(makeDevice());
-		const picker = el.shadowRoot?.querySelector("ha-area-picker");
-		expect(picker).not.toBeNull();
-	});
-
-	it("resets state when device changes", async () => {
-		const el = await mount(makeDevice({ mac: "AA:BB:CC:DD:EE:FF" }));
-		el.device = makeDevice({
-			mac: "11:22:33:44:55:66",
-			name: "New Device",
-		});
-		await el.updateComplete;
-		expect((el as never as { _name: string })._name).toBe("New Device");
-		expect((el as never as { _areaId: string | null })._areaId).toBeNull();
-	});
-
-	it("resets initializedMac when closed", async () => {
-		const el = await mount(makeDevice());
-		el.open = false;
-		await el.updateComplete;
-		// reopen — should re-initialize
-		el.open = true;
-		await el.updateComplete;
-		expect((el as never as { _name: string })._name).toBe(
-			"everything-presence-pro-aabbcc",
-		);
 	});
 });
