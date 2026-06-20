@@ -95,7 +95,6 @@ const DEVICES: DeviceInfo[] = [
 		area: null,
 		firmware_status: "compatible",
 		current_connection_count: null,
-		onboarded: false,
 	},
 	{
 		mac: "BB",
@@ -106,7 +105,6 @@ const DEVICES: DeviceInfo[] = [
 		area: null,
 		firmware_status: "compatible",
 		current_connection_count: null,
-		onboarded: false,
 	},
 ];
 

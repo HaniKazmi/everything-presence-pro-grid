@@ -25,7 +25,6 @@ export interface DeviceInfo {
 		| "firmware_ahead"
 		| "unavailable";
 	current_connection_count: number | null;
-	onboarded: boolean;
 	bluetooth_enabled?: boolean;
 	co2_enabled?: boolean;
 	ethernet_enabled?: boolean;

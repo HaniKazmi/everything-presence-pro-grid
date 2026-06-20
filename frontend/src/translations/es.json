@@ -457,9 +457,7 @@
 		"area_label": "Área",
 		"skip": "Omitir por ahora",
 		"later": "Calibraré más tarde",
-		"calibrate_now": "Calibrar ahora",
-		"banner": "Nuevo dispositivo \"{name}\" — termina de configurarlo",
-		"banner_action": "Configurar"
+		"calibrate_now": "Calibrar ahora"
 	},
 	"connection": {
 		"connecting": "Conectando al dispositivo...",

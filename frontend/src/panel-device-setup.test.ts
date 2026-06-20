@@ -14,7 +14,6 @@ function makeDeviceInfo(over: Partial<DeviceInfo> = {}): DeviceInfo {
 		area: null,
 		firmware_status: "compatible",
 		current_connection_count: 0,
-		onboarded: false,
 		...over,
 	};
 }
@@ -156,41 +155,6 @@ describe("panel device setup", () => {
 		expect(selectSpy).not.toHaveBeenCalled();
 	});
 
-	it("renders a banner when an un-onboarded device exists", () => {
-		const panel = createPanel();
-		(panel as never as { _devices: DeviceInfo[] })._devices = [
-			makeDeviceInfo({ onboarded: false }),
-		];
-		const tpl = (
-			panel as never as { _renderSetupBanner: () => unknown }
-		)._renderSetupBanner();
-		expect(tpl).toBeTruthy();
-		(panel as never as { _devices: DeviceInfo[] })._devices = [
-			makeDeviceInfo({ onboarded: true }),
-		];
-		// nothing renders -> falsy-ish sentinel; assert it differs from the banner case
-		const tpl2 = (
-			panel as never as { _renderSetupBanner: () => unknown }
-		)._renderSetupBanner();
-		expect(tpl2).not.toBe(tpl);
-	});
-
-	it("does not render a banner while the setup dialog is open", () => {
-		const panel = createPanel();
-		(panel as never as { _devices: DeviceInfo[] })._devices = [
-			makeDeviceInfo({ onboarded: false }),
-		];
-		(panel as never as { _setupOpen: boolean })._setupOpen = true;
-		const tpl = (
-			panel as never as { _renderSetupBanner: () => unknown }
-		)._renderSetupBanner();
-		const empty = (
-			panel as never as { _renderSetupBanner: () => unknown }
-		)._renderSetupBanner();
-		// Both calls return the same `nothing` sentinel when the dialog is open.
-		expect(tpl).toBe(empty);
-	});
-
 	it("opens the dialog via _openDeviceSetup", () => {
 		const panel = createPanel();
 		const dev = makeDeviceInfo();
@@ -234,26 +198,41 @@ describe("panel calibration gate", () => {
 		a._getWizardSensorState = (() => ({})) as never;
 	}
 
-	it("calibration gate: un-onboarded selected device does not render the wizard", () => {
+	it("never renders a setup banner", () => {
 		const panel = createPanel();
 		const a = panel as never as Record<string, unknown>;
 		primeForWizard(a);
 		a._devices = [
-			makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", onboarded: false }),
+			makeDeviceInfo({
+				mac: "AA:BB:CC:DD:EE:FF",
+				name: null as never,
+				area: null,
+			}),
 		];
 		a._selectedMac = "AA:BB:CC:DD:EE:FF";
-		a._view = "calibrate";
+		a._view = "live";
 		a._panelTab = "config";
+		a._renderControllerErrorBanner = (() => html``) as never;
+		a._renderLiveOverview = (() =>
+			html`<div class="live-overview"></div>`) as never;
+		(a._deviceCtrl as Record<string, unknown>) = {
+			connectionFailed: false,
+			reconnecting: false,
+		};
 		const c = renderTo((a._renderTabContent as () => unknown).call(panel));
-		expect(c.querySelector("epp-wizard")).toBeNull();
+		expect(c.querySelector(".setup-banner")).toBeNull();
 	});
 
-	it("calibration gate: onboarded selected device renders the wizard", () => {
+	it("renders the calibration wizard for a selected device regardless of name/area", () => {
 		const panel = createPanel();
 		const a = panel as never as Record<string, unknown>;
 		primeForWizard(a);
 		a._devices = [
-			makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", onboarded: true }),
+			makeDeviceInfo({
+				mac: "AA:BB:CC:DD:EE:FF",
+				name: null as never,
+				area: null,
+			}),
 		];
 		a._selectedMac = "AA:BB:CC:DD:EE:FF";
 		a._view = "calibrate";
@@ -339,7 +318,7 @@ describe("panel device setup — calibrate handoff", () => {
 	});
 });
 
-describe("panel device setup — banner rendering", () => {
+describe("panel device setup — dialog wiring", () => {
 	const containers: HTMLDivElement[] = [];
 
 	afterEach(() => {
@@ -354,94 +333,6 @@ describe("panel device setup — banner rendering", () => {
 		render(tpl, c);
 		return c;
 	}
-
-	it("the banner action button opens the setup dialog when clicked", () => {
-		const panel = createPanel();
-		const a = panel as never as Record<string, unknown>;
-		a._devices = [makeDeviceInfo({ onboarded: false, name: "New Sensor" })];
-		const openSpy = vi.fn();
-		a._openDeviceSetup = openSpy as never;
-		const c = renderTo((a._renderSetupBanner as () => unknown).call(panel));
-		const banner = c.querySelector(".setup-banner");
-		expect(banner).not.toBeNull();
-		const btn = banner!.querySelector("epp-button") as HTMLElement;
-		expect(btn).not.toBeNull();
-		btn.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-		expect(openSpy).toHaveBeenCalledTimes(1);
-		expect((openSpy.mock.calls[0][0] as DeviceInfo).mac).toBe(
-			"AA:BB:CC:DD:EE:FF",
-		);
-	});
-
-	it("renders the banner in the config tab (live overview state)", () => {
-		// The banner is rendered by _renderTabContent (between the tab-bar and content),
-		// not inside _renderLiveOverview itself, so it appears for all config-tab views.
-		const panel = createPanel();
-		const a = panel as never as Record<string, unknown>;
-		a._devices = [makeDeviceInfo({ onboarded: false })];
-		a._selectedMac = "AA:BB:CC:DD:EE:FF";
-		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		a._panelTab = "config";
-		a._view = "live";
-		a._loading = false;
-		a._haConnected = true;
-		(a._deviceCtrl as Record<string, unknown>) = {
-			connectionFailed: false,
-			reconnecting: false,
-		};
-		a._initRetryCount = 3;
-		a._renderTabBar = (() => html`<div class="tab-bar"></div>`) as never;
-		a._renderControllerErrorBanner = (() => html``) as never;
-		a._renderHeader = (() => html``) as never;
-		a._renderLiveOverview = (() =>
-			html`<div class="live-overview"></div>`) as never;
-		const c = renderTo((a._renderTabContent as () => unknown).call(panel));
-		expect(c.querySelector(".setup-banner")).not.toBeNull();
-	});
-
-	it("renders the banner in the offline state (connectionFailed)", () => {
-		// Regression: _renderSetupBanner was only called inside _renderLiveOverview,
-		// so a freshly-flashed device (offline ~7-50s while booting) never showed the
-		// signpost banner. The fix hoists it to _renderTabContent for all config-tab
-		// states. This test verifies the offline early-return branch includes the banner.
-		const panel = createPanel();
-		const a = panel as never as Record<string, unknown>;
-		a._devices = [makeDeviceInfo({ onboarded: false, name: "New Sensor" })];
-		a._selectedMac = "AA:BB:CC:DD:EE:FF";
-		// Simulate the connectionFailed branch (isOffline path triggers the same branch).
-		(a._deviceCtrl as Record<string, unknown>) = {
-			connectionFailed: true,
-			reconnecting: false,
-		};
-		a._haConnected = true;
-		a._loading = false;
-		a._view = "live";
-		a._panelTab = "config";
-		a._initRetryCount = 3;
-		// Stub collaborators called from _renderTabContent.
-		a._renderTabBar = (() => html`<div class="tab-bar"></div>`) as never;
-		a._renderHeader = (() => html``) as never;
-		a._renderConnectionBanner = (() =>
-			html`<div class="connection-banner"></div>`) as never;
-		const c = renderTo((a._renderTabContent as () => unknown).call(panel));
-		expect(c.querySelector(".setup-banner")).not.toBeNull();
-	});
-
-	it("constrains the setup-banner from growing to an equal flex share", () => {
-		// Cascade-regression guard (layout can't be computed in happy-dom):
-		// `.tab-layout > :not(.tab-bar) { flex: 1 }` makes every config-tab child
-		// grow to an equal vertical share. The banner is such a child, so without
-		// an override it grew to ~half the page. Verified visually in Chromium
-		// (banner 383px -> 48px after the override); this guard just prevents the
-		// override rule from being silently deleted.
-		const cssText = (EPPGridPanel.styles as unknown as { cssText: string }[])
-			.map((s) => s.cssText)
-			.join("\n")
-			.replace(/\s+/g, " ");
-		expect(cssText).toMatch(
-			/\.tab-layout > \.setup-banner \{[^}]*flex: 0 0 auto/,
-		);
-	});
 
 	it("hosts the dialog and wires its setup-complete / setup-skip events", () => {
 		const panel = createPanel();

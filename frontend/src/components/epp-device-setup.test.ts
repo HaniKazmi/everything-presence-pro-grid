@@ -13,7 +13,6 @@ function makeDevice(over: Partial<DeviceInfo> = {}): DeviceInfo {
 		area: null,
 		firmware_status: "compatible",
 		current_connection_count: 0,
-		onboarded: false,
 		...over,
 	};
 }

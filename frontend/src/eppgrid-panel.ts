@@ -1243,7 +1243,7 @@ export class EPPGridPanel extends LitElement {
 				area_id: areaId,
 			});
 		} catch {
-			// Device stays un-onboarded; the banner will re-offer setup.
+			// configure_device failed; the setup dialog can be reopened from the device list.
 		}
 		await this._loadDevices();
 		if (calibrate) {
@@ -1296,20 +1296,6 @@ export class EPPGridPanel extends LitElement {
 				sidebarTab: this._sidebarTab,
 			});
 		});
-	}
-
-	private _renderSetupBanner() {
-		if (this._setupOpen) return nothing;
-		const pending = this._devices.find((d) => !d.onboarded);
-		if (!pending) return nothing;
-		return html`
-			<div class="setup-banner">
-				<span>${this._localize("device_setup.banner", { name: pending.name })}</span>
-				<epp-button variant="primary" @click=${() => this._openDeviceSetup(pending)}>
-					${this._localize("device_setup.banner_action")}
-				</epp-button>
-			</div>
-		`;
 	}
 
 	private async _loadDeviceConfig(mac: string): Promise<void> {
@@ -1877,18 +1863,6 @@ export class EPPGridPanel extends LitElement {
       margin: 0;
     }
 
-    .setup-banner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: var(--epp-space-3);
-      padding: var(--epp-space-3) var(--epp-space-4);
-      margin-bottom: var(--epp-space-3);
-      background: var(--epp-surface-2);
-      border: 1px solid var(--epp-border);
-      border-radius: var(--epp-radius-md);
-    }
-
     .loading-container {
       display: flex;
       align-items: center;
@@ -2014,16 +1988,6 @@ export class EPPGridPanel extends LitElement {
     .tab-layout > :not(.tab-bar) {
       flex: 1;
       overflow: auto;
-    }
-
-    /* Thin chrome banners (the new-device setup signpost) must shrink-wrap to
-       their content, not take an equal flex share of the column. The rule above
-       gives every non-tab-bar child flex:1, so without this the banner grew to
-       ~half the page alongside the main content. Placed after that rule so it
-       wins at equal (0,2,0) specificity. */
-    .tab-layout > .setup-banner {
-      flex: 0 0 auto;
-      overflow: visible;
     }
 
     .tab-bar {
@@ -2440,16 +2404,7 @@ export class EPPGridPanel extends LitElement {
 			</div>`;
 		}
 
-		// Gate the calibration/tutorial wizard on the selected device being
-		// onboarded — a freshly-flashed, un-onboarded device falls through to the
-		// normal config view (where the setup banner shows). `?? true` so a
-		// not-yet-loaded device list doesn't suppress calibration for an
-		// already-set-up device.
-		const selDev = this._devices.find((d) => d.mac === this._selectedMac);
-		if (
-			(this._view === "tutorial" || this._view === "calibrate") &&
-			(selDev?.onboarded ?? true)
-		) {
+		if (this._view === "tutorial" || this._view === "calibrate") {
 			return html`<div class="tab-layout">
         ${this._renderTabBar()}
         <div class="panel">
@@ -2513,7 +2468,6 @@ export class EPPGridPanel extends LitElement {
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
-					${this._renderSetupBanner()}
 					<div class="protocol-fullpage protocol-fullpage-info">
 						<ha-icon icon="mdi:connection"></ha-icon>
 						<p>${this._localize("connection.connecting")}</p>
@@ -2527,7 +2481,6 @@ export class EPPGridPanel extends LitElement {
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
-					${this._renderSetupBanner()}
 					${this._renderConnectionBanner()}
 				</div>
 			</div>`;
@@ -2538,7 +2491,6 @@ export class EPPGridPanel extends LitElement {
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
-					${this._renderSetupBanner()}
 					${this._renderProtocolBanner()}
 				</div>
 			</div>`;
@@ -2551,7 +2503,7 @@ export class EPPGridPanel extends LitElement {
 					? this._renderEditor()
 					: this._renderLiveOverview();
 
-		return html`<div class="tab-layout">${this._renderTabBar()}${this._renderControllerErrorBanner()}${this._renderSetupBanner()}${content}</div>`;
+		return html`<div class="tab-layout">${this._renderTabBar()}${this._renderControllerErrorBanner()}${content}</div>`;
 	}
 
 	/**
