@@ -1315,9 +1315,7 @@ class TestDeviceManager:
         assert result[0]["area"] is None
         assert result[0]["name"] == "EPP Device"
 
-    async def test_list_devices_payload_has_no_onboarded_key(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_list_devices_payload_has_no_onboarded_key(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """list_devices must not include an 'onboarded' key in any device payload."""
         dev_reg = dr.async_get(hass)
         esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.55"}, title="EPP")

@@ -6330,9 +6330,13 @@ class TestConfigureDevice:
         mac = "AA:BB:CC:DD:EE:FF"
         mock_dm.devices[mac] = ManagedDevice(mac=mac, name="x", host="h", device_id=device.id)
         mock_dm.store.devices = {}
-        temp = await self._add_entity(hass, device.id, "sensor", "uid-temp", "everything_presence_pro_aabbcc_temperature")
-        occ = await self._add_entity(hass, device.id, "binary_sensor", "uid-occ", "everything_presence_pro_aabbcc_occupancy")
-        dis = await self._add_entity(hass, device.id, "sensor", "uid-dis", "everything_presence_pro_aabbcc_illuminance", disabled=True)
+        temp = await self._add_entity(
+            hass, device.id, "sensor", "uid-temp", "everything_presence_pro_aabbcc_temperature"
+        )
+        await self._add_entity(hass, device.id, "binary_sensor", "uid-occ", "everything_presence_pro_aabbcc_occupancy")
+        await self._add_entity(
+            hass, device.id, "sensor", "uid-dis", "everything_presence_pro_aabbcc_illuminance", disabled=True
+        )
 
         connection = MagicMock()
         msg = {"id": 1, "type": "eppgrid/configure_device", "mac": mac, "name": "Bedroom", "recreate_entity_ids": True}
@@ -6350,9 +6354,10 @@ class TestConfigureDevice:
     async def test_configure_device_leaves_customized_entity_ids(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
+        from homeassistant.helpers import entity_registry as er
+
         from custom_components.eppgrid.device_manager import ManagedDevice
         from custom_components.eppgrid.websocket_api import websocket_configure_device
-        from homeassistant.helpers import entity_registry as er
 
         mock_dm = await setup_integration(hass, config_entry)
         device = await self._make_device(hass)
@@ -6371,9 +6376,10 @@ class TestConfigureDevice:
     async def test_configure_device_dedupes_entity_id_collisions(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
+        from homeassistant.helpers import entity_registry as er
+
         from custom_components.eppgrid.device_manager import ManagedDevice
         from custom_components.eppgrid.websocket_api import websocket_configure_device
-        from homeassistant.helpers import entity_registry as er
 
         mock_dm = await setup_integration(hass, config_entry)
         device = await self._make_device(hass)
@@ -6395,7 +6401,9 @@ class TestConfigureDevice:
     async def test_configure_device_skips_regen_when_flag_absent(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        from homeassistant.helpers import device_registry as dr, entity_registry as er
+        from homeassistant.helpers import device_registry as dr
+        from homeassistant.helpers import entity_registry as er
+
         from custom_components.eppgrid.device_manager import ManagedDevice
         from custom_components.eppgrid.websocket_api import websocket_configure_device
 
@@ -6405,7 +6413,9 @@ class TestConfigureDevice:
         mac = "AA:BB:CC:DD:EE:FF"
         mock_dm.devices[mac] = ManagedDevice(mac=mac, name="x", host="h", device_id=device.id)
         mock_dm.store.devices = {}
-        kept = await self._add_entity(hass, device.id, "sensor", "uid-temp", "everything_presence_pro_aabbcc_temperature")
+        kept = await self._add_entity(
+            hass, device.id, "sensor", "uid-temp", "everything_presence_pro_aabbcc_temperature"
+        )
 
         connection = MagicMock()
         msg = {"id": 1, "type": "eppgrid/configure_device", "mac": mac, "name": "Bedroom"}

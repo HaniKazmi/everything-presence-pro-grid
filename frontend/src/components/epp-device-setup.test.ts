@@ -146,4 +146,30 @@ describe("epp-device-setup", () => {
 		const probeKey = ["some", "key"].join(".");
 		expect(localize(probeKey)).toBe(probeKey);
 	});
+
+	it("renders with device.name null (covers name ?? '' branch)", async () => {
+		const el = await mount(makeDevice({ name: null as never }));
+		// Component renders the dialog even when name is null
+		expect(el.shadowRoot?.querySelector("epp-dialog")).not.toBeNull();
+		// The form receives an empty string for name
+		const form = el.shadowRoot?.querySelector(
+			"epp-setup-form",
+		) as HTMLElement & {
+			name?: string;
+		};
+		expect(form).not.toBeNull();
+		// The .name property on the form should be "" (the ?? "" fallback)
+		expect((form as never as { name: string }).name).toBe("");
+	});
+
+	it("_onSkip called without event argument covers e?.stopPropagation() falsy branch", async () => {
+		const el = await mount(makeDevice());
+		let detail: unknown;
+		el.addEventListener("setup-skip", (e) => {
+			detail = (e as CustomEvent).detail;
+		});
+		// Call _onSkip with no argument — e is undefined, so e?.stopPropagation() is a no-op
+		(el as never as { _onSkip: (e?: Event) => void })._onSkip();
+		expect(detail).toEqual({ mac: "AA:BB:CC:DD:EE:FF" });
+	});
 });

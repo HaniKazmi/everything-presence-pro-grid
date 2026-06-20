@@ -205,4 +205,114 @@ describe("epp-setup-form", () => {
 		await el.updateComplete;
 		expect(detail).toBeDefined();
 	});
+
+	it("invokes _onRecreateChanged via DOM event and reflects in setup-submit", async () => {
+		const el = await mount("Bedroom");
+		// change name so recreate toggle renders
+		const nameField = el.shadowRoot?.querySelector("epp-field") as HTMLElement;
+		nameField.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "New Name" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		await el.updateComplete;
+
+		// dispatch value-changed on the recreate toggle with value:false
+		const toggle = el.shadowRoot?.querySelector(
+			"[data-test='recreate']",
+		) as HTMLElement;
+		expect(toggle).not.toBeNull();
+		toggle.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: false },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		await el.updateComplete;
+
+		// submit should carry recreateEntityIds:false (handler fired and set _recreate=false)
+		let detail: unknown;
+		el.addEventListener("setup-submit", (e) => {
+			detail = (e as CustomEvent).detail;
+		});
+		(el as never as { _submit: () => void })._submit();
+		expect(detail).toEqual({
+			name: "New Name",
+			areaId: null,
+			recreateEntityIds: false,
+		});
+
+		// now dispatch value-changed with value:true and verify recreateEntityIds:true
+		toggle.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: true },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		await el.updateComplete;
+
+		let detail2: unknown;
+		el.addEventListener("setup-submit", (e) => {
+			detail2 = (e as CustomEvent).detail;
+		});
+		(el as never as { _submit: () => void })._submit();
+		expect((detail2 as { recreateEntityIds: boolean }).recreateEntityIds).toBe(
+			true,
+		);
+	});
+
+	it("renders ha-area-picker when ha-area-picker is registered", async () => {
+		// Register a stub if not already present (persists for remaining tests, which is fine
+		// because the fallback-branch tests use their own assertions independently)
+		if (!customElements.get("ha-area-picker")) {
+			customElements.define("ha-area-picker", class extends HTMLElement {});
+		}
+		const el = await mount("Bedroom");
+		const picker = el.shadowRoot?.querySelector("ha-area-picker");
+		expect(picker).not.toBeNull();
+	});
+
+	it("uses default identity localize when localize is not set", async () => {
+		const el = document.createElement("epp-setup-form") as EppSetupForm;
+		el.name = "Test";
+		// intentionally do NOT set .localize — exercises the default (k)=>k initializer
+		document.body.appendChild(el);
+		await el.updateComplete;
+		// The component renders without error using the default localize
+		expect(el.shadowRoot?.querySelector("epp-field")).not.toBeNull();
+		// Default localize returns the key unchanged
+		const localize = (el as never as { localize: (k: string) => string })
+			.localize;
+		expect(localize("device_setup.name_label")).toBe("device_setup.name_label");
+	});
+
+	it("_onAreaChanged coerces empty string to null", async () => {
+		const el = await mount("Bedroom");
+		// First set a non-empty area
+		const fields = [
+			...(el.shadowRoot?.querySelectorAll("epp-field, ha-area-picker") ?? []),
+		] as HTMLElement[];
+		fields[fields.length - 1].dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "area_5" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		expect((el as never as { _areaId: string | null })._areaId).toBe("area_5");
+
+		// Now clear the area (empty string should become null)
+		fields[fields.length - 1].dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		expect((el as never as { _areaId: string | null })._areaId).toBeNull();
+	});
 });
