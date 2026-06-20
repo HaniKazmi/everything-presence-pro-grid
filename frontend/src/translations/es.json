@@ -455,8 +455,6 @@
 		"name_label": "Nombre del dispositivo",
 		"area_help": "Asígnalo a un área para que se agrupe con el resto de esa habitación.",
 		"area_label": "Área",
-		"next": "Siguiente",
-		"back": "Atrás",
 		"skip": "Omitir por ahora",
 		"later": "Calibraré más tarde",
 		"calibrate_now": "Calibrar ahora",

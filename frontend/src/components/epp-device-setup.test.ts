@@ -32,10 +32,14 @@ async function mount(
 }
 
 describe("epp-device-setup", () => {
-	it("initializes on the name step with the device name", async () => {
+	it("initializes the name from the device and renders both fields together", async () => {
 		const el = await mount(makeDevice({ name: "Auto Name" }));
-		expect((el as never as { _step: string })._step).toBe("name");
 		expect((el as never as { _name: string })._name).toBe("Auto Name");
+		// Name field + area control are both present in one screen (no stepping).
+		expect(el.shadowRoot?.querySelector("epp-field")).not.toBeNull();
+		expect(
+			el.shadowRoot?.querySelector("ha-area-picker, epp-field:nth-of-type(2)"),
+		).not.toBeNull();
 	});
 
 	it("renders nothing when closed", async () => {
@@ -43,28 +47,26 @@ describe("epp-device-setup", () => {
 		expect(el.shadowRoot?.querySelector("epp-dialog")).toBeNull();
 	});
 
-	it("advances name -> area and back", async () => {
+	it("updates name and areaId from field changes", async () => {
 		const el = await mount(makeDevice());
-		(el as never as { _next: () => void })._next();
-		expect((el as never as { _step: string })._step).toBe("area");
-		(el as never as { _back: () => void })._back();
-		expect((el as never as { _step: string })._step).toBe("name");
-	});
-
-	it("updates areaId from the picker value-changed", async () => {
-		const el = await mount(makeDevice());
-		(el as never as { _step: string })._step = "area";
-		await el.updateComplete;
-		const field = el.shadowRoot?.querySelector(
-			"epp-field, ha-area-picker",
-		) as HTMLElement;
-		field.dispatchEvent(
+		const fields = [
+			...(el.shadowRoot?.querySelectorAll("epp-field, ha-area-picker") ?? []),
+		] as HTMLElement[];
+		fields[0].dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "Bedroom" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		fields[fields.length - 1].dispatchEvent(
 			new CustomEvent("value-changed", {
 				detail: { value: "area_9" },
 				bubbles: true,
 				composed: true,
 			}),
 		);
+		expect((el as never as { _name: string })._name).toBe("Bedroom");
 		expect((el as never as { _areaId: string | null })._areaId).toBe("area_9");
 	});
 
@@ -105,7 +107,7 @@ describe("epp-device-setup", () => {
 		expect(detail).toEqual({ mac: "AA:BB:CC:DD:EE:FF" });
 	});
 
-	it("updates _name from name-step field value-changed", async () => {
+	it("updates _name from name field value-changed", async () => {
 		const el = await mount(makeDevice({ name: "Old" }));
 		const field = el.shadowRoot?.querySelector("epp-field") as HTMLElement;
 		field.dispatchEvent(
@@ -118,10 +120,8 @@ describe("epp-device-setup", () => {
 		expect((el as never as { _name: string })._name).toBe("New Name");
 	});
 
-	it("renders finish buttons when on area step", async () => {
+	it("renders finish buttons (later + calibrate now) in the single form", async () => {
 		const el = await mount(makeDevice());
-		(el as never as { _step: string })._step = "area";
-		await el.updateComplete;
 		const buttons = el.shadowRoot?.querySelectorAll("epp-button");
 		const labels = Array.from(buttons ?? []).map((b) => b.textContent?.trim());
 		expect(labels).toContain("device_setup.later");
@@ -130,8 +130,6 @@ describe("epp-device-setup", () => {
 
 	it("clicking 'later' button dispatches setup-complete with calibrate=false", async () => {
 		const el = await mount(makeDevice());
-		(el as never as { _step: string })._step = "area";
-		await el.updateComplete;
 		let detail: { calibrate?: boolean } = {};
 		el.addEventListener("setup-complete", (e) => {
 			detail = (e as CustomEvent).detail;
@@ -149,8 +147,6 @@ describe("epp-device-setup", () => {
 
 	it("clicking 'calibrate now' button dispatches setup-complete with calibrate=true", async () => {
 		const el = await mount(makeDevice());
-		(el as never as { _step: string })._step = "area";
-		await el.updateComplete;
 		let detail: { calibrate?: boolean } = {};
 		el.addEventListener("setup-complete", (e) => {
 			detail = (e as CustomEvent).detail;
@@ -189,13 +185,12 @@ describe("epp-device-setup", () => {
 
 	it("clears areaId when area picker value-changed fires with empty string", async () => {
 		const el = await mount(makeDevice());
-		(el as never as { _step: string })._step = "area";
 		(el as never as { _areaId: string | null })._areaId = "area_1";
 		await el.updateComplete;
-		const field = el.shadowRoot?.querySelector(
-			"epp-field, ha-area-picker",
-		) as HTMLElement;
-		field.dispatchEvent(
+		const fields = [
+			...(el.shadowRoot?.querySelectorAll("epp-field, ha-area-picker") ?? []),
+		] as HTMLElement[];
+		fields[fields.length - 1].dispatchEvent(
 			new CustomEvent("value-changed", {
 				detail: { value: "" },
 				bubbles: true,
@@ -231,22 +226,19 @@ describe("epp-device-setup", () => {
 			customElements.define("ha-area-picker", class extends HTMLElement {});
 		}
 		const el = await mount(makeDevice());
-		(el as never as { _step: string })._step = "area";
-		await el.updateComplete;
 		const picker = el.shadowRoot?.querySelector("ha-area-picker");
 		expect(picker).not.toBeNull();
 	});
 
 	it("resets state when device changes", async () => {
 		const el = await mount(makeDevice({ mac: "AA:BB:CC:DD:EE:FF" }));
-		(el as never as { _step: string })._step = "area";
 		el.device = makeDevice({
 			mac: "11:22:33:44:55:66",
 			name: "New Device",
 		});
 		await el.updateComplete;
-		expect((el as never as { _step: string })._step).toBe("name");
 		expect((el as never as { _name: string })._name).toBe("New Device");
+		expect((el as never as { _areaId: string | null })._areaId).toBeNull();
 	});
 
 	it("resets initializedMac when closed", async () => {
@@ -256,6 +248,8 @@ describe("epp-device-setup", () => {
 		// reopen — should re-initialize
 		el.open = true;
 		await el.updateComplete;
-		expect((el as never as { _step: string })._step).toBe("name");
+		expect((el as never as { _name: string })._name).toBe(
+			"everything-presence-pro-aabbcc",
+		);
 	});
 });

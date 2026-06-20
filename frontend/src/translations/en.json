@@ -455,8 +455,6 @@
 		"name_label": "Device name",
 		"area_help": "Assign it to an area so it groups with the rest of that room.",
 		"area_label": "Area",
-		"next": "Next",
-		"back": "Back",
 		"skip": "Skip for now",
 		"later": "I'll calibrate later",
 		"calibrate_now": "Calibrate now",
