@@ -313,12 +313,7 @@ export class UsbFlashFlow {
 					skipWriter.releaseLock();
 				} catch {}
 				host.opRunning = false;
-				host.updateUsbState({
-					step: "device_naming",
-					ip: skipIp,
-					autoSkipped: true,
-					mac: this._flashedMac,
-				});
+				await this._addToHa(skipIp);
 				return;
 			}
 
@@ -446,8 +441,8 @@ export class UsbFlashFlow {
 			await port.close().catch(() => {});
 			this._serialPort = null;
 
-			// WiFi side succeeded. Collect name/area before adding to HA.
-			host.updateUsbState({ step: "device_naming", ip, mac: this._flashedMac });
+			// WiFi side succeeded. Add to HA immediately.
+			await this._addToHa(ip);
 		} catch (err: any) {
 			if (this._serialReader) releaseReader(this._serialReader);
 			try {
@@ -522,13 +517,6 @@ export class UsbFlashFlow {
 		return host.opId !== expectedOpId;
 	}
 
-	async handleDeviceNaming(): Promise<void> {
-		const host = this._host;
-		const ip = host.usbFlashState?.ip;
-		if (!ip) return;
-		await this._addToHa(ip);
-	}
-
 	private async _addToHa(ip: string): Promise<void> {
 		const host = this._host;
 		const myOp = host.opId;
@@ -579,14 +567,9 @@ export class UsbFlashFlow {
 	async handleFlasherCancel(): Promise<void> {
 		const host = this._host;
 		const state = host.usbFlashState;
-		// The flow pauses at both wifi_configured (mid HA-add retry) and
-		// device_naming (post-provision, awaiting the inline name/area form). A
-		// cancel from either should stash the device IP so the user can resume
-		// the HA-add later.
-		if (
-			(state?.step === "wifi_configured" || state?.step === "device_naming") &&
-			state.ip
-		) {
+		// The flow pauses at wifi_configured (mid HA-add retry). A cancel from
+		// there should stash the device IP so the user can resume the HA-add later.
+		if (state?.step === "wifi_configured" && state.ip) {
 			host.setCancelledDeviceIpHint(state.ip);
 		}
 		host.opRunning = false;

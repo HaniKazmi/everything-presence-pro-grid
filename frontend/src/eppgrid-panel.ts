@@ -780,18 +780,9 @@ export class EPPGridPanel extends LitElement {
 	@state() _selectedMac = "";
 
 	// Post-flash device-setup wizard. `_setupOpen`/`_setupDevice` drive the
-	// <epp-device-setup> dialog host (the non-flash banner path). `_pendingSetup`
-	// remembers the name/area/calibrate choice collected inline in the flasher's
-	// device_naming step, keyed by the just-flashed MAC, so we can apply it via
-	// `eppgrid/configure_device` once that device shows up in the refreshed list.
+	// <epp-device-setup> dialog host (the non-flash banner path).
 	@state() _setupOpen = false;
 	@state() _setupDevice: DeviceInfo | null = null;
-	_pendingSetup: {
-		mac: string;
-		name: string;
-		areaId: string | null;
-		calibrate: boolean;
-	} | null = null;
 	@state() private _loading = true;
 	// Tracks which device we've successfully loaded config for, so
 	// reconnect paths can re-establish the live stream without refetching
@@ -1175,9 +1166,6 @@ export class EPPGridPanel extends LitElement {
 					this._loadDeviceConfig(this._selectedMac).catch(() => {});
 				}
 			}
-			// A just-flashed device usually arrives via this push (not the
-			// flasher's _loadDevices()), so check here too.
-			void this._maybeApplyPendingSetup();
 		};
 		this._deviceCtrl.onSelectedAvailable = (mac) => {
 			this._ensureSession(mac);
@@ -1217,7 +1205,6 @@ export class EPPGridPanel extends LitElement {
 		await this._deviceCtrl.subscribeDeviceList();
 		this._devices = this._deviceCtrl.devices;
 		this._selectedMac = this._deviceCtrl.selectedMac;
-		void this._maybeApplyPendingSetup();
 	}
 
 	private _isSelectedDeviceAvailable(): boolean {
@@ -1230,7 +1217,6 @@ export class EPPGridPanel extends LitElement {
 		await this._deviceCtrl.loadDevices();
 		this._devices = this._deviceCtrl.devices;
 		this._selectedMac = this._deviceCtrl.selectedMac;
-		void this._maybeApplyPendingSetup();
 	}
 
 	// -- Post-flash device setup --
@@ -1275,79 +1261,6 @@ export class EPPGridPanel extends LitElement {
 			// best effort
 		}
 		await this._loadDevices();
-	}
-
-	// -- Flasher-inline onboarding (device_naming step) --
-
-	/**
-	 * Submit from the flasher's inline name/area form (device_naming step).
-	 * Stash the choice keyed by the just-flashed MAC so _maybeApplyPendingSetup
-	 * can apply it once the device appears in the list, then drive the ESPHome
-	 * add (which advances the flow to `complete`).
-	 */
-	private _onDeviceSetupSubmit(e: CustomEvent): void {
-		const { name, areaId, calibrate } = e.detail as {
-			name: string;
-			areaId: string | null;
-			calibrate: boolean;
-		};
-		const mac = this._flasherCtrl.usbFlashState?.mac ?? null;
-		if (mac) {
-			this._pendingSetup = { mac, name, areaId, calibrate };
-		}
-		console.debug("[onboard] submit", { mac, name, areaId, calibrate });
-		void this._flasherCtrl.handleDeviceNaming();
-	}
-
-	/**
-	 * Skip from the flasher's inline form — add the device to HA but apply no
-	 * name/area (and don't route to calibration). The banner will still offer
-	 * setup later for the un-onboarded device.
-	 */
-	private _onDeviceSetupSkip(): void {
-		const mac = this._flasherCtrl.usbFlashState?.mac ?? null;
-		if (mac) {
-			this._pendingSetup = { mac, name: "", areaId: null, calibrate: false };
-		}
-		console.debug("[onboard] skip", { mac });
-		void this._flasherCtrl.handleDeviceNaming();
-	}
-
-	/**
-	 * Apply a stashed flasher-inline setup once the just-flashed device shows
-	 * up in the device list: configure name/area, reset the USB flow, reload,
-	 * and route to calibration (or the config tab). Keyed by MAC so it only
-	 * fires for the matching device; waits (keeps `_pendingSetup`) until it
-	 * appears.
-	 */
-	private async _maybeApplyPendingSetup(): Promise<void> {
-		const pending = this._pendingSetup;
-		if (!pending) return;
-		const dev = this._devices.find((d) => d.mac === pending.mac);
-		console.debug("[onboard] maybeApply", {
-			pending,
-			found: !!dev,
-			onboarded: dev?.onboarded,
-		});
-		if (!dev) return;
-		this._pendingSetup = null;
-		try {
-			await this.hass.callWS({
-				type: "eppgrid/configure_device",
-				mac: pending.mac,
-				name: pending.name || null,
-				area_id: pending.areaId,
-			});
-		} catch {
-			// device stays un-onboarded; banner will offer setup
-		}
-		void this._flasherCtrl.resetUsbState();
-		await this._loadDevices();
-		if (pending.calibrate) {
-			this._selectDeviceForCalibration(pending.mac);
-		} else {
-			this._panelTab = "config";
-		}
 	}
 
 	/**
@@ -2410,13 +2323,7 @@ export class EPPGridPanel extends LitElement {
 					.integrationVersion=${this._flasherCtrl.integrationVersion}
 					.otaStates=${this._flasherCtrl.otaStates}
 					.cancelledDeviceIpHint=${this._flasherCtrl.cancelledDeviceIpHint}
-					@device-setup-submit=${(e: CustomEvent) =>
-						this._onDeviceSetupSubmit(e)}
-					@device-setup-skip=${() => this._onDeviceSetupSkip()}
 					@flash-complete=${() => {
-						// Non-naming completion paths (ethernet, the failure/retry
-						// "go to config" button). The naming paths route through
-						// device-setup-submit/skip + _maybeApplyPendingSetup instead.
 						void this._flasherCtrl.resetUsbState();
 						this._loadDevices();
 						this._panelTab = "config";

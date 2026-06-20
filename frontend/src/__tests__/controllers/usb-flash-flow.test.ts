@@ -601,13 +601,14 @@ describe("_handleUsbFlash", () => {
 		expect(ctrl.opRunning).toBe(false);
 	});
 
-	it("skips wifi_scan when device reports PROVISIONED + real IP after flashing", async () => {
+	it("skips wifi_scan when device reports PROVISIONED + real IP after flashing, auto-adds to HA and completes", async () => {
 		(queryImprovState as ReturnType<typeof vi.fn>).mockResolvedValue({
 			state: "PROVISIONED",
 			ip: "192.168.1.42",
 			writer: { releaseLock: vi.fn() },
 			reader: { releaseLock: vi.fn() },
 		});
+		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({ type: "added" });
 
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
@@ -616,12 +617,14 @@ describe("_handleUsbFlash", () => {
 		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
 		expect(steps).toContain("wifi_check");
 		expect(steps).not.toContain("wifi_scan");
-		const deviceNaming = updateSpy.mock.calls.find(
-			(c: any[]) => c[0].step === "device_naming",
+		expect(steps).not.toContain("device_naming");
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
 		);
-		expect(deviceNaming?.[0]).toMatchObject({
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
 			ip: "192.168.1.42",
-			autoSkipped: true,
+			haAdd: { type: "added" },
 		});
 		expect(runWifiScan).not.toHaveBeenCalled();
 		// Port stays open so the Configure WiFi override can reuse it
@@ -826,50 +829,32 @@ describe("_handleWifiProvision", () => {
 	it("still completes when the post-provision close() rejects", async () => {
 		// close() can reject after the device reboots onto WiFi and drops the
 		// USB CDC endpoint — the provision already succeeded, so the flow
-		// must carry on to device_naming (and later HA-add via handleDeviceNaming).
+		// must carry on and auto-add to HA.
 		mockPort.close = vi.fn().mockRejectedValue(new Error("device rebooted"));
+		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({ type: "added" });
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		await flushProvision("MySSID", "s3cr3t");
 
 		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
-		expect(steps).toContain("device_naming");
+		expect(steps).toContain("complete");
+		expect(steps).not.toContain("device_naming");
 		expect(steps).not.toContain("error");
 		expect(ctrl.serialPort).toBeNull();
 	});
 
-	it("calls addEsphomeDevice with the detected IP (via handleDeviceNaming)", async () => {
+	it("auto-adds to HA and completes after wifi provision", async () => {
 		const addSpy = vi
 			.spyOn(ctrl, "addEsphomeDevice")
 			.mockResolvedValue({ type: "added" });
 
 		await flushProvision("MySSID", "s3cr3t");
-		await ctrl.handleDeviceNaming();
 
 		expect(addSpy).toHaveBeenCalledWith("192.168.1.42");
-	});
-
-	it("sets state to device_naming with IP after detectIpAddress returns", async () => {
-		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
-			"192.168.1.42",
-		);
-		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({ type: "added" });
-		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
-
-		await flushProvision("MySSID", "s3cr3t");
-		await ctrl.handleDeviceNaming();
-
-		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
-		expect(steps).toContain("device_naming");
-		// device_naming must appear before complete
-		const deviceNamingIdx = steps.indexOf("device_naming");
-		const completeIdx = steps.indexOf("complete");
-		expect(deviceNamingIdx).toBeLessThan(completeIdx);
-		// device_naming carried the IP
-		const deviceNamingCall = (updateSpy.mock.calls as any[][]).find(
-			(c) => c[0].step === "device_naming",
-		);
-		expect(deviceNamingCall?.[0].ip).toBe("192.168.1.42");
+		expect(ctrl.usbFlashState).toMatchObject({
+			step: "complete",
+			haAdd: { type: "added" },
+		});
 	});
 
 	it("transitions to complete with haAdd=added when addEsphomeDevice resolves with added", async () => {
@@ -880,7 +865,6 @@ describe("_handleWifiProvision", () => {
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		await flushProvision("MySSID", "s3cr3t");
-		await ctrl.handleDeviceNaming();
 
 		const completeCall = (updateSpy.mock.calls as any[][]).find(
 			(c) => c[0].step === "complete",
@@ -904,7 +888,6 @@ describe("_handleWifiProvision", () => {
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		await flushProvision("MySSID", "s3cr3t");
-		await ctrl.handleDeviceNaming();
 
 		const completeCall = (updateSpy.mock.calls as any[][]).find(
 			(c) => c[0].step === "complete",
@@ -926,7 +909,6 @@ describe("_handleWifiProvision", () => {
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		await flushProvision("MySSID", "s3cr3t");
-		await ctrl.handleDeviceNaming();
 
 		const completeCall = (updateSpy.mock.calls as any[][]).find(
 			(c) => c[0].step === "complete",
@@ -952,8 +934,9 @@ describe("_handleWifiProvision", () => {
 			.mockResolvedValueOnce({ type: "added" });
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
-		await flushProvision("MySSID", "s3cr3t");
-		const promise = ctrl.handleDeviceNaming();
+		// flushProvision starts the add; advance timers for the retry delay
+		const promise = ctrl.handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(200); // let provision settle
 		await vi.advanceTimersByTimeAsync(11000); // 10s retry delay
 		await promise;
 
@@ -977,8 +960,9 @@ describe("_handleWifiProvision", () => {
 		});
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
-		await flushProvision("MySSID", "s3cr3t");
-		const promise = ctrl.handleDeviceNaming();
+		// Start provision, advance through all retry delays
+		const promise = ctrl.handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(200); // let provision settle
 		// 5 × 10s backoff = 50s
 		await vi.advanceTimersByTimeAsync(51000);
 		await promise;
@@ -1002,7 +986,6 @@ describe("_handleWifiProvision", () => {
 			.mockResolvedValue({ type: "needs_auth" });
 
 		await flushProvision("MySSID", "s3cr3t");
-		await ctrl.handleDeviceNaming();
 
 		expect(addSpy).toHaveBeenCalledTimes(1);
 	});
@@ -1016,8 +999,8 @@ describe("_handleWifiProvision", () => {
 			.mockRejectedValueOnce(new Error("network dropped"));
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
-		await flushProvision("MySSID", "s3cr3t");
-		const promise = ctrl.handleDeviceNaming();
+		const promise = ctrl.handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(200); // let provision settle
 		await vi.advanceTimersByTimeAsync(11000);
 		await promise;
 
@@ -1045,8 +1028,8 @@ describe("_handleWifiProvision", () => {
 			.mockResolvedValueOnce({ type: "added" });
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
-		await flushProvision("MySSID", "s3cr3t");
-		const promise = ctrl.handleDeviceNaming();
+		const promise = ctrl.handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(200); // let provision settle
 		// 5 × 10s retry delays = 50s
 		await vi.advanceTimersByTimeAsync(51000);
 		await promise;
@@ -1072,8 +1055,8 @@ describe("_handleWifiProvision", () => {
 			.mockResolvedValueOnce({ type: "added" });
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
-		await flushProvision("MySSID", "s3cr3t");
-		const promise = ctrl.handleDeviceNaming();
+		const promise = ctrl.handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(200); // let provision settle
 		await vi.advanceTimersByTimeAsync(21000);
 		await promise;
 
@@ -1099,9 +1082,9 @@ describe("_handleWifiProvision", () => {
 			.spyOn(ctrl, "addEsphomeDevice")
 			.mockResolvedValue({ type: "cannot_connect" });
 
-		// Provision resolves quickly; device_naming is the pause point.
-		await flushProvision("MySSID", "s3cr3t");
-		const promise = ctrl.handleDeviceNaming();
+		// Provision starts the add automatically (no device_naming pause)
+		const promise = ctrl.handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(200); // let provision settle
 		// Reach the middle of the first 10s backoff.
 		await vi.advanceTimersByTimeAsync(11200);
 		expect(addSpy).toHaveBeenCalledTimes(2);
@@ -1566,18 +1549,6 @@ describe("flasher-cancel handler", () => {
 		expect(ctrl.cancelledDeviceIpHint).toBe("192.168.1.42");
 	});
 
-	it("captures IP hint when cancelling from device_naming state", () => {
-		// The flow now pauses at device_naming (post-provision, awaiting the
-		// inline name/area form). A cancel there must still stash the IP hint so
-		// the user can resume the HA-add later, same as the wifi_configured pause.
-		ctrl.serialPort = mockPort as any;
-		ctrl.updateUsbState({ step: "device_naming", ip: "192.168.1.77" });
-
-		ctrl.handleFlasherCancel();
-
-		expect(ctrl.cancelledDeviceIpHint).toBe("192.168.1.77");
-	});
-
 	it("does NOT capture IP hint when cancelling from other states", () => {
 		ctrl.serialPort = mockPort as any;
 		ctrl.updateUsbState({ step: "wifi_scan" });
@@ -1621,83 +1592,6 @@ describe("flasher-cancel handler", () => {
 		// port busy". Now we abort + await the in-flight op first so locks
 		// release before close().
 		expect(mockPort.close).toHaveBeenCalledTimes(1);
-	});
-});
-
-describe("device_naming pause and handleDeviceNaming", () => {
-	let ctrl: FlasherController;
-	let mockPort: ReturnType<typeof makeMockPort>;
-
-	beforeEach(() => {
-		vi.clearAllMocks();
-		resetServiceMocks();
-		ctrl = createCtrl();
-		mockPort = makeMockPort();
-
-		vi.stubGlobal("navigator", {
-			...navigator,
-			serial: {
-				requestPort: vi.fn().mockResolvedValue(mockPort),
-			},
-		});
-	});
-
-	it("already-provisioned path stops at device_naming and does NOT call addEsphomeDevice", async () => {
-		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
-			async (_port: any, _variant: any, _onProgress: any, options: any) => {
-				if (options?.beforeFlash) {
-					await options.beforeFlash("AA:BB:CC:DD:EE:FF");
-				}
-			},
-		);
-		(queryImprovState as ReturnType<typeof vi.fn>).mockResolvedValue({
-			state: "PROVISIONED",
-			ip: "1.2.3.4",
-			writer: { releaseLock: vi.fn() },
-			reader: { releaseLock: vi.fn() },
-		});
-
-		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
-		const addSpy = vi.spyOn(ctrl, "addEsphomeDevice");
-
-		await ctrl.handleUsbFlash("eppgrid-wifi");
-
-		const lastCall = updateSpy.mock.calls[updateSpy.mock.calls.length - 1][0];
-		expect(lastCall).toMatchObject({
-			step: "device_naming",
-			ip: "1.2.3.4",
-			mac: "AA:BB:CC:DD:EE:FF",
-		});
-		expect(addSpy).not.toHaveBeenCalled();
-	});
-
-	it("handleDeviceNaming runs the HA add and transitions to complete", async () => {
-		// Stub addEsphomeDevice on the controller
-		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({ type: "added" });
-		// Pre-set _flashedMac as it would be after a real flash
-		(flowOf(ctrl) as { _flashedMac: string })._flashedMac = "AA:BB:CC:DD:EE:FF";
-		// Pre-set the state as the flow would have left it
-		ctrl.usbFlashState = { step: "device_naming", ip: "1.2.3.4" };
-
-		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
-
-		await ctrl.handleDeviceNaming();
-
-		expect(ctrl.addEsphomeDevice).toHaveBeenCalledWith("1.2.3.4");
-		const lastCall = updateSpy.mock.calls[updateSpy.mock.calls.length - 1][0];
-		expect(lastCall).toMatchObject({
-			step: "complete",
-			mac: "AA:BB:CC:DD:EE:FF",
-		});
-	});
-
-	it("handleDeviceNaming is a no-op when usbFlashState has no ip", async () => {
-		const addSpy = vi.spyOn(ctrl, "addEsphomeDevice");
-		ctrl.usbFlashState = { step: "device_naming" };
-
-		await ctrl.handleDeviceNaming();
-
-		expect(addSpy).not.toHaveBeenCalled();
 	});
 });
 

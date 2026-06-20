@@ -15,7 +15,6 @@ import { DocumentListenerGroup } from "../lib/document-listeners.js";
 import { WEB_FLASHER_URL } from "../lib/help-url.js";
 import "../ui/epp-button.js";
 import "../ui/epp-field.js";
-import "./epp-setup-form.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import type {
@@ -1105,7 +1104,6 @@ export class EppFlasherView extends LitElement {
 	private _renderUsbFlash() {
 		const state = this.usbFlashState;
 		if (state?.step === "wifi_provision") return this._renderWifiProvisioning();
-		if (state?.step === "device_naming") return this._renderDeviceNaming(state);
 		if (state?.step === "error") return this._renderUsbError(state);
 		if (state?.step === "wifi_configured")
 			return this._renderUsbConfigured(state);
@@ -1113,45 +1111,6 @@ export class EppFlasherView extends LitElement {
 		if (state && state.step !== "idle") return this._renderUsbProgress(state);
 		return this._renderUsbIdle();
 	}
-
-	private _renderDeviceNaming(state: UsbFlashState) {
-		const suggested = state.mac
-			? `everything-presence-pro-${state.mac.replace(/:/g, "").slice(-6).toLowerCase()}`
-			: "";
-		return html`
-			<div class="flasher-content">
-				<ha-card>
-					<div class="card-content">
-						<epp-setup-form
-							.name=${suggested}
-							.hass=${this.hass}
-							.localize=${this.localize}
-							@setup-submit=${this._dispatchDeviceSetupSubmit}
-							@setup-skip=${this._dispatchDeviceSetupSkip}
-						></epp-setup-form>
-					</div>
-				</ha-card>
-			</div>
-		`;
-	}
-
-	private _dispatchDeviceSetupSubmit = (e: CustomEvent) => {
-		e.stopPropagation();
-		this.dispatchEvent(
-			new CustomEvent("device-setup-submit", {
-				detail: e.detail,
-				bubbles: true,
-				composed: true,
-			}),
-		);
-	};
-
-	private _dispatchDeviceSetupSkip = (e: CustomEvent) => {
-		e.stopPropagation();
-		this.dispatchEvent(
-			new CustomEvent("device-setup-skip", { bubbles: true, composed: true }),
-		);
-	};
 
 	private _renderUsbError(state: UsbFlashState) {
 		return html`

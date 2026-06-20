@@ -140,59 +140,6 @@ describe("epp-flasher-view inline event handlers", () => {
 		expect((panel as any)._panelTab).toBe("config");
 	});
 
-	it("@device-setup-submit stashes _pendingSetup from the flashed MAC and drives the add", () => {
-		const ctrl = (panel as any)._flasherCtrl;
-		// Flow paused at device_naming carrying the just-flashed MAC.
-		ctrl.usbFlashState = {
-			step: "device_naming",
-			ip: "1.2.3.4",
-			mac: "AA:BB:CC:DD:EE:99",
-		};
-		const namingSpy = vi
-			.spyOn(ctrl, "handleDeviceNaming")
-			.mockResolvedValue(undefined);
-
-		getFlasherView().dispatchEvent(
-			new CustomEvent("device-setup-submit", {
-				detail: { name: "Bed", areaId: "a1", calibrate: false },
-				bubbles: true,
-				composed: true,
-			}),
-		);
-
-		expect((panel as any)._pendingSetup).toEqual({
-			mac: "AA:BB:CC:DD:EE:99",
-			name: "Bed",
-			areaId: "a1",
-			calibrate: false,
-		});
-		expect(namingSpy).toHaveBeenCalled();
-	});
-
-	it("@device-setup-skip stashes a no-name pending setup and drives the add", () => {
-		const ctrl = (panel as any)._flasherCtrl;
-		ctrl.usbFlashState = {
-			step: "device_naming",
-			ip: "1.2.3.4",
-			mac: "AA:BB:CC:DD:EE:99",
-		};
-		const namingSpy = vi
-			.spyOn(ctrl, "handleDeviceNaming")
-			.mockResolvedValue(undefined);
-
-		getFlasherView().dispatchEvent(
-			new CustomEvent("device-setup-skip", { bubbles: true, composed: true }),
-		);
-
-		expect((panel as any)._pendingSetup).toEqual({
-			mac: "AA:BB:CC:DD:EE:99",
-			name: "",
-			areaId: null,
-			calibrate: false,
-		});
-		expect(namingSpy).toHaveBeenCalled();
-	});
-
 	it("@usb-flash calls the controller's handleUsbFlash with variant", () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		const spy = vi.spyOn(ctrl, "handleUsbFlash").mockResolvedValue(undefined);
