@@ -1912,19 +1912,12 @@ class DeviceManager:
                 area = area_reg.async_get_area(registry_entry.area_id)
                 if area is not None:
                     area_name = area.name
-            explicit_onboarded = config.get("onboarded") if config else None
-            onboarded = (
-                bool(explicit_onboarded)
-                if explicit_onboarded is not None
-                else bool(registry_entry and (registry_entry.name_by_user or registry_entry.area_id))
-            )
             device_entry = {
                 "mac": mac,
                 "name": config.get("name", fresh_name) if config else fresh_name,
                 "host": dev.host,
                 "available": self._is_device_available(mac, entries=entries),
                 "configured": config is not None,
-                "onboarded": onboarded,
                 "area": area_name,
                 "firmware_status": (
                     (_compare_firmware_version(fw_ver) if fw_ver is not None else None) or "unavailable"

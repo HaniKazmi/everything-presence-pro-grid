@@ -192,6 +192,7 @@ def _regenerate_entity_ids(hass: HomeAssistant, device_id: str, old_name: str | 
         vol.Required("mac"): MAC_SCHEMA,
         vol.Optional("name"): vol.Any(str, None),
         vol.Optional("area_id"): vol.Any(str, None),
+        vol.Optional("recreate_entity_ids", default=False): bool,
     }
 )
 @websocket_api.require_admin
@@ -203,19 +204,17 @@ async def websocket_configure_device(
     msg: dict[str, Any],
     manager: Any,
 ) -> None:
-    """Set a device's name + area in the HA registry and mark it onboarded."""
+    """Set a device's name + area in the HA registry; optionally regen entity ids."""
     if not _require_known_device(connection, manager, msg):
         return
     mac = msg["mac"]
     device = manager.devices[mac]
     name = msg.get("name")
     area_id = msg.get("area_id")
+    recreate_entity_ids = msg.get("recreate_entity_ids", False)
 
     dev_reg = dr.async_get(hass)
     reg_dev = dev_reg.async_get(device.device_id) if device.device_id else None
-    # Capture pre-update state: only regenerate entity ids the first time the
-    # device is named (greenfield — nothing references the old ids yet).
-    first_naming = reg_dev is not None and reg_dev.name_by_user is None
     old_name = reg_dev.name if reg_dev is not None else None
 
     updates: dict[str, Any] = {}
@@ -226,12 +225,9 @@ async def websocket_configure_device(
     if updates and device.device_id:
         dev_reg.async_update_device(device.device_id, **updates)
 
-    if name and first_naming and device.device_id:
+    if name and recreate_entity_ids and device.device_id:
         _regenerate_entity_ids(hass, device.device_id, old_name, name)
 
-    device_config = manager.store.devices.setdefault(mac, {})
-    device_config["onboarded"] = True
-    await manager.store.async_save()
     manager.fire_device_list_changed()
     connection.send_result(msg["id"])
 

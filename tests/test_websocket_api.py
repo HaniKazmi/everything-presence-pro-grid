@@ -6240,7 +6240,7 @@ class TestConfigureDevice:
             model="Everything Presence Pro",
         )
 
-    async def test_configure_device_sets_name_area_onboarded(
+    async def test_configure_device_sets_name_and_area(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
         from homeassistant.helpers import area_registry as ar
@@ -6263,12 +6263,10 @@ class TestConfigureDevice:
         updated = dr.async_get(hass).async_get(device.id)
         assert updated.name_by_user == "Bedroom Sensor"
         assert updated.area_id == area.id
-        assert mock_dm.store.devices[mac]["onboarded"] is True
-        mock_dm.store.async_save.assert_awaited()
         mock_dm.fire_device_list_changed.assert_called()
         connection.send_result.assert_called_once_with(1)
 
-    async def test_configure_device_skip_marks_onboarded_only(
+    async def test_configure_device_no_name_or_area_still_fires_event(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
         from homeassistant.helpers import device_registry as dr
@@ -6289,8 +6287,6 @@ class TestConfigureDevice:
         updated = dr.async_get(hass).async_get(device.id)
         assert updated.name_by_user is None
         assert updated.area_id is None
-        assert mock_dm.store.devices[mac]["onboarded"] is True
-        mock_dm.store.async_save.assert_awaited()
         mock_dm.fire_device_list_changed.assert_called()
         connection.send_result.assert_called_once_with(2)
 
@@ -6339,7 +6335,7 @@ class TestConfigureDevice:
         dis = await self._add_entity(hass, device.id, "sensor", "uid-dis", "everything_presence_pro_aabbcc_illuminance", disabled=True)
 
         connection = MagicMock()
-        msg = {"id": 1, "type": "eppgrid/configure_device", "mac": mac, "name": "Bedroom"}
+        msg = {"id": 1, "type": "eppgrid/configure_device", "mac": mac, "name": "Bedroom", "recreate_entity_ids": True}
         await call_async_handler(hass, websocket_configure_device, connection, msg)
 
         from homeassistant.helpers import entity_registry as er
@@ -6390,7 +6386,7 @@ class TestConfigureDevice:
         await self._add_entity(hass, device.id, "sensor", "uid-temp", "everything_presence_pro_aabbcc_temperature")
 
         connection = MagicMock()
-        msg = {"id": 1, "type": "eppgrid/configure_device", "mac": mac, "name": "Bedroom"}
+        msg = {"id": 1, "type": "eppgrid/configure_device", "mac": mac, "name": "Bedroom", "recreate_entity_ids": True}
         await call_async_handler(hass, websocket_configure_device, connection, msg)
 
         assert ent_reg.async_get("sensor.bedroom_temperature") is not None  # the pre-existing one
@@ -6418,3 +6414,87 @@ class TestConfigureDevice:
         # Already-named device: name updated, but entity ids are NOT rewritten.
         assert er.async_get(hass).async_get(kept) is not None
         assert dr.async_get(hass).async_get(device.id).name_by_user == "Bedroom"
+
+    async def test_configure_device_regenerates_entity_ids_only_when_requested(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Entity-id regen only happens when recreate_entity_ids=True is sent."""
+        from homeassistant.helpers import entity_registry as er
+
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import websocket_configure_device
+
+        mock_dm = await setup_integration(hass, config_entry)
+        device = await self._make_device(hass)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm.devices[mac] = ManagedDevice(mac=mac, name="x", host="h", device_id=device.id)
+        mock_dm.store.devices = {}
+        temp = await self._add_entity(
+            hass, device.id, "sensor", "uid-temp", "everything_presence_pro_aabbcc_temperature"
+        )
+
+        connection = MagicMock()
+
+        # With recreate_entity_ids=True: entity ids are re-slugged from "living_room".
+        msg = {
+            "id": 1,
+            "type": "eppgrid/configure_device",
+            "mac": mac,
+            "name": "Living Room",
+            "recreate_entity_ids": True,
+        }
+        await call_async_handler(hass, websocket_configure_device, connection, msg)
+
+        ent_reg = er.async_get(hass)
+        assert ent_reg.async_get(temp) is None
+        assert ent_reg.async_get("sensor.living_room_temperature") is not None
+
+        # Now set up a second fresh device to test recreate_entity_ids=False.
+        from homeassistant.helpers import device_registry as dr
+
+        esphome_entry2 = MockConfigEntry(domain="esphome", data={"host": "192.168.1.51"}, title="EPP2")
+        esphome_entry2.add_to_hass(hass)
+        device2 = dr.async_get(hass).async_get_or_create(
+            config_entry_id=esphome_entry2.entry_id,
+            connections={("mac", "bb:cc:dd:ee:ff:00")},
+            name="everything-presence-pro-bbccdd",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        mac2 = "BB:CC:DD:EE:FF:00"
+        mock_dm.devices[mac2] = ManagedDevice(mac=mac2, name="x", host="h2", device_id=device2.id)
+        temp2 = await self._add_entity(
+            hass, device2.id, "sensor", "uid-temp2", "everything_presence_pro_bbccdd_temperature"
+        )
+
+        # With recreate_entity_ids=False (default): entity ids are unchanged.
+        msg2 = {
+            "id": 2,
+            "type": "eppgrid/configure_device",
+            "mac": mac2,
+            "name": "Den",
+            "recreate_entity_ids": False,
+        }
+        await call_async_handler(hass, websocket_configure_device, connection, msg2)
+
+        assert ent_reg.async_get(temp2) is not None
+        assert ent_reg.async_get("sensor.den_temperature") is None
+
+    async def test_configure_device_does_not_persist_onboarded(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """configure_device must NOT write an 'onboarded' key into the store."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import websocket_configure_device
+
+        mock_dm = await setup_integration(hass, config_entry)
+        device = await self._make_device(hass)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm.devices[mac] = ManagedDevice(mac=mac, name="x", host="h", device_id=device.id)
+        mock_dm.store.devices = {}
+
+        connection = MagicMock()
+        msg = {"id": 1, "type": "eppgrid/configure_device", "mac": mac, "name": "X"}
+        await call_async_handler(hass, websocket_configure_device, connection, msg)
+
+        assert "onboarded" not in mock_dm.store.devices.get(mac, {})
