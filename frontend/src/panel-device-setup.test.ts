@@ -61,16 +61,16 @@ describe("panel device setup", () => {
 		expect((panel as never as { _setupOpen: boolean })._setupOpen).toBe(false);
 	});
 
-	it("calls configure_device (mac only) on setup-skip", async () => {
+	it("calls configure_device (mac only) on dialog setup-skip", async () => {
 		const panel = createPanel();
 		const callWS = (
 			panel as never as { hass: { callWS: ReturnType<typeof vi.fn> } }
 		).hass.callWS;
 		await (
 			panel as never as {
-				_onDeviceSetupSkip: (e: CustomEvent) => Promise<void>;
+				_onDeviceSetupDialogSkip: (e: CustomEvent) => Promise<void>;
 			}
-		)._onDeviceSetupSkip(
+		)._onDeviceSetupDialogSkip(
 			new CustomEvent("setup-skip", { detail: { mac: "AA:BB:CC:DD:EE:FF" } }),
 		);
 		expect(callWS).toHaveBeenCalledWith(
@@ -202,71 +202,185 @@ describe("panel device setup", () => {
 			(panel as never as { _setupDevice: DeviceInfo })._setupDevice.mac,
 		).toBe(dev.mac);
 	});
+});
 
-	it("auto-opens setup for the pending flashed mac when it appears", () => {
-		const panel = createPanel();
-		(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac =
-			"AA:BB:CC:DD:EE:FF";
-		(panel as never as { _devices: DeviceInfo[] })._devices = [
-			makeDeviceInfo({ onboarded: false }),
-		];
-		(
-			panel as never as { _maybeOpenPendingSetup: () => void }
-		)._maybeOpenPendingSetup();
-		expect((panel as never as { _setupOpen: boolean })._setupOpen).toBe(true);
-		expect(
-			(panel as never as { _setupDevice: DeviceInfo })._setupDevice.mac,
-		).toBe("AA:BB:CC:DD:EE:FF");
-		expect(
-			(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac,
-		).toBeNull();
+describe("panel flasher-inline onboarding", () => {
+	const containers: HTMLDivElement[] = [];
+
+	afterEach(() => {
+		for (const c of containers) c.remove();
+		containers.length = 0;
 	});
 
-	it("does not auto-open when the pending device is already onboarded", () => {
+	function renderTo(tpl: unknown): HTMLDivElement {
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		containers.push(c);
+		render(tpl, c);
+		return c;
+	}
+
+	it("on device-setup-submit: stashes pending setup and drives the add", () => {
 		const panel = createPanel();
-		(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac =
-			"AA:BB:CC:DD:EE:FF";
-		(panel as never as { _devices: DeviceInfo[] })._devices = [
-			makeDeviceInfo({ onboarded: true }),
-		];
-		(
-			panel as never as { _maybeOpenPendingSetup: () => void }
-		)._maybeOpenPendingSetup();
-		expect((panel as never as { _setupOpen: boolean })._setupOpen).toBe(false);
-		// Pending mac stays set until a matching un-onboarded device appears.
+		const a = panel as never as Record<string, unknown>;
+		a._flasherCtrl = {
+			usbFlashState: { mac: "AA:BB:CC:DD:EE:FF" },
+			handleDeviceNaming: vi.fn(),
+		};
+		(a._onDeviceSetupSubmit as (e: CustomEvent) => void).call(
+			panel,
+			new CustomEvent("device-setup-submit", {
+				detail: { name: "Bed", areaId: "a1", calibrate: true },
+			}),
+		);
+		expect(a._pendingSetup).toEqual({
+			mac: "AA:BB:CC:DD:EE:FF",
+			name: "Bed",
+			areaId: "a1",
+			calibrate: true,
+		});
 		expect(
-			(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac,
-		).toBe("AA:BB:CC:DD:EE:FF");
+			(a._flasherCtrl as { handleDeviceNaming: ReturnType<typeof vi.fn> })
+				.handleDeviceNaming,
+		).toHaveBeenCalled();
 	});
 
-	it("does not auto-open when there is no pending mac", () => {
+	it("on device-setup-skip: stashes a no-name/no-calibrate pending setup and drives the add", () => {
 		const panel = createPanel();
-		(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac =
-			null;
-		(panel as never as { _devices: DeviceInfo[] })._devices = [
-			makeDeviceInfo({ onboarded: false }),
-		];
-		(
-			panel as never as { _maybeOpenPendingSetup: () => void }
-		)._maybeOpenPendingSetup();
-		expect((panel as never as { _setupOpen: boolean })._setupOpen).toBe(false);
+		const a = panel as never as Record<string, unknown>;
+		a._flasherCtrl = {
+			usbFlashState: { mac: "AA:BB:CC:DD:EE:FF" },
+			handleDeviceNaming: vi.fn(),
+		};
+		(a._onDeviceSetupSkip as () => void).call(panel);
+		expect(a._pendingSetup).toEqual({
+			mac: "AA:BB:CC:DD:EE:FF",
+			name: "",
+			areaId: null,
+			calibrate: false,
+		});
+		expect(
+			(a._flasherCtrl as { handleDeviceNaming: ReturnType<typeof vi.fn> })
+				.handleDeviceNaming,
+		).toHaveBeenCalled();
 	});
 
-	it("does not re-open while the dialog is already open", () => {
+	it("applies pending setup via configure_device when the device appears", async () => {
 		const panel = createPanel();
-		(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac =
-			"AA:BB:CC:DD:EE:FF";
-		(panel as never as { _setupOpen: boolean })._setupOpen = true;
-		(panel as never as { _devices: DeviceInfo[] })._devices = [
-			makeDeviceInfo({ onboarded: false }),
+		const a = panel as never as Record<string, unknown>;
+		const callWS = (a.hass as { callWS: ReturnType<typeof vi.fn> }).callWS;
+		a._flasherCtrl = { resetUsbState: vi.fn() };
+		a._loadDevices = (() => Promise.resolve()) as never;
+		a._panelTab = "flasher";
+		a._pendingSetup = {
+			mac: "AA:BB:CC:DD:EE:FF",
+			name: "Bed",
+			areaId: "a1",
+			calibrate: false,
+		};
+		a._devices = [
+			makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", onboarded: false }),
 		];
-		(
-			panel as never as { _maybeOpenPendingSetup: () => void }
-		)._maybeOpenPendingSetup();
-		// Pending mac is untouched because we bailed out early.
-		expect(
-			(panel as never as { _pendingSetupMac: string | null })._pendingSetupMac,
-		).toBe("AA:BB:CC:DD:EE:FF");
+		await (a._maybeApplyPendingSetup as () => Promise<void>).call(panel);
+		expect(callWS).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "eppgrid/configure_device",
+				mac: "AA:BB:CC:DD:EE:FF",
+				name: "Bed",
+				area_id: "a1",
+			}),
+		);
+		expect(a._pendingSetup).toBeNull();
+		// Non-calibrate path routes to the config tab.
+		expect(a._panelTab).toBe("config");
+	});
+
+	it("routes to calibration when applied pending setup has calibrate true", async () => {
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+		a._flasherCtrl = { resetUsbState: vi.fn() };
+		a._loadDevices = (() => Promise.resolve()) as never;
+		const selectSpy = vi.fn();
+		a._selectDeviceForCalibration = selectSpy as never;
+		a._pendingSetup = {
+			mac: "AA:BB:CC:DD:EE:FF",
+			name: "Bed",
+			areaId: null,
+			calibrate: true,
+		};
+		a._devices = [
+			makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", onboarded: false }),
+		];
+		await (a._maybeApplyPendingSetup as () => Promise<void>).call(panel);
+		expect(selectSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:FF");
+	});
+
+	it("does nothing when there is no pending setup", async () => {
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+		const callWS = (a.hass as { callWS: ReturnType<typeof vi.fn> }).callWS;
+		a._pendingSetup = null;
+		a._devices = [makeDeviceInfo({ onboarded: false })];
+		await (a._maybeApplyPendingSetup as () => Promise<void>).call(panel);
+		expect(callWS).not.toHaveBeenCalled();
+	});
+
+	it("waits — keeps pending — until the device appears in the list", async () => {
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+		const callWS = (a.hass as { callWS: ReturnType<typeof vi.fn> }).callWS;
+		a._pendingSetup = {
+			mac: "AA:BB:CC:DD:EE:FF",
+			name: "Bed",
+			areaId: null,
+			calibrate: false,
+		};
+		a._devices = []; // device not yet discovered
+		await (a._maybeApplyPendingSetup as () => Promise<void>).call(panel);
+		expect(callWS).not.toHaveBeenCalled();
+		expect(a._pendingSetup).not.toBeNull();
+	});
+
+	// Stub the full-page early-return guards in _renderTabContent so the
+	// calibrate/tutorial branch is actually reached: a fresh panel defaults to
+	// _loading=true (loading screen short-circuits) and would otherwise never
+	// hit the wizard branch, making the gate test pass for the wrong reason.
+	function primeForWizard(a: Record<string, unknown>): void {
+		a._loading = false;
+		a._haConnected = true;
+		a._initRetryCount = 0;
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		a._renderTabBar = (() => html`<div class="tab-bar"></div>`) as never;
+		a._renderHeader = (() => html``) as never;
+		a._getWizardSensorState = (() => ({})) as never;
+	}
+
+	it("calibration gate: un-onboarded selected device does not render the wizard", () => {
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+		primeForWizard(a);
+		a._devices = [
+			makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", onboarded: false }),
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:FF";
+		a._view = "calibrate";
+		a._panelTab = "config";
+		const c = renderTo((a._renderTabContent as () => unknown).call(panel));
+		expect(c.querySelector("epp-wizard")).toBeNull();
+	});
+
+	it("calibration gate: onboarded selected device renders the wizard", () => {
+		const panel = createPanel();
+		const a = panel as never as Record<string, unknown>;
+		primeForWizard(a);
+		a._devices = [
+			makeDeviceInfo({ mac: "AA:BB:CC:DD:EE:FF", onboarded: true }),
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:FF";
+		a._view = "calibrate";
+		a._panelTab = "config";
+		const c = renderTo((a._renderTabContent as () => unknown).call(panel));
+		expect(c.querySelector("epp-wizard")).not.toBeNull();
 	});
 });
 
@@ -458,7 +572,7 @@ describe("panel device setup — banner rendering", () => {
 		const completeSpy = vi.fn();
 		const skipSpy = vi.fn();
 		a._onDeviceSetupComplete = completeSpy as never;
-		a._onDeviceSetupSkip = skipSpy as never;
+		a._onDeviceSetupDialogSkip = skipSpy as never;
 		const c = renderTo((a._renderGlobalDialogs as () => unknown).call(panel));
 		const host = c.querySelector("epp-device-setup") as HTMLElement;
 		expect(host).not.toBeNull();

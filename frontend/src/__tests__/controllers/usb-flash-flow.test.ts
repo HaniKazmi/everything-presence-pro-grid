@@ -1566,6 +1566,18 @@ describe("flasher-cancel handler", () => {
 		expect(ctrl.cancelledDeviceIpHint).toBe("192.168.1.42");
 	});
 
+	it("captures IP hint when cancelling from device_naming state", () => {
+		// The flow now pauses at device_naming (post-provision, awaiting the
+		// inline name/area form). A cancel there must still stash the IP hint so
+		// the user can resume the HA-add later, same as the wifi_configured pause.
+		ctrl.serialPort = mockPort as any;
+		ctrl.updateUsbState({ step: "device_naming", ip: "192.168.1.77" });
+
+		ctrl.handleFlasherCancel();
+
+		expect(ctrl.cancelledDeviceIpHint).toBe("192.168.1.77");
+	});
+
 	it("does NOT capture IP hint when cancelling from other states", () => {
 		ctrl.serialPort = mockPort as any;
 		ctrl.updateUsbState({ step: "wifi_scan" });

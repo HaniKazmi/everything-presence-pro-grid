@@ -780,12 +780,18 @@ export class EPPGridPanel extends LitElement {
 	@state() _selectedMac = "";
 
 	// Post-flash device-setup wizard. `_setupOpen`/`_setupDevice` drive the
-	// <epp-device-setup> dialog host; `_pendingSetupMac` remembers the MAC of a
-	// just-flashed device so we can auto-open the wizard once that device shows
-	// up (un-onboarded) in the refreshed device list.
+	// <epp-device-setup> dialog host (the non-flash banner path). `_pendingSetup`
+	// remembers the name/area/calibrate choice collected inline in the flasher's
+	// device_naming step, keyed by the just-flashed MAC, so we can apply it via
+	// `eppgrid/configure_device` once that device shows up in the refreshed list.
 	@state() _setupOpen = false;
 	@state() _setupDevice: DeviceInfo | null = null;
-	_pendingSetupMac: string | null = null;
+	_pendingSetup: {
+		mac: string;
+		name: string;
+		areaId: string | null;
+		calibrate: boolean;
+	} | null = null;
 	@state() private _loading = true;
 	// Tracks which device we've successfully loaded config for, so
 	// reconnect paths can re-establish the live stream without refetching
@@ -1171,7 +1177,7 @@ export class EPPGridPanel extends LitElement {
 			}
 			// A just-flashed device usually arrives via this push (not the
 			// flasher's _loadDevices()), so check here too.
-			this._maybeOpenPendingSetup();
+			void this._maybeApplyPendingSetup();
 		};
 		this._deviceCtrl.onSelectedAvailable = (mac) => {
 			this._ensureSession(mac);
@@ -1211,7 +1217,7 @@ export class EPPGridPanel extends LitElement {
 		await this._deviceCtrl.subscribeDeviceList();
 		this._devices = this._deviceCtrl.devices;
 		this._selectedMac = this._deviceCtrl.selectedMac;
-		this._maybeOpenPendingSetup();
+		void this._maybeApplyPendingSetup();
 	}
 
 	private _isSelectedDeviceAvailable(): boolean {
@@ -1224,7 +1230,7 @@ export class EPPGridPanel extends LitElement {
 		await this._deviceCtrl.loadDevices();
 		this._devices = this._deviceCtrl.devices;
 		this._selectedMac = this._deviceCtrl.selectedMac;
-		this._maybeOpenPendingSetup();
+		void this._maybeApplyPendingSetup();
 	}
 
 	// -- Post-flash device setup --
@@ -1259,7 +1265,7 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
-	private async _onDeviceSetupSkip(e: CustomEvent): Promise<void> {
+	private async _onDeviceSetupDialogSkip(e: CustomEvent): Promise<void> {
 		const { mac } = e.detail as { mac: string };
 		this._setupOpen = false;
 		this._setupDevice = null;
@@ -1271,18 +1277,76 @@ export class EPPGridPanel extends LitElement {
 		await this._loadDevices();
 	}
 
+	// -- Flasher-inline onboarding (device_naming step) --
+
 	/**
-	 * Auto-open the setup wizard for a just-flashed device once it appears,
-	 * un-onboarded, in the device list. `_pendingSetupMac` is set from the
-	 * flasher's captured MAC at flash-complete; we clear it the moment we open
-	 * so this only fires once.
+	 * Submit from the flasher's inline name/area form (device_naming step).
+	 * Stash the choice keyed by the just-flashed MAC so _maybeApplyPendingSetup
+	 * can apply it once the device appears in the list, then drive the ESPHome
+	 * add (which advances the flow to `complete`).
 	 */
-	private _maybeOpenPendingSetup(): void {
-		if (!this._pendingSetupMac || this._setupOpen) return;
-		const dev = this._devices.find((d) => d.mac === this._pendingSetupMac);
-		if (dev && !dev.onboarded) {
-			this._pendingSetupMac = null;
-			this._openDeviceSetup(dev);
+	private _onDeviceSetupSubmit(e: CustomEvent): void {
+		const { name, areaId, calibrate } = e.detail as {
+			name: string;
+			areaId: string | null;
+			calibrate: boolean;
+		};
+		const mac = this._flasherCtrl.usbFlashState?.mac ?? null;
+		if (mac) {
+			this._pendingSetup = { mac, name, areaId, calibrate };
+		}
+		console.debug("[onboard] submit", { mac, name, areaId, calibrate });
+		void this._flasherCtrl.handleDeviceNaming();
+	}
+
+	/**
+	 * Skip from the flasher's inline form — add the device to HA but apply no
+	 * name/area (and don't route to calibration). The banner will still offer
+	 * setup later for the un-onboarded device.
+	 */
+	private _onDeviceSetupSkip(): void {
+		const mac = this._flasherCtrl.usbFlashState?.mac ?? null;
+		if (mac) {
+			this._pendingSetup = { mac, name: "", areaId: null, calibrate: false };
+		}
+		console.debug("[onboard] skip", { mac });
+		void this._flasherCtrl.handleDeviceNaming();
+	}
+
+	/**
+	 * Apply a stashed flasher-inline setup once the just-flashed device shows
+	 * up in the device list: configure name/area, reset the USB flow, reload,
+	 * and route to calibration (or the config tab). Keyed by MAC so it only
+	 * fires for the matching device; waits (keeps `_pendingSetup`) until it
+	 * appears.
+	 */
+	private async _maybeApplyPendingSetup(): Promise<void> {
+		const pending = this._pendingSetup;
+		if (!pending) return;
+		const dev = this._devices.find((d) => d.mac === pending.mac);
+		console.debug("[onboard] maybeApply", {
+			pending,
+			found: !!dev,
+			onboarded: dev?.onboarded,
+		});
+		if (!dev) return;
+		this._pendingSetup = null;
+		try {
+			await this.hass.callWS({
+				type: "eppgrid/configure_device",
+				mac: pending.mac,
+				name: pending.name || null,
+				area_id: pending.areaId,
+			});
+		} catch {
+			// device stays un-onboarded; banner will offer setup
+		}
+		void this._flasherCtrl.resetUsbState();
+		await this._loadDevices();
+		if (pending.calibrate) {
+			this._selectDeviceForCalibration(pending.mac);
+		} else {
+			this._panelTab = "config";
 		}
 	}
 
@@ -2224,7 +2288,7 @@ export class EPPGridPanel extends LitElement {
 				.hass=${this.hass}
 				.localize=${this._localize}
 				@setup-complete=${(e: CustomEvent) => this._onDeviceSetupComplete(e)}
-				@setup-skip=${(e: CustomEvent) => this._onDeviceSetupSkip(e)}
+				@setup-skip=${(e: CustomEvent) => this._onDeviceSetupDialogSkip(e)}
 			></epp-device-setup>
     `;
 	}
@@ -2339,21 +2403,20 @@ export class EPPGridPanel extends LitElement {
 					.flashableDevices=${this._flasherCtrl.flashableDevices}
 					.loading=${this._flasherCtrl.loading}
 					.localize=${this._localize}
+					.hass=${this.hass}
 					.usbFlashState=${this._flasherCtrl.usbFlashState}
 					.wifiNetworks=${this._flasherCtrl.wifiNetworks}
 					.firmwareVersion=${this._flasherCtrl.firmwareVersion}
 					.integrationVersion=${this._flasherCtrl.integrationVersion}
 					.otaStates=${this._flasherCtrl.otaStates}
 					.cancelledDeviceIpHint=${this._flasherCtrl.cancelledDeviceIpHint}
+					@device-setup-submit=${(e: CustomEvent) =>
+						this._onDeviceSetupSubmit(e)}
+					@device-setup-skip=${() => this._onDeviceSetupSkip()}
 					@flash-complete=${() => {
-						// Capture the flashed MAC before resetUsbState() clears it so
-						// _maybeOpenPendingSetup can auto-open the wizard once the new
-						// device appears (un-onboarded) in the refreshed list.
-						// usbFlashState may be null (flash-complete with no active USB
-						// state) — optional-chain so the handoff degrades to "no
-						// auto-open" rather than throwing.
-						this._pendingSetupMac =
-							this._flasherCtrl.usbFlashState?.mac ?? null;
+						// Non-naming completion paths (ethernet, the failure/retry
+						// "go to config" button). The naming paths route through
+						// device-setup-submit/skip + _maybeApplyPendingSetup instead.
 						void this._flasherCtrl.resetUsbState();
 						this._loadDevices();
 						this._panelTab = "config";
@@ -2470,7 +2533,16 @@ export class EPPGridPanel extends LitElement {
 			</div>`;
 		}
 
-		if (this._view === "tutorial" || this._view === "calibrate") {
+		// Gate the calibration/tutorial wizard on the selected device being
+		// onboarded — a freshly-flashed, un-onboarded device falls through to the
+		// normal config view (where the setup banner shows). `?? true` so a
+		// not-yet-loaded device list doesn't suppress calibration for an
+		// already-set-up device.
+		const selDev = this._devices.find((d) => d.mac === this._selectedMac);
+		if (
+			(this._view === "tutorial" || this._view === "calibrate") &&
+			(selDev?.onboarded ?? true)
+		) {
 			return html`<div class="tab-layout">
         ${this._renderTabBar()}
         <div class="panel">

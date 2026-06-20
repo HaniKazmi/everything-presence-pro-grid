@@ -140,33 +140,57 @@ describe("epp-flasher-view inline event handlers", () => {
 		expect((panel as any)._panelTab).toBe("config");
 	});
 
-	it("@flash-complete captures the flashed MAC into _pendingSetupMac before reset", () => {
+	it("@device-setup-submit stashes _pendingSetup from the flashed MAC and drives the add", () => {
 		const ctrl = (panel as any)._flasherCtrl;
-		// Active USB state carrying a MAC (the just-flashed device).
+		// Flow paused at device_naming carrying the just-flashed MAC.
 		ctrl.usbFlashState = {
-			step: "complete",
-			variant: "ethernet-ble-co2",
+			step: "device_naming",
+			ip: "1.2.3.4",
 			mac: "AA:BB:CC:DD:EE:99",
 		};
-		vi.spyOn(panel as any, "_loadDevices").mockResolvedValue(undefined);
+		const namingSpy = vi
+			.spyOn(ctrl, "handleDeviceNaming")
+			.mockResolvedValue(undefined);
 
 		getFlasherView().dispatchEvent(
-			new CustomEvent("flash-complete", { bubbles: true }),
+			new CustomEvent("device-setup-submit", {
+				detail: { name: "Bed", areaId: "a1", calibrate: false },
+				bubbles: true,
+				composed: true,
+			}),
 		);
 
-		expect((panel as any)._pendingSetupMac).toBe("AA:BB:CC:DD:EE:99");
+		expect((panel as any)._pendingSetup).toEqual({
+			mac: "AA:BB:CC:DD:EE:99",
+			name: "Bed",
+			areaId: "a1",
+			calibrate: false,
+		});
+		expect(namingSpy).toHaveBeenCalled();
 	});
 
-	it("@flash-complete sets _pendingSetupMac to null when usbFlashState is null", () => {
+	it("@device-setup-skip stashes a no-name pending setup and drives the add", () => {
 		const ctrl = (panel as any)._flasherCtrl;
-		ctrl.usbFlashState = null;
-		vi.spyOn(panel as any, "_loadDevices").mockResolvedValue(undefined);
+		ctrl.usbFlashState = {
+			step: "device_naming",
+			ip: "1.2.3.4",
+			mac: "AA:BB:CC:DD:EE:99",
+		};
+		const namingSpy = vi
+			.spyOn(ctrl, "handleDeviceNaming")
+			.mockResolvedValue(undefined);
 
 		getFlasherView().dispatchEvent(
-			new CustomEvent("flash-complete", { bubbles: true }),
+			new CustomEvent("device-setup-skip", { bubbles: true, composed: true }),
 		);
 
-		expect((panel as any)._pendingSetupMac).toBeNull();
+		expect((panel as any)._pendingSetup).toEqual({
+			mac: "AA:BB:CC:DD:EE:99",
+			name: "",
+			areaId: null,
+			calibrate: false,
+		});
+		expect(namingSpy).toHaveBeenCalled();
 	});
 
 	it("@usb-flash calls the controller's handleUsbFlash with variant", () => {
