@@ -863,6 +863,18 @@ describe("_handleWifiProvision", () => {
 		expect(ctrl.usbFlashState?.step).not.toBe("complete");
 	});
 
+	it("falls back to the complete success screen when onDeviceReadyForSetup is not wired", async () => {
+		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({ type: "added" });
+		// No host hook wired (e.g. a host that doesn't run the onboarding modal).
+		ctrl.onDeviceReadyForSetup = undefined;
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		// Must not get stuck in "adding" — show the complete success screen.
+		expect(ctrl.usbFlashState?.step).toBe("complete");
+		expect(ctrl.usbFlashState?.haAdd).toEqual({ type: "added" });
+	});
+
 	it("calls onDeviceReadyForSetup when addEsphomeDevice resolves with added", async () => {
 		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
 			"192.168.1.42",

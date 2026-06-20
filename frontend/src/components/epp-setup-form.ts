@@ -40,6 +40,15 @@ export class EppSetupForm extends LitElement {
 		return this._name !== this._initialName;
 	}
 
+	/**
+	 * A *meaningful* rename: changed AND not blank. Entity-ID regeneration
+	 * (and its toggle) only make sense for a real new name — clearing the
+	 * field to empty is not a rename, so it must not arm regen.
+	 */
+	private get _hasNewName(): boolean {
+		return this._nameChanged && this._name.trim() !== "";
+	}
+
 	private get _dirty(): boolean {
 		return this._nameChanged || this._areaId !== this._initialAreaId;
 	}
@@ -65,7 +74,7 @@ export class EppSetupForm extends LitElement {
 				detail: {
 					name: this._name,
 					areaId: this._areaId,
-					recreateEntityIds: this._nameChanged && this._recreate,
+					recreateEntityIds: this._hasNewName && this._recreate,
 				},
 				bubbles: true,
 				composed: true,
@@ -94,7 +103,7 @@ export class EppSetupForm extends LitElement {
 			<p>${L("device_setup.area_help")}</p>
 			${this._renderArea(L)}
 			${
-				this._nameChanged
+				this._hasNewName
 					? html`<epp-toggle
 						data-test="recreate"
 						.label=${L("device_setup.recreate_entity_ids")}

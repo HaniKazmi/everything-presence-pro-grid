@@ -537,16 +537,24 @@ export class UsbFlashFlow {
 		const haAdd = await this._addToHaWithRetry(ip);
 		if (host.opId !== myOp) return;
 
-		if (haAdd.type === "added" || haAdd.type === "already_added") {
-			await host.onDeviceReadyForSetup?.(ip, this._flashedMac);
-		} else {
-			host.updateUsbState({
-				step: "complete",
-				ip,
-				haAdd,
-				mac: this._flashedMac,
-			});
+		await this._routeAddResult(ip, haAdd);
+	}
+
+	/**
+	 * Route an HA-add result. On success, hand off to the panel's post-add
+	 * setup flow when the host wired `onDeviceReadyForSetup`; if it is NOT
+	 * wired (a host that doesn't run the onboarding modal), fall back to the
+	 * `complete` success screen so the flow never gets stuck in `adding`.
+	 * Failures always show the `complete` error/retry screen.
+	 */
+	private async _routeAddResult(ip: string, haAdd: HaAddResult): Promise<void> {
+		const host = this._host;
+		const ok = haAdd.type === "added" || haAdd.type === "already_added";
+		if (ok && host.onDeviceReadyForSetup) {
+			await host.onDeviceReadyForSetup(ip, this._flashedMac);
+			return;
 		}
+		host.updateUsbState({ step: "complete", ip, haAdd, mac: this._flashedMac });
 	}
 
 	async handleRetryHaAdd(): Promise<void> {
@@ -560,16 +568,7 @@ export class UsbFlashFlow {
 		const haAdd = await this._addToHaWithRetry(ip);
 		if (host.opId !== myOp) return;
 
-		if (haAdd.type === "added" || haAdd.type === "already_added") {
-			await host.onDeviceReadyForSetup?.(ip, this._flashedMac);
-		} else {
-			host.updateUsbState({
-				step: "complete",
-				ip,
-				haAdd,
-				mac: this._flashedMac,
-			});
-		}
+		await this._routeAddResult(ip, haAdd);
 	}
 
 	handleUsbRetry(): void {
