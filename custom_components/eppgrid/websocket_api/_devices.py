@@ -190,7 +190,7 @@ def _regenerate_entity_ids(hass: HomeAssistant, device_id: str, old_name: str | 
     {
         vol.Required("type"): "eppgrid/configure_device",
         vol.Required("mac"): MAC_SCHEMA,
-        vol.Optional("name"): vol.Any(str, None),
+        vol.Optional("name"): vol.Any(NAME_SCHEMA, None),
         vol.Optional("area_id"): vol.Any(str, None),
         vol.Optional("recreate_entity_ids", default=False): bool,
     }
@@ -211,12 +211,11 @@ async def websocket_configure_device(
     device = manager.devices[mac]
     name = msg.get("name")
     area_id = msg.get("area_id")
+    # .get fallback (not msg["..."]) because unit tests call this handler
+    # directly, bypassing the voluptuous schema that supplies the default.
     recreate_entity_ids = msg.get("recreate_entity_ids", False)
 
     dev_reg = dr.async_get(hass)
-    reg_dev = dev_reg.async_get(device.device_id) if device.device_id else None
-    old_name = reg_dev.name if reg_dev is not None else None
-
     updates: dict[str, Any] = {}
     if name:
         updates["name_by_user"] = name
@@ -226,6 +225,12 @@ async def websocket_configure_device(
         dev_reg.async_update_device(device.device_id, **updates)
 
     if name and recreate_entity_ids and device.device_id:
+        # name_by_user updates above don't touch the registry `name` (the
+        # node-name slug the old entity_ids derive from), so reading it here
+        # — only when we actually regenerate — is equivalent to reading it up
+        # front, and skips the lookup on the common no-regen path.
+        reg_dev = dev_reg.async_get(device.device_id)
+        old_name = reg_dev.name if reg_dev is not None else None
         _regenerate_entity_ids(hass, device.device_id, old_name, name)
 
     manager.fire_device_list_changed()
