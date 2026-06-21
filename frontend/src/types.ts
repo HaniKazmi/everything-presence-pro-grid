@@ -71,6 +71,7 @@ export type UsbFlashStep =
 	| "wifi_connecting"
 	| "reading_ip"
 	| "wifi_configured"
+	| "adding"
 	| "complete"
 	| "error";
 
@@ -87,6 +88,7 @@ export interface UsbFlashState {
 	lastStep?: UsbFlashStep;
 	haAddAttempt?: number;
 	haAddMaxAttempts?: number;
+	mac?: string;
 }
 
 export type OtaState = "updating" | "success" | "error";

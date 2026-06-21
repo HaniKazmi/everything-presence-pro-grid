@@ -30,6 +30,18 @@ export interface UsbFlashHost {
 	 * an explicit confirmation).
 	 */
 	confirmDeleteOriginalFirmware?: () => Promise<boolean>;
+	/**
+	 * Host hook — called after the device is successfully added to (or already
+	 * present in) Home Assistant. The panel uses this to wait for the device to
+	 * appear in the device list and then open the post-flash setup modal.
+	 * When wired, the flow does NOT transition to step "complete" on success —
+	 * the hook owns the final state transition. On failure paths the flow still
+	 * transitions to "complete" with the error result so the user can retry.
+	 */
+	onDeviceReadyForSetup?: (
+		ip: string,
+		flashedMac?: string,
+	) => Promise<void> | void;
 	bumpOpId(): void;
 	updateUsbState(state: UsbFlashState): void;
 	resetUsbState(): Promise<void>;
@@ -67,6 +79,7 @@ export class UsbFlashFlow {
 	// serial locks before close().
 	private _wifiCheckAbort: AbortController | null = null;
 	private _wifiCheckPromise: Promise<unknown> | null = null;
+	private _flashedMac: string | undefined;
 
 	constructor(host: UsbFlashHost) {
 		this._host = host;
@@ -203,6 +216,7 @@ export class UsbFlashFlow {
 			this._serialPort = port;
 
 			// Step 2: Flash firmware
+			this._flashedMac = undefined;
 			host.updateUsbState({ step: "flashing", progress: 0 });
 			await flashFirmware(
 				port,
@@ -230,6 +244,8 @@ export class UsbFlashFlow {
 								});
 							await host.deleteEsphomeDevice(matched.esphome_config_entry_id);
 						}
+						this._flashedMac = mac.toUpperCase();
+						host.updateUsbState({ step: "flashing", mac: mac.toUpperCase() });
 					},
 				},
 			);
@@ -243,7 +259,11 @@ export class UsbFlashFlow {
 				await port.close().catch(() => {});
 				this._serialPort = null;
 				host.opRunning = false;
-				host.updateUsbState({ step: "complete", variant });
+				host.updateUsbState({
+					step: "complete",
+					variant,
+					mac: this._flashedMac,
+				});
 				return;
 			}
 
@@ -304,11 +324,6 @@ export class UsbFlashFlow {
 				try {
 					skipWriter.releaseLock();
 				} catch {}
-				host.updateUsbState({
-					step: "wifi_configured",
-					ip: skipIp,
-					autoSkipped: true,
-				});
 				host.opRunning = false;
 				await this._addToHa(skipIp);
 				return;
@@ -438,9 +453,7 @@ export class UsbFlashFlow {
 			await port.close().catch(() => {});
 			this._serialPort = null;
 
-			// WiFi side succeeded. Intermediate state while HA-add runs.
-			host.updateUsbState({ step: "wifi_configured", ip });
-
+			// WiFi side succeeded. Add to HA immediately.
 			await this._addToHa(ip);
 		} catch (err: any) {
 			if (this._serialReader) releaseReader(this._serialReader);
@@ -520,10 +533,28 @@ export class UsbFlashFlow {
 		const host = this._host;
 		const myOp = host.opId;
 
+		host.updateUsbState({ step: "adding", ip, mac: this._flashedMac });
 		const haAdd = await this._addToHaWithRetry(ip);
 		if (host.opId !== myOp) return;
 
-		host.updateUsbState({ step: "complete", ip, haAdd });
+		await this._routeAddResult(ip, haAdd);
+	}
+
+	/**
+	 * Route an HA-add result. On success, hand off to the panel's post-add
+	 * setup flow when the host wired `onDeviceReadyForSetup`; if it is NOT
+	 * wired (a host that doesn't run the onboarding modal), fall back to the
+	 * `complete` success screen so the flow never gets stuck in `adding`.
+	 * Failures always show the `complete` error/retry screen.
+	 */
+	private async _routeAddResult(ip: string, haAdd: HaAddResult): Promise<void> {
+		const host = this._host;
+		const ok = haAdd.type === "added" || haAdd.type === "already_added";
+		if (ok && host.onDeviceReadyForSetup) {
+			await host.onDeviceReadyForSetup(ip, this._flashedMac);
+			return;
+		}
+		host.updateUsbState({ step: "complete", ip, haAdd, mac: this._flashedMac });
 	}
 
 	async handleRetryHaAdd(): Promise<void> {
@@ -536,7 +567,8 @@ export class UsbFlashFlow {
 		host.updateUsbState({ step: "wifi_configured", ip });
 		const haAdd = await this._addToHaWithRetry(ip);
 		if (host.opId !== myOp) return;
-		host.updateUsbState({ step: "complete", ip, haAdd });
+
+		await this._routeAddResult(ip, haAdd);
 	}
 
 	handleUsbRetry(): void {
@@ -566,7 +598,14 @@ export class UsbFlashFlow {
 	async handleFlasherCancel(): Promise<void> {
 		const host = this._host;
 		const state = host.usbFlashState;
-		if (state?.step === "wifi_configured" && state.ip) {
+		// The flow sits at `adding` (the first HA-add attempt plus the panel's
+		// post-add device poll) or `wifi_configured` (mid HA-add retry). A
+		// cancel from either should stash the device IP so the user can resume
+		// the HA-add later.
+		if (
+			(state?.step === "adding" || state?.step === "wifi_configured") &&
+			state.ip
+		) {
 			host.setCancelledDeviceIpHint(state.ip);
 		}
 		host.opRunning = false;

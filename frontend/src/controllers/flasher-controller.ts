@@ -47,6 +47,16 @@ export class FlasherController implements ReactiveController {
 
 	onDeviceListChanged?: () => void;
 	/**
+	 * Host hook — called after the device is successfully added to (or already
+	 * present in) Home Assistant. The panel wires this to open the post-flash
+	 * device setup modal. Forwarded directly to the USB flash flow so it is
+	 * invoked at the right point in the pipeline.
+	 */
+	onDeviceReadyForSetup?: (
+		ip: string,
+		flashedMac?: string,
+	) => Promise<void> | void;
+	/**
 	 * Host hook — ask the user to confirm deleting an original-firmware
 	 * device's old ESPHome config entry before flashing over it. The panel
 	 * wires this to its themed epp-dialog (see

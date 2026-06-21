@@ -401,6 +401,7 @@
 		"usb_step_provisioning": "Configuring WiFi...",
 		"usb_step_wifi_connecting": "Connecting to WiFi...",
 		"usb_step_reading_ip": "Detecting device IP address...",
+		"usb_step_adding": "Adding device...",
 		"wifi_configured": "WiFi configured successfully",
 		"configure_wifi_override": "Not this network? Configure WiFi",
 		"go_to_integrations": "Go to Integrations",
@@ -448,6 +449,16 @@
 			"aborted": "Cancelled",
 			"port_closed": "Serial connection lost — the device may have been unplugged. Reconnect it and try again."
 		}
+	},
+	"device_setup": {
+		"title": "Set up your device",
+		"name_help": "Give this sensor a name you'll recognise, like \"Living Room\".",
+		"name_label": "Device name",
+		"area_help": "Assign it to an area so it groups with the rest of that room.",
+		"area_label": "Area",
+		"skip_and_finish": "Skip and finish",
+		"finish": "Finish",
+		"recreate_entity_ids": "Recreate entity IDs to match new name"
 	},
 	"connection": {
 		"connecting": "Connecting to device...",

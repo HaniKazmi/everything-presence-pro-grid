@@ -1276,6 +1276,7 @@ export class EppFlasherView extends LitElement {
 			wifi_provision: "flasher.usb_step_provisioning",
 			wifi_connecting: "flasher.usb_step_wifi_connecting",
 			reading_ip: "flasher.usb_step_reading_ip",
+			adding: "flasher.usb_step_adding",
 		};
 		const stepKey = stepKeyMap[state.step] ?? state.step;
 		const stepParams =

@@ -3,6 +3,7 @@ import { property, state } from "lit/decorators.js";
 
 import "./ui/index.js";
 import "./components/epp-configuration-dialogs.js";
+import "./components/epp-device-setup.js";
 import "./components/epp-flasher-view.js";
 import "./components/epp-furniture-sidebar.js";
 import "./components/epp-grid.js";
@@ -89,6 +90,11 @@ import { tokens } from "./ui/tokens.js";
 
 // ZoneSlots / INITIAL_ZONE_SLOTS moved to lib/zone-defaults.ts so the
 // controllers can import them without a circular type dep on this module.
+
+// Post-flash device polling: poll up to 30 times at 1s intervals (30s total)
+// for the newly added device to appear in the device list.
+const DEVICE_WAIT_MAX_ATTEMPTS = 30;
+const DEVICE_WAIT_DELAY_MS = 1000;
 
 // Everything Presence Pro Grid logo, inlined from custom_components/eppgrid/
 // brand/icon.svg so it ships in the bundle (no extra static path / request).
@@ -608,6 +614,8 @@ export class EPPGridPanel extends LitElement {
 		const ctrl = new FlasherController(this);
 		ctrl.confirmDeleteOriginalFirmware = () =>
 			this._requestFlasherDeleteConfirm();
+		ctrl.onDeviceReadyForSetup = (ip, mac) =>
+			this._onDeviceReadyForSetup(ip, mac);
 		return ctrl;
 	})();
 	// Device groups controller — owns group CRUD and WS subscription
@@ -777,6 +785,11 @@ export class EPPGridPanel extends LitElement {
 	// Multi-device support
 	@state() private _devices: DeviceInfo[] = [];
 	@state() _selectedMac = "";
+
+	// Post-flash device-setup wizard. `_setupOpen`/`_setupDevice` drive the
+	// <epp-device-setup> dialog host, opened by the post-flash handoff.
+	@state() _setupOpen = false;
+	@state() _setupDevice: DeviceInfo | null = null;
 	@state() private _loading = true;
 	// Tracks which device we've successfully loaded config for, so
 	// reconnect paths can re-establish the live stream without refetching
@@ -1211,6 +1224,142 @@ export class EPPGridPanel extends LitElement {
 		await this._deviceCtrl.loadDevices();
 		this._devices = this._deviceCtrl.devices;
 		this._selectedMac = this._deviceCtrl.selectedMac;
+	}
+
+	// -- Post-flash device setup --
+
+	private _openDeviceSetup(device: DeviceInfo): void {
+		this._setupDevice = device;
+		this._setupOpen = true;
+	}
+
+	private async _onDeviceSetupComplete(e: CustomEvent): Promise<void> {
+		const { mac, name, areaId, recreateEntityIds } = e.detail as {
+			mac: string;
+			name: string;
+			areaId: string | null;
+			recreateEntityIds: boolean;
+		};
+		this._setupOpen = false;
+		this._setupDevice = null;
+		const existing = this._devices.find((d) => d.mac === mac);
+		const nameChanged = (name || null) !== (existing?.name || null);
+		// NOTE: this modal is greenfield-only (a just-added device with no
+		// area), so `existing?.area` is null here and any picked `areaId`
+		// correctly reads as a change. `areaId` is an area_id while
+		// `existing.area` is the area's display name, so this comparison would
+		// be wrong if the modal were ever reused for an already-assigned
+		// device — that would need an `area_id` field on DeviceInfo.
+		const areaChanged = (areaId || null) !== (existing?.area || null);
+		if (nameChanged || areaChanged) {
+			try {
+				await this.hass.callWS({
+					type: "eppgrid/configure_device",
+					mac,
+					name: name || null,
+					area_id: areaId,
+					recreate_entity_ids: recreateEntityIds,
+				});
+			} catch (err) {
+				// Non-fatal: the device is added and selected, only the
+				// name/area rename failed. Log it for debugging — the user can
+				// still rename via the device's Home Assistant settings.
+				console.error("[eppgrid] configure_device failed", err);
+			}
+			await this._loadDevices();
+		}
+	}
+
+	private _onDeviceSetupDialogSkip(e: CustomEvent): void {
+		e.stopPropagation?.();
+		this._setupOpen = false;
+		this._setupDevice = null;
+	}
+
+	/**
+	 * Called by the flasher controller after the device is successfully added
+	 * to (or already present in) Home Assistant. Polls the device list for the
+	 * newly added device (matching by IP or flashed MAC), then resets the
+	 * flasher state, selects the device and navigates to the config tab, and
+	 * opens the post-flash setup modal.
+	 */
+	private async _onDeviceReadyForSetup(
+		ip: string,
+		flashedMac?: string,
+	): Promise<void> {
+		const myOp = this._flasherCtrl.opId;
+		const dev = await this._waitForDevice(ip, flashedMac, myOp);
+		// If the user cancelled mid-poll, opId will have changed.
+		// The cancel handler already cleaned up — do nothing.
+		if (this._flasherCtrl.opId !== myOp) return;
+		if (!dev) {
+			// The add to HA succeeded (we only reach here after added/
+			// already_added) — the device just didn't surface in the list
+			// within the poll window. Report success (not a failure) and let
+			// the user proceed to the config tab via the complete screen; the
+			// device appears there once discovery catches up. Reusing the
+			// add-failure UI here would mislabel a successful add and offer a
+			// pointless "retry add".
+			this._flasherCtrl.updateUsbState({
+				step: "complete",
+				ip,
+				mac: flashedMac,
+				haAdd: { type: "added" },
+			});
+			return;
+		}
+		await this._flasherCtrl.resetUsbState();
+		this._selectAndShowConfig(dev.mac);
+		this._openDeviceSetup(dev);
+	}
+
+	/**
+	 * Polls the device list until the device at `ip` (or with `flashedMac`)
+	 * appears, or until DEVICE_WAIT_MAX_ATTEMPTS attempts have been exhausted.
+	 * Returns the DeviceInfo on success, null on timeout.
+	 */
+	private async _waitForDevice(
+		ip: string,
+		flashedMac?: string,
+		myOp?: number,
+	): Promise<DeviceInfo | null> {
+		const macUpper = flashedMac?.toUpperCase();
+		for (let attempt = 0; attempt < DEVICE_WAIT_MAX_ATTEMPTS; attempt++) {
+			if (myOp !== undefined && this._flasherCtrl.opId !== myOp) return null;
+			try {
+				await this._loadDevices();
+				const dev =
+					this._devices.find((d) => d.host === ip) ??
+					(macUpper
+						? this._devices.find((d) => d.mac === macUpper)
+						: undefined);
+				if (dev) return dev;
+			} catch {
+				// Transient list-load failure (e.g. a WebSocket blip) — keep
+				// polling rather than aborting onboarding; the device may
+				// appear on a later iteration.
+			}
+			await new Promise((r) => setTimeout(r, DEVICE_WAIT_DELAY_MS));
+		}
+		return null;
+	}
+
+	/**
+	 * Select a device by MAC and navigate to the config/live view. Routes
+	 * through the navigation guard so unsaved edits are not silently discarded.
+	 */
+	private _selectAndShowConfig(mac: string): void {
+		this._navGuard.guardNavigation(() => {
+			if (mac && mac !== this._selectedMac) {
+				this._closeDeviceSession();
+				this._selectedMac = mac;
+				persistSelectedMac(mac);
+				this._furnitureClipboard = null;
+				this._loadDeviceConfig(mac).catch(() => {});
+			}
+			this._panelTab = "config";
+			this._applyView({ view: "live", sidebarTab: this._sidebarTab });
+		});
 	}
 
 	private async _loadDeviceConfig(mac: string): Promise<void> {
@@ -2074,6 +2223,14 @@ export class EPPGridPanel extends LitElement {
 					@click=${this._deleteCalibration}
 				>${this._localize("common.delete")}</epp-button>
 			</epp-dialog>
+      <epp-device-setup
+				.open=${this._setupOpen}
+				.device=${this._setupDevice}
+				.hass=${this.hass}
+				.localize=${this._localize}
+				@setup-complete=${(e: CustomEvent) => this._onDeviceSetupComplete(e)}
+				@setup-skip=${(e: CustomEvent) => this._onDeviceSetupDialogSkip(e)}
+			></epp-device-setup>
     `;
 	}
 

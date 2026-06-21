@@ -15,6 +15,7 @@ from aioesphomeapi import TextSensorState
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from ..const import DOMAIN
@@ -146,6 +147,92 @@ async def websocket_set_show_room_calibration_tutorial(
         return
     manager.store.show_room_calibration_tutorial = new_value
     await manager.store.async_save()
+    manager.fire_device_list_changed()
+    connection.send_result(msg["id"])
+
+
+# -- configure_device --
+
+
+def _regenerate_entity_ids(hass: HomeAssistant, device_id: str, old_name: str | None, new_name: str) -> None:
+    """Rewrite a device's entity_ids from its old name slug to the new one.
+
+    Mirrors HA's native "rename device → update entity IDs?": for each entity on
+    the device whose id is built from the old device-name slug, swap that prefix
+    to the new name's slug, deduping collisions. Entities the user customized
+    (id not derived from the old slug) are left untouched. Caller gates this to
+    first-naming only, so it runs only while the device is greenfield.
+    """
+    from homeassistant.util import slugify
+
+    old_slug = slugify(old_name or "")
+    new_slug = slugify(new_name)
+    if not old_slug or not new_slug or old_slug == new_slug:
+        return
+
+    ent_reg = er.async_get(hass)
+    for entry in er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True):
+        domain, _, object_id = entry.entity_id.partition(".")
+        if object_id != old_slug and not object_id.startswith(f"{old_slug}_"):
+            continue
+        candidate = f"{domain}.{new_slug}{object_id[len(old_slug) :]}"
+        if candidate == entry.entity_id:
+            continue
+        unique = candidate
+        suffix = 2
+        while ent_reg.async_get(unique) is not None:
+            unique = f"{candidate}_{suffix}"
+            suffix += 1
+        ent_reg.async_update_entity(entry.entity_id, new_entity_id=unique)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/configure_device",
+        vol.Required("mac"): MAC_SCHEMA,
+        vol.Optional("name"): vol.Any(NAME_SCHEMA, None),
+        vol.Optional("area_id"): vol.Any(str, None),
+        vol.Optional("recreate_entity_ids", default=False): bool,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+@_require_manager
+async def websocket_configure_device(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+    manager: Any,
+) -> None:
+    """Set a device's name + area in the HA registry; optionally regen entity ids."""
+    if not _require_known_device(connection, manager, msg):
+        return
+    mac = msg["mac"]
+    device = manager.devices[mac]
+    name = msg.get("name")
+    area_id = msg.get("area_id")
+    # .get fallback (not msg["..."]) because unit tests call this handler
+    # directly, bypassing the voluptuous schema that supplies the default.
+    recreate_entity_ids = msg.get("recreate_entity_ids", False)
+
+    dev_reg = dr.async_get(hass)
+    updates: dict[str, Any] = {}
+    if name:
+        updates["name_by_user"] = name
+    if area_id:
+        updates["area_id"] = area_id
+    if updates and device.device_id:
+        dev_reg.async_update_device(device.device_id, **updates)
+
+    if name and recreate_entity_ids and device.device_id:
+        # name_by_user updates above don't touch the registry `name` (the
+        # node-name slug the old entity_ids derive from), so reading it here
+        # — only when we actually regenerate — is equivalent to reading it up
+        # front, and skips the lookup on the common no-regen path.
+        reg_dev = dev_reg.async_get(device.device_id)
+        old_name = reg_dev.name if reg_dev is not None else None
+        _regenerate_entity_ids(hass, device.device_id, old_name, name)
+
     manager.fire_device_list_changed()
     connection.send_result(msg["id"])
 

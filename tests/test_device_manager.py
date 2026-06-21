@@ -1315,6 +1315,28 @@ class TestDeviceManager:
         assert result[0]["area"] is None
         assert result[0]["name"] == "EPP Device"
 
+    async def test_list_devices_payload_has_no_onboarded_key(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """list_devices must not include an 'onboarded' key in any device payload."""
+        dev_reg = dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.55"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:05")},
+            name="everything-presence-pro-aabb05",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        manager.devices["AA:BB:CC:DD:EE:05"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:05",
+            name="everything-presence-pro-aabb05",
+            host="192.168.1.55",
+            device_id=device.id,
+        )
+
+        devices = manager.list_devices()
+        assert all("onboarded" not in d for d in devices)
+
     async def test_list_devices_reports_live_availability_not_stale_flag(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:

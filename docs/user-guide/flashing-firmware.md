@@ -45,6 +45,21 @@ The Wi-Fi flashing flow usually adds the device to Home Assistant automatically 
 
 Once the device is added to ESPHome, it shows up in the Everything Presence Pro Grid panel within a few seconds.
 
+## After flashing
+
+Once the device joins your network, the Everything Presence Pro Grid panel
+detects it and opens a dialog to finish setup:
+
+1. Enter a **Device name** (for example, "Living Room").
+2. Assign an **Area** so it groups with the rest of that room.
+
+If you change the name, a **Recreate entity IDs** toggle appears (on by
+default) — keep it on to rename the device's entities to match the new name.
+
+The button reads **Skip and finish** if you haven't made any changes, or
+**Finish** after making a change. Either way, you land on the device's config
+page where **Calibrate room size** is available.
+
 !!! note
     Everything Presence Pro Grid identifies each device by its MAC address. Re-flashing or swapping variants keeps your saved zones, calibration, and settings — they're keyed to the MAC.
 

@@ -219,6 +219,12 @@ Returns stored config for a device.
 **Request:** `{ "type": "eppgrid/get_config", "mac": str }`
 **Response:** `{ "config": {...} }` — calibration, room_layout, env_calibration, etc.
 
+### `eppgrid/configure_device`
+
+Sets `name_by_user` / `area_id` on the device's HA registry entry (when provided). When `name` is set and `recreate_entity_ids` is true, the device's entity IDs are regenerated from the new name's slug. Admin only.
+
+**Request:** `{ "type": "eppgrid/configure_device", "mac": str, "name"?: str, "area_id"?: str, "recreate_entity_ids"?: bool }`
+
 ### `update_firmware`
 
 Triggers OTA firmware update on a device via the `set_update_manifest` API action. Derives the firmware variant (`wifi-ble-co2` or `ethernet-ble-co2`) from build flags and constructs the manifest URL from `FIRMWARE_VERSION` using GitHub Pages (`https://clintongormley.github.io/everything-presence-pro-grid/fw/v{VERSION}/{variant}.json`). Uses a temporary connection (not the persistent session).
