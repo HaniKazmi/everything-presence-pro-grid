@@ -930,6 +930,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 			<p>${e("device_setup.area_help")}</p>
 			${this._renderArea(e)}
 			${this._hasNewName?N`<epp-toggle
+						class="recreate-toggle"
 						data-test="recreate"
 						.label=${e("device_setup.recreate_entity_ids")}
 						.checked=${this._recreate}
@@ -939,6 +940,9 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 				<epp-button variant="primary" @click=${this._submit}>${t}</epp-button>
 			</div>
 		`}}qi.styles=a`
+		.recreate-toggle {
+			margin-top: var(--epp-space-3);
+		}
 		.setup-form-actions {
 			display: flex;
 			justify-content: flex-end;
