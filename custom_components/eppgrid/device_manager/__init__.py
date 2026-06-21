@@ -590,17 +590,14 @@ class DeviceManager:
         self._target_subs.clear()
         self._static_presence_cache.clear()
 
-    async def async_trigger_ota(self, mac: str) -> None:
-        """Trigger firmware OTA update on a device.
+    def _ota_manifest_url(self, mac: str) -> str:
+        """Resolve the pinned-version ESP Web Tools manifest URL for a device.
 
-        Derives the firmware variant from cached build flags, constructs the
-        manifest URL from `OTA_MANIFEST_BASE_URL`, and calls the device's
-        `set_update_manifest` API action over a temporary connection. Shared
-        by the panel's `update_firmware` websocket handler and the Repairs
-        framework's `FirmwareUpdateRepairFlow`.
-
-        Raises HomeAssistantError with a translation_key on every failure
-        path so callers can map the failure to a user-facing message.
+        Derives the firmware variant from the device's cached build flags and
+        joins it onto `OTA_MANIFEST_BASE_URL` (which embeds `FIRMWARE_VERSION`).
+        Shared by `async_trigger_ota` and `async_resend_ota_manifest` so both
+        target the same per-version release. Raises HomeAssistantError with a
+        translation_key on every failure path.
         """
         from ..const import DOMAIN as _DOMAIN
         from ..const import FIRMWARE_VARIANTS
@@ -635,7 +632,55 @@ class DeviceManager:
                 translation_key="no_firmware_variant",
                 translation_placeholders={"network": network},
             )
-        manifest_url = f"{OTA_MANIFEST_BASE_URL}/{variant}.json"
+        return f"{OTA_MANIFEST_BASE_URL}/{variant}.json"
+
+    async def async_resend_ota_manifest(self, mac: str) -> None:
+        """Re-issue the OTA manifest after the firmware's empty-URL race.
+
+        Deployed firmware's `set_update_manifest` action starts the OTA a fixed
+        1 s after kicking off an asynchronous manifest fetch; when several
+        devices flash at once that fetch can miss the deadline, so the update
+        no-ops with an empty firmware URL ("URL not set; cannot start update").
+        The manifest is warm after that first fetch, so a bare re-send flashes
+        from the now-populated URL.
+
+        Unlike `async_trigger_ota` this skips the pre-OTA reboot (the device is
+        idle — the failed attempt downloaded nothing) and the duplicate-OTA
+        guard (this *is* the retry). Best-effort: it logs and swallows every
+        failure so it can run from the OTA progress watcher's log callback; the
+        watcher's outer timeout still surfaces a terminal failure if the retries
+        never take.
+        """
+        try:
+            manifest_url = self._ota_manifest_url(mac)
+        except HomeAssistantError:
+            _LOGGER.warning("Cannot re-issue OTA manifest for %s; build info unavailable", mac, exc_info=True)
+            return
+        session = self.get_session(mac)
+        if session is None:
+            _LOGGER.warning("No live session to re-issue OTA manifest for %s", mac)
+            return
+        try:
+            await session.async_execute_service("set_update_manifest", {"url": manifest_url})
+            _LOGGER.info("Re-issued OTA manifest for %s (%s)", mac, manifest_url)
+        except Exception:
+            _LOGGER.warning("Failed to re-issue OTA manifest for %s", mac, exc_info=True)
+
+    async def async_trigger_ota(self, mac: str) -> None:
+        """Trigger firmware OTA update on a device.
+
+        Derives the firmware variant from cached build flags, constructs the
+        manifest URL from `OTA_MANIFEST_BASE_URL`, and calls the device's
+        `set_update_manifest` API action over a temporary connection. Shared
+        by the panel's `update_firmware` websocket handler and the Repairs
+        framework's `FirmwareUpdateRepairFlow`.
+
+        Raises HomeAssistantError with a translation_key on every failure
+        path so callers can map the failure to a user-facing message.
+        """
+        from ..const import DOMAIN as _DOMAIN
+
+        manifest_url = self._ota_manifest_url(mac)
 
         # Reject a duplicate OTA before any network I/O: a concurrent trigger
         # for this mac must fail-fast with ota_in_progress, not waste a manifest

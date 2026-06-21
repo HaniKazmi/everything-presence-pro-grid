@@ -77,18 +77,35 @@ jobs:
     runs-on: ubuntu-latest
     name: Create Release
     steps:
+      - uses: actions/checkout@v5
       - name: Download all artifacts
         uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: firmware-*
           merge-multiple: true
+      - name: Build release notes from the changelog
+        id: notes
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          # Prefer the curated, user-facing CHANGES.md section as the release
+          # body. Tags with no changelog entry (e.g. pre-release betas) exit
+          # non-zero and fall back to GitHub's auto-generated commit notes.
+          if .github/scripts/extract-release-notes.sh "$TAG" > release-notes.md; then
+            echo "from_changelog=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "from_changelog=false" >> "$GITHUB_OUTPUT"
+            rm -f release-notes.md
+          fi
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           fail_on_unmatched_files: false
-          generate_release_notes: true
+          # Use the curated changelog section as the release body when present;
+          # otherwise let GitHub generate notes from the commit log.
+          body_path: ${{ steps.notes.outputs.from_changelog == 'true' && 'release-notes.md' || '' }}
+          generate_release_notes: ${{ steps.notes.outputs.from_changelog != 'true' }}
           # Every release is published as a pre-release and is never auto-marked
           # the GitHub "latest". It still builds firmware from the current source
           # and ships it as release assets — integration-only releases attach a
