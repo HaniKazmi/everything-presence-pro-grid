@@ -75,8 +75,13 @@ jobs:
           # const.py), so a beta-pinned integration 404s on every OTA unless its
           # manifest is published here. STAGE_LATEST=0 leaves fw/latest/ on the
           # stable release above, so ESPHome's native update entity stays on it.
-          PINNED=$(grep -oP 'FIRMWARE_VERSION\s*=\s*"\K[^"]+' custom_components/eppgrid/const.py | head -1)
-          if [ -n "$PINNED" ] && [ "v$PINNED" != "$LATEST" ]; then
+          # sed (POSIX, no PCRE -P) and fail-soft: an unreadable const.py must
+          # not hard-fail the whole Pages deploy (docs + fw/latest/) under
+          # `set -e -o pipefail`, only skip this pass with a warning.
+          PINNED=$(sed -nE 's/^FIRMWARE_VERSION[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' custom_components/eppgrid/const.py | head -1)
+          if [ -z "$PINNED" ]; then
+            echo "::warning::Could not read FIRMWARE_VERSION from const.py — skipping pinned OTA staging"
+          elif [ "v$PINNED" != "$LATEST" ]; then
             echo "Pinned firmware v$PINNED differs from latest $LATEST — staging it for the OTA path"
             rm -rf artifacts-pinned && mkdir -p artifacts-pinned
             gh release download "v$PINNED" -D artifacts-pinned --pattern 'everything-presence-pro-*'
