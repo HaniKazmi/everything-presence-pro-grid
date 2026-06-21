@@ -742,11 +742,14 @@ changes.
 **firmware-release.yml** — Triggered by tag push (`v*`). First runs
 `.github/scripts/validate-release.sh`, which fails the workflow if
 `manifest.json` ≠ tag, or if the three firmware-version files (manifest
-template, `FIRMWARE_VERSION`, etc.) disagree. If the tag bumps the firmware
-version it compiles the variants, generates ESP Web Tools manifests, and
-publishes them as release assets. **Every release is published as a
-pre-release** (`prerelease=true`, `make_latest=false`) — none are ever
-auto-marked the GitHub `latest`. After testing, promote with
+template, `FIRMWARE_VERSION`, etc.) disagree. It then **always** compiles both
+variants, generates ESP Web Tools manifests, and publishes them as release
+assets — every tag rebuilds firmware unconditionally, so an integration-only
+release attaches a byte-identical rebuild of the unchanged firmware (the
+integration keeps `FIRMWARE_VERSION` pointed at the release where the firmware
+last changed). **Every release is published as a pre-release**
+(`prerelease=true`, `make_latest=false`) — none are ever auto-marked the
+GitHub `latest`. After testing, promote with
 `bin/promote.sh <version>` (which runs `gh release edit v<version>
 --prerelease=false --latest=true`).
 
