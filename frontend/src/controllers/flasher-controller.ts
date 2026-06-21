@@ -424,6 +424,16 @@ export class FlasherController implements ReactiveController {
 	private _checkOtaDevicesOffline(): void {
 		for (const [mac, ota] of Object.entries(this.otaStates)) {
 			if (ota.state !== "updating") continue;
+			// Only treat an offline device as a failed update once the OTA has
+			// actually started downloading (progress > 0). startOta sets the
+			// optimistic "updating"/progress:0 on click, and the backend then
+			// reboots the device to free heap for the TLS handshake BEFORE the
+			// download begins — during that reboot the device is legitimately
+			// offline. Without this gate that expected reboot is misreported as
+			// "device went offline during update". Mirrors the backend's
+			// `ever_active` latch (websocket_api/_firmware.py); a device that
+			// never starts is still caught by the 15s watchdog timeout.
+			if (ota.progress == null || ota.progress <= 0) continue;
 			const device = this.flashableDevices.find((d) => d.mac === mac);
 			if (device && !device.available) {
 				this._setOtaState(mac, {
