@@ -75,14 +75,26 @@ jobs:
           # const.py), so a beta-pinned integration 404s on every OTA unless its
           # manifest is published here. STAGE_LATEST=0 leaves fw/latest/ on the
           # stable release above, so ESPHome's native update entity stays on it.
-          # sed (POSIX, no PCRE -P) and fail-soft: an unreadable const.py must
-          # not hard-fail the whole Pages deploy (docs + fw/latest/) under
-          # `set -e -o pipefail`, only skip this pass with a warning.
-          PINNED=$(sed -nE 's/^FIRMWARE_VERSION[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' custom_components/eppgrid/const.py | head -1)
+          # awk first-match-exit (POSIX, no PCRE; no `head -1`, so no SIGPIPE/141
+          # under pipefail if const.py ever grows a second matching line) and
+          # fail-soft: an unreadable/unmatched const.py prints nothing → PINNED
+          # empty → warn and skip, never hard-fail the Pages deploy (docs +
+          # fw/latest/) under `set -e -o pipefail`.
+          # NOTE: FIRMWARE_VERSION is also parsed in .github/scripts/validate-release.sh
+          # and bin/release.sh — keep the patterns in sync if const.py's line format changes.
+          # `2>/dev/null || true`: a missing/unreadable const.py makes awk exit
+          # non-zero, which under `set -e` would abort the whole deploy — swallow
+          # it so the [ -z ] guard always gets to warn-and-skip (fail-soft).
+          PINNED=$(awk -F'"' '/^FIRMWARE_VERSION[ \t]*=/{print $2; exit}' custom_components/eppgrid/const.py 2>/dev/null || true)
           if [ -z "$PINNED" ]; then
             echo "::warning::Could not read FIRMWARE_VERSION from const.py — skipping pinned OTA staging"
           elif [ "v$PINNED" != "$LATEST" ]; then
             echo "Pinned firmware v$PINNED differs from latest $LATEST — staging it for the OTA path"
+            # A missing/empty pinned release IS a release-integrity error (the OTA
+            # source of truth is gone), so fail loud here — same as the latest pass
+            # above. In practice the pin always has a published release: every tag
+            # builds firmware (firmware-release.yml) and this pass runs via
+            # workflow_run after it, so the tag + binaries exist by now.
             rm -rf artifacts-pinned && mkdir -p artifacts-pinned
             gh release download "v$PINNED" -D artifacts-pinned --pattern 'everything-presence-pro-*'
             if ! ls artifacts-pinned/*.bin >/dev/null 2>&1; then
