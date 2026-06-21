@@ -1023,6 +1023,89 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("updating");
 		});
 
+		it("_checkOtaDevicesOffline ignores offline during the pre-OTA reboot (no progress yet)", () => {
+			// startOta optimistically sets state "updating" / progress 0 on click,
+			// then the backend reboots the device to free heap for the TLS
+			// handshake BEFORE the download starts. During that reboot the device
+			// is briefly unavailable, but no real OTA progress has arrived yet —
+			// so this offline is the EXPECTED reboot, not a failure, and must not
+			// be reported as "device went offline during update". (The offline
+			// check predates the pre-OTA reboot feature and never accounted for it.)
+			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
+				state: "updating",
+				progress: 0,
+				errorKey: null,
+			};
+			ctrl.flashableDevices = [
+				{
+					mac: "AA:BB:CC:DD:EE:01",
+					name: "Test",
+					host: "192.168.1.10",
+					available: false,
+					firmware_type: "eppgrid",
+					firmware_version: "1.0.0",
+					esphome_config_entry_id: "entry-1",
+					update_available: true,
+					firmware_status: "firmware_behind",
+				},
+			];
+
+			(ctrl as any)._checkOtaDevicesOffline();
+
+			// Still updating — the pre-OTA reboot offline must not flip to error.
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("updating");
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].errorKey).toBeNull();
+		});
+
+		it("ignores the pre-OTA reboot offline pushed via _applyDeviceList while update_firmware is pending", async () => {
+			// End-to-end shape of the reported bug: startOta sets the optimistic
+			// {updating, progress:0} synchronously, then awaits update_firmware,
+			// which blocks on the backend's pre-OTA reboot. While that call is
+			// pending the device reboots and HA pushes a device list with
+			// available:false — which must NOT be reported as a failed update.
+			let resolveUpdate: () => void = () => {};
+			hass.callWS = vi.fn().mockImplementation((msg: { type: string }) =>
+				msg.type === "eppgrid/update_firmware"
+					? new Promise<void>((r) => {
+							resolveUpdate = r;
+						})
+					: Promise.resolve({ devices: [] }),
+			);
+
+			// Fire but don't await — startOta blocks on the pending update_firmware.
+			const started = ctrl.startOta("AA:BB:CC:DD:EE:01");
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toMatchObject({
+				state: "updating",
+				progress: 0,
+			});
+
+			// Pre-OTA reboot drops the device offline; HA pushes the device list.
+			(ctrl as any)._applyDeviceList({
+				devices: [
+					{
+						mac: "AA:BB:CC:DD:EE:01",
+						name: "Test",
+						host: "192.168.1.10",
+						available: false,
+						firmware_type: "eppgrid",
+						firmware_version: "1.0.0",
+						esphome_config_entry_id: "entry-1",
+						update_available: true,
+						firmware_status: "firmware_behind",
+					},
+				],
+			});
+
+			// The expected reboot offline must not flip the update to error.
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("updating");
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].errorKey).toBeNull();
+
+			// Let startOta finish, then clear its progress sub + watchdog timer.
+			resolveUpdate();
+			await started;
+			ctrl.dismissOtaError("AA:BB:CC:DD:EE:01");
+		});
+
 		it("connection swap drops stale OTA subscriptions and clears in-flight OTA state", async () => {
 			// HA reconnects with a new connection while OTA is in flight.
 			// The unsub callback we hold belongs to the dead socket — calling
@@ -1338,6 +1421,15 @@ describe("FlasherController", () => {
 
 			it("reassigns otaStates when a device goes offline mid-OTA", async () => {
 				await ctrl.startOta("AA:BB:CC:DD:EE:01");
+				// Genuine mid-OTA: the device has reported real download progress
+				// (progress > 0), so a subsequent offline is a true failure — as
+				// opposed to the optimistic progress-0 set on click during the
+				// expected pre-OTA reboot.
+				ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
+					state: "updating",
+					progress: 50,
+					errorKey: null,
+				};
 				ctrl.flashableDevices = [
 					{
 						mac: "AA:BB:CC:DD:EE:01",
