@@ -38,10 +38,15 @@ def _make_artifacts(artifacts_dir: Path) -> None:
             (artifacts_dir / f"{prefix}{suffix}").write_bytes(f"{prefix}{suffix}".encode())
 
 
-def _run_stage(tmp_path: Path, version: str, script: Path = SCRIPT) -> subprocess.CompletedProcess:
+def _run_stage(
+    tmp_path: Path,
+    version: str,
+    script: Path = SCRIPT,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
     artifacts = tmp_path / "artifacts"
     _make_artifacts(artifacts)
-    env = {**os.environ, "VERSION": version, "ARTIFACTS": str(artifacts)}
+    env = {**os.environ, "VERSION": version, "ARTIFACTS": str(artifacts), **(extra_env or {})}
     return subprocess.run(["bash", str(script)], cwd=tmp_path, env=env, capture_output=True, text=True)
 
 
@@ -70,6 +75,46 @@ def test_stage_writes_to_both_latest_and_versioned_dirs(tmp_path: Path) -> None:
 
     assert (tmp_path / "fw" / "latest").is_dir()
     assert (tmp_path / "fw" / f"v{version}").is_dir()
+
+
+def test_stage_latest_zero_writes_only_versioned_dir(tmp_path: Path) -> None:
+    """STAGE_LATEST=0 stages only fw/v{VERSION}/ and never creates fw/latest/.
+
+    The Pages pipeline stages /releases/latest first (the stable channel that
+    ESPHome's native update entity reads via fw/latest/), then stages the
+    integration's pinned FIRMWARE_VERSION — which may be a prerelease — for the
+    panel's OTA button (fw/v{VERSION}/). That second pass must NOT move the
+    stable channel, or a beta would silently auto-push to every device."""
+    version = "9.9.9-beta.1"
+    result = _run_stage(tmp_path, version, extra_env={"STAGE_LATEST": "0"})
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    versioned = tmp_path / "fw" / f"v{version}"
+    assert versioned.is_dir()
+    assert not (tmp_path / "fw" / "latest").exists()
+
+    # The versioned manifest is still complete and valid on its own.
+    for variant in VARIANTS:
+        manifest = json.loads((versioned / f"{variant}.json").read_text())
+        assert manifest["version"] == version
+        assert (versioned / f"{variant}.ota.bin").is_file()
+
+
+def test_stage_latest_zero_preserves_existing_latest(tmp_path: Path) -> None:
+    """A STAGE_LATEST=0 pass must leave an already-staged fw/latest/ intact.
+
+    Mirrors the pipeline order: fw/latest/ is populated by the latest-release
+    pass, then the pinned-prerelease pass runs with STAGE_LATEST=0 and must not
+    touch it."""
+    latest = tmp_path / "fw" / "latest"
+    latest.mkdir(parents=True)
+    (latest / "wifi-ble-co2.json").write_text('{"version": "1.1.0"}')
+
+    result = _run_stage(tmp_path, "9.9.9-beta.1", extra_env={"STAGE_LATEST": "0"})
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    # Stable channel untouched by the prerelease pass.
+    assert json.loads((latest / "wifi-ble-co2.json").read_text())["version"] == "1.1.0"
 
 
 def test_manifest_paths_are_relative_and_files_exist_alongside(tmp_path: Path) -> None:
