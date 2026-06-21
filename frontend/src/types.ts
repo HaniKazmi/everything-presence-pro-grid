@@ -84,7 +84,6 @@ export interface UsbFlashState {
 	variant?: string;
 	fatal?: boolean;
 	haAdd?: HaAddResult;
-	autoSkipped?: boolean;
 	lastStep?: UsbFlashStep;
 	haAddAttempt?: number;
 	haAddMaxAttempts?: number;

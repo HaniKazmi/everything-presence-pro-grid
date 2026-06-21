@@ -474,26 +474,6 @@ const flasherStyles = css`
     font-size: var(--epp-font-base, 14px);
   }
 
-  .wifi-override-row {
-    margin-top: var(--epp-space-3, 12px);
-    text-align: center;
-  }
-
-  .wifi-override-link {
-    background: none;
-    border: none;
-    padding: 0;
-    font: inherit;
-    color: var(--epp-accent, var(--primary-color, #03a9f4));
-    cursor: pointer;
-    text-decoration: underline;
-    font-size: 0.9em;
-  }
-
-  .wifi-override-link:hover {
-    opacity: 0.8;
-  }
-
   .cancelled-ip-hint {
     padding: 10px 14px;
     margin-bottom: var(--epp-space-3, 12px);
@@ -1169,19 +1149,6 @@ export class EppFlasherView extends LitElement {
 								}
 							</span>
 						</div>
-						${
-							state.autoSkipped
-								? html`<div class="wifi-override-row">
-									<button
-										class="wifi-override-link"
-										type="button"
-										@click=${this._dispatchWifiScan}
-									>
-										${this.localize("flasher.configure_wifi_override")}
-									</button>
-								</div>`
-								: nothing
-						}
 						<div class="confirm-actions">
 							${this._renderCancelButton()}
 						</div>
