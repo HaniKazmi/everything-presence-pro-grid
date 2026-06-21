@@ -69,6 +69,23 @@ jobs:
             exit 1
           fi
           VERSION="${LATEST#v}" ARTIFACTS=artifacts ./.github/scripts/stage-firmware.sh
+          # Also stage the version the *integration* pins itself to, even when
+          # it is a prerelease that never becomes /releases/latest. The panel's
+          # OTA button fetches fw/v{FIRMWARE_VERSION}/{variant}.json (Path B in
+          # const.py), so a beta-pinned integration 404s on every OTA unless its
+          # manifest is published here. STAGE_LATEST=0 leaves fw/latest/ on the
+          # stable release above, so ESPHome's native update entity stays on it.
+          PINNED=$(grep -oP 'FIRMWARE_VERSION\s*=\s*"\K[^"]+' custom_components/eppgrid/const.py | head -1)
+          if [ -n "$PINNED" ] && [ "v$PINNED" != "$LATEST" ]; then
+            echo "Pinned firmware v$PINNED differs from latest $LATEST — staging it for the OTA path"
+            rm -rf artifacts-pinned && mkdir -p artifacts-pinned
+            gh release download "v$PINNED" -D artifacts-pinned --pattern 'everything-presence-pro-*'
+            if ! ls artifacts-pinned/*.bin >/dev/null 2>&1; then
+              echo "::error::Pinned release v$PINNED has no firmware binaries — the panel OTA path will 404"
+              exit 1
+            fi
+            VERSION="$PINNED" ARTIFACTS=artifacts-pinned STAGE_LATEST=0 ./.github/scripts/stage-firmware.sh
+          fi
       - name: Build mkdocs site
         run: mkdocs build --strict
       - name: Copy firmware manifests into site

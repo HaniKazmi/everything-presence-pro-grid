@@ -713,7 +713,9 @@ coverage.
   (on push to main touching `firmware/`)
 - **firmware-release.yml** — Tag-triggered firmware build + ESP Web Tools
   manifest publish
-- **pages.yml** — Stages `fw/` from the GitHub `latest` release for OTA
+- **pages.yml** — Stages `fw/` for OTA: `fw/latest/` from the GitHub `latest`
+  release, plus `fw/v{FIRMWARE_VERSION}/` for the version the integration pins
+  (even when it's a prerelease)
 - **post-release-bump.yml** — On `release: released`, rolls `main` forward
   to the next minor (manifest only)
 - **codeql.yml** — CodeQL static analysis
@@ -749,11 +751,21 @@ auto-marked the GitHub `latest`. After testing, promote with
 --prerelease=false --latest=true`).
 
 **pages.yml** — Triggers on push to main *and* on `release: released`.
-Stages `fw/` from the GitHub `latest` release via `gh api /releases/latest`
-(simpler than scanning + filtering). Since releases start as pre-releases,
-`fw/latest/` stays on the previous promoted release until you promote the
-new one; promotion fires `release: released`, re-running this workflow
-without needing a fresh tag.
+Stages firmware in two passes:
+
+1. `fw/latest/` from the GitHub `latest` release via `gh api /releases/latest`
+   (simpler than scanning + filtering). Since releases start as pre-releases,
+   `fw/latest/` stays on the previous promoted release until you promote the
+   new one; promotion fires `release: released`, re-running this workflow
+   without needing a fresh tag. This is the channel ESPHome's *native* update
+   entity reads, so it must only ever advance to a promoted (stable) release.
+2. `fw/v{FIRMWARE_VERSION}/` for the version the integration pins in `const.py`
+   — staged with `STAGE_LATEST=0` so it does **not** move `fw/latest/`. The
+   panel's OTA button fetches `OTA_MANIFEST_BASE_URL` = `fw/v{FIRMWARE_VERSION}/`
+   (Path B), so without this pass a prerelease-pinned integration 404s on every
+   OTA. Skipped when the pinned version already *is* `latest`. This is what lets
+   beta testers OTA-update onto a pre-release the GitHub `latest` pointer (and
+   the native update entity) deliberately ignore.
 
 **post-release-bump.yml** — Triggers on `release: released` (promotion), not
 on tag push: every tag is published as a pre-release, so bumping at tag time

@@ -11,11 +11,19 @@
 # Required env:
 #   VERSION   — firmware version (e.g. "0.90.0-alpha")
 #   ARTIFACTS — directory containing the long-named firmware build outputs
+# Optional env:
+#   STAGE_LATEST — "1" (default) also mirrors into fw/latest/; "0" stages only
+#                  fw/v{VERSION}/. The Pages pipeline stages /releases/latest
+#                  with the default, then re-runs with STAGE_LATEST=0 to publish
+#                  the integration's pinned (possibly prerelease) FIRMWARE_VERSION
+#                  for the panel's OTA button WITHOUT moving the stable channel
+#                  that ESPHome's native update entity reads via fw/latest/.
 #
 set -euo pipefail
 
 : "${VERSION:?VERSION env var required}"
 : "${ARTIFACTS:=artifacts}"
+: "${STAGE_LATEST:=1}"
 
 VARIANTS=(wifi-ble-co2 ethernet-ble-co2)
 
@@ -29,7 +37,12 @@ variant_label() {
   esac
 }
 
-mkdir -p fw/latest "fw/v${VERSION}"
+# The per-version dir is the source of truth (the manifest md5 is computed
+# there); fw/latest/ is an optional mirror gated on STAGE_LATEST so a
+# prerelease pass can publish fw/v{VERSION}/ without moving the stable channel.
+DEST="fw/v${VERSION}"
+mkdir -p "$DEST"
+[ "$STAGE_LATEST" = "1" ] && mkdir -p fw/latest
 
 for VARIANT in "${VARIANTS[@]}"; do
   ART="everything-presence-pro-${VARIANT}"
@@ -40,14 +53,14 @@ for VARIANT in "${VARIANTS[@]}"; do
       || { echo "missing artifact: ${ARTIFACTS}/${ART}${SUFFIX}" >&2; exit 1; }
   done
 
-  cp "${ARTIFACTS}/${ART}.bin"             "fw/latest/${VARIANT}.bin"
-  cp "${ARTIFACTS}/${ART}.ota.bin"         "fw/latest/${VARIANT}.ota.bin"
-  cp "${ARTIFACTS}/${ART}-bootloader.bin"  "fw/latest/${VARIANT}-bootloader.bin"
-  cp "${ARTIFACTS}/${ART}-partitions.bin"  "fw/latest/${VARIANT}-partitions.bin"
+  cp "${ARTIFACTS}/${ART}.bin"             "${DEST}/${VARIANT}.bin"
+  cp "${ARTIFACTS}/${ART}.ota.bin"         "${DEST}/${VARIANT}.ota.bin"
+  cp "${ARTIFACTS}/${ART}-bootloader.bin"  "${DEST}/${VARIANT}-bootloader.bin"
+  cp "${ARTIFACTS}/${ART}-partitions.bin"  "${DEST}/${VARIANT}-partitions.bin"
 
-  OTA_MD5=$(md5sum "fw/latest/${VARIANT}.ota.bin" | cut -d' ' -f1)
+  OTA_MD5=$(md5sum "${DEST}/${VARIANT}.ota.bin" | cut -d' ' -f1)
 
-  cat > "fw/latest/${VARIANT}.json" <<EOF
+  cat > "${DEST}/${VARIANT}.json" <<EOF
 {
   "name": "Everything Presence Pro Grid (${LABEL})",
   "version": "${VERSION}",
@@ -69,7 +82,9 @@ for VARIANT in "${VARIANTS[@]}"; do
 }
 EOF
 
-  for FILE in "${VARIANT}.bin" "${VARIANT}.ota.bin" "${VARIANT}-bootloader.bin" "${VARIANT}-partitions.bin" "${VARIANT}.json"; do
-    cp "fw/latest/${FILE}" "fw/v${VERSION}/${FILE}"
-  done
+  if [ "$STAGE_LATEST" = "1" ]; then
+    for FILE in "${VARIANT}.bin" "${VARIANT}.ota.bin" "${VARIANT}-bootloader.bin" "${VARIANT}-partitions.bin" "${VARIANT}.json"; do
+      cp "${DEST}/${FILE}" "fw/latest/${FILE}"
+    done
+  fi
 done
