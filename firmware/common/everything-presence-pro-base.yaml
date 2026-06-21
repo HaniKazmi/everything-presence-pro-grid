@@ -9,7 +9,7 @@ esphome:
   min_version: "2026.5.3"
   project:
     name: EverythingSmartTechnology.Everything Presence Pro
-    version: "1.2.0"
+    version: "1.2.1"
   on_boot:
     - priority: 200
       then:
@@ -310,10 +310,25 @@ api:
             ESP_LOGI("fw", "Setting update manifest URL: %s", url.c_str());
             id(update_http_request).set_source_url(url);
         - component.update: update_http_request
-        - delay: 1s
-        - update.perform:
-            id: update_http_request
-            force_update: true
+        # component.update fetches + parses the manifest in a background task on
+        # ESP32, so update_info.firmware_url stays empty until that lands. Wait
+        # for it rather than racing a fixed delay: under load (several devices
+        # flashing at once) the fetch can outlast any fixed wait, and forcing
+        # perform then starts the OTA with an empty URL ("URL not set; cannot
+        # start update"). Bounded by a timeout so a failed fetch can't hang.
+        - wait_until:
+            condition:
+              lambda: 'return !id(update_http_request).update_info.firmware_url.empty();'
+            timeout: 30s
+        - if:
+            condition:
+              lambda: 'return !id(update_http_request).update_info.firmware_url.empty();'
+            then:
+              - update.perform:
+                  id: update_http_request
+                  force_update: true
+            else:
+              - lambda: 'ESP_LOGE("fw", "OTA manifest did not load in time; not starting update");'
     - action: epp_set_perspective
       variables:
         perspective: string

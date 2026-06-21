@@ -1268,3 +1268,125 @@ class TestSubscribeOtaProgress:
         device_conn._client.execute_service.assert_not_awaited()
         device_conn.unsubscribe_logs.assert_not_called()
         mock_dm.release_session.assert_called_once_with("AA:BB:CC:DD:EE:FF", device_conn)
+
+
+class TestEmptyUrlRaceRetry:
+    """Deployed firmware's set_update_manifest races an async manifest fetch
+    against a fixed 1s delay; under load the fetch loses and the OTA starts
+    with an empty firmware URL, logging "URL is invalid…" then "URL not set;
+    cannot start update" and no-opping. The watcher retries transparently
+    (the manifest is warm) before surfacing a failure."""
+
+    @staticmethod
+    def _err(message: str) -> MagicMock:
+        from aioesphomeapi import LogLevel as ESPLogLevel
+
+        log_msg = MagicMock()
+        log_msg.level = ESPLogLevel.LOG_LEVEL_ERROR
+        log_msg.message = message
+        return log_msg
+
+    async def _subscribe(self, hass, config_entry):
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.async_resend_ota_manifest = AsyncMock()
+        device_conn = make_mock_device_conn()
+        mock_dm.async_open_session = AsyncMock(return_value=device_conn)
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
+        on_log = device_conn.add_log_callback.call_args[0][0]
+        on_state = device_conn.subscribe_states.await_args[0][0]
+        return mock_dm, connection, on_log, on_state
+
+    async def test_url_not_set_reissues_manifest_and_suppresses_error(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        mock_dm, connection, on_log, _ = await self._subscribe(hass, config_entry)
+
+        on_log(self._err("[E][http_request.ota:037]: URL not set; cannot start update"))
+        await hass.async_block_till_done()
+
+        mock_dm.async_resend_ota_manifest.assert_awaited_once_with("AA:BB:CC:DD:EE:FF")
+        # No terminal error surfaced — the retry is transparent.
+        connection.send_message.assert_not_called()
+
+    async def test_url_invalid_precursor_is_suppressed_without_consuming_a_retry(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """The 'URL is invalid…' line always precedes 'URL not set'; only the
+        latter drives the retry, so the precursor must neither error nor
+        re-issue (else one failure burns two retries)."""
+        mock_dm, connection, on_log, _ = await self._subscribe(hass, config_entry)
+
+        on_log(
+            self._err("[E][http_request.ota:293]: URL is invalid and/or must be prefixed with 'http://' or 'https://'")
+        )
+        await hass.async_block_till_done()
+
+        mock_dm.async_resend_ota_manifest.assert_not_awaited()
+        connection.send_message.assert_not_called()
+
+    async def test_retry_is_bounded_then_surfaces_error(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        from custom_components.eppgrid.websocket_api._firmware import _OTA_EMPTY_URL_RETRY_MAX
+
+        mock_dm, connection, on_log, _ = await self._subscribe(hass, config_entry)
+
+        signal = "[E][http_request.ota:037]: URL not set; cannot start update"
+        for _ in range(_OTA_EMPTY_URL_RETRY_MAX):
+            on_log(self._err(signal))
+        await hass.async_block_till_done()
+        # Retried up to the cap, still no error yet.
+        assert mock_dm.async_resend_ota_manifest.await_count == _OTA_EMPTY_URL_RETRY_MAX
+        connection.send_message.assert_not_called()
+
+        # One more failure past the cap → surface the error to the user.
+        on_log(self._err(signal))
+        await hass.async_block_till_done()
+        assert mock_dm.async_resend_ota_manifest.await_count == _OTA_EMPTY_URL_RETRY_MAX
+        connection.send_message.assert_called_once()
+        sent = connection.send_message.call_args[0][0]
+        assert sent["event"]["state"] == "error"
+
+    async def test_state_steps_aside_when_no_bytes_downloaded(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """The empty-URL no-op flips in_progress True (INSTALLING) then False
+        with the version unchanged, but never downloads a byte (has_progress
+        never set). The state watcher must NOT declare failure on that — the
+        log-driven retry owns it."""
+        _, connection, _, on_state = await self._subscribe(hass, config_entry)
+
+        on_state(make_update_state(in_progress=True, has_progress=False))
+        connection.send_message.reset_mock()  # drop the "updating" event
+        on_state(make_update_state(in_progress=False, current_version="1.1.0", latest_version="1.2.1"))
+        await hass.async_block_till_done()
+
+        connection.send_message.assert_not_called()
+        # Stepping aside deliberately leaves the outer timeout armed as a
+        # backstop (the log-driven retry owns the outcome); unsubscribe to
+        # cancel it so the test doesn't leak a lingering timer.
+        connection.subscriptions[1]()
+        await hass.async_block_till_done()
+
+    async def test_state_still_fails_when_real_download_then_version_unchanged(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """A genuine install failure (bytes actually downloaded — has_progress
+        set — then the version didn't change) must still surface immediately;
+        only the zero-byte empty-URL case is deferred to the retry."""
+        _, connection, _, on_state = await self._subscribe(hass, config_entry)
+
+        on_state(make_update_state(in_progress=True, has_progress=True, progress=42.0))
+        connection.send_message.reset_mock()
+        on_state(make_update_state(in_progress=False, current_version="1.1.0", latest_version="1.2.1"))
+        await hass.async_block_till_done()
+
+        connection.send_message.assert_called_once()
+        sent = connection.send_message.call_args[0][0]
+        assert sent["event"]["state"] == "error"
+        assert sent["event"]["error_key"] == "flasher.errors.ota_failed_version_unchanged"

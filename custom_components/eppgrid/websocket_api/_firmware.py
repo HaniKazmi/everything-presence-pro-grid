@@ -29,6 +29,20 @@ from . import _send_no_session
 # OTA starts, emit `state: error` so the UI doesn't spin forever.
 _OTA_OUTER_TIMEOUT_S = 300
 
+# Deployed firmware's `set_update_manifest` action starts the OTA a fixed 1s
+# after kicking off an asynchronous manifest fetch (the fetch runs in a
+# background task on ESP32). When several devices flash at once that fetch can
+# miss the 1s deadline, so the update forces `perform` with an empty firmware
+# URL and no-ops, logging "URL is invalid…" (precursor) then "URL not set;
+# cannot start update" (the terminal signal). The manifest is warm after that
+# first fetch, so re-issuing it flashes from the now-populated URL. We retry a
+# bounded number of times before surfacing the failure. (Root cause is fixed
+# forward in firmware >=1.2.1, which waits for the fetch to finish; this keeps
+# upgrades from already-deployed firmware working.)
+_OTA_EMPTY_URL_SIGNAL = "URL not set"
+_OTA_EMPTY_URL_PRECURSOR = "URL is invalid and/or must be prefixed"
+_OTA_EMPTY_URL_RETRY_MAX = 3
+
 # Device OTA-error log patterns that mean the firmware download couldn't
 # connect/complete — `Code: -1` (transport failure, no HTTP response; anchored
 # with `(?!\d)` so `Code: -10x` and other negative codes don't match),
@@ -122,6 +136,8 @@ async def websocket_subscribe_ota_progress(
     # on "updating" forever if we waited for `in_progress=True`.
     was_in_progress = False
     ever_active = False  # stricter: True only after seeing in_progress=True
+    saw_progress = False  # True once real download bytes flow (has_progress set)
+    url_retries = 0  # empty-URL-race re-issues fired so far (see _OTA_EMPTY_URL_*)
     done = False  # shared guard: once a terminal event is sent, stop
     timer_cancel: Any = None  # async_call_later cancel handle for the outer timeout
 
@@ -191,7 +207,7 @@ async def websocket_subscribe_ota_progress(
 
     @callback
     def _on_state(state: Any) -> None:
-        nonlocal was_in_progress, ever_active, done
+        nonlocal was_in_progress, ever_active, saw_progress, done
         from aioesphomeapi import UpdateState
 
         if done or not isinstance(state, UpdateState):
@@ -203,6 +219,13 @@ async def websocket_subscribe_ota_progress(
         ):
             was_in_progress = True
             _arm_timer()
+
+        # `has_progress` is only set once the OTA backend reports real download
+        # bytes (OTA_IN_PROGRESS). The empty-URL no-op flips in_progress on
+        # (INSTALLING) but never gets there, so this stays False for it —
+        # letting us tell a zero-byte race from a genuine download that failed.
+        if state.in_progress and state.has_progress:
+            saw_progress = True
 
         if state.in_progress:
             ever_active = True
@@ -236,7 +259,13 @@ async def websocket_subscribe_ota_progress(
             )
         elif ever_active:
             # We saw in_progress=True earlier and now it's False with the
-            # version unchanged — actual install failure.
+            # version unchanged. If no bytes ever downloaded (has_progress
+            # never set), this is the firmware's empty-URL no-op, not a real
+            # install failure — step aside and let the log-driven retry in
+            # _on_log own it (or the outer timeout backstop if the error log
+            # never arrives). Only a genuine download-then-fail surfaces here.
+            if not saw_progress:
+                return
             done = True
             _cancel_timer()
             connection.send_message(
@@ -252,7 +281,7 @@ async def websocket_subscribe_ota_progress(
 
     @callback
     def _on_log(log_msg: Any) -> None:
-        nonlocal done
+        nonlocal done, url_retries
         if done:
             return
 
@@ -278,12 +307,31 @@ async def websocket_subscribe_ota_progress(
         # because the body mentions the qualified component name.
         if not any(tag in text for tag in ("http_request.ota", "http_request.update", "http_request.idf")):
             return
-        done = True
-        _cancel_timer()
         # Extract message after the ESPHome component tag
         # Format: [E][http_request.ota:294]: Actual message here
         parts = text.split("]: ", 1)
         clean_msg = parts[1] if len(parts) > 1 else text
+
+        # Transparent retry for the firmware's empty-URL manifest race (see the
+        # _OTA_EMPTY_URL_* constants). The "URL is invalid…" precursor carries
+        # no actionable info and always precedes the "URL not set" signal, so
+        # drop it without spending a retry; the signal drives a bounded
+        # re-issue of the (now-warm) manifest before we surface a failure.
+        if _OTA_EMPTY_URL_PRECURSOR in clean_msg:
+            return
+        if _OTA_EMPTY_URL_SIGNAL in clean_msg and url_retries < _OTA_EMPTY_URL_RETRY_MAX:
+            url_retries += 1
+            _LOGGER.info(
+                "OTA for %s started before its firmware manifest finished loading; re-issuing (%d/%d)",
+                mac,
+                url_retries,
+                _OTA_EMPTY_URL_RETRY_MAX,
+            )
+            hass.async_create_task(manager.async_resend_ota_manifest(mac))
+            return
+
+        done = True
+        _cancel_timer()
         # The frontend renders error events exclusively via `error_key`
         # (flasher-controller falls back to update_failed_generic when the
         # key is absent) — without it, the extracted device message never
