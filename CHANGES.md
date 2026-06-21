@@ -22,6 +22,10 @@ and firmware downloads, see the
 
 ### Improvements
 
+- **Smoother device setup after flashing.** Once a newly flashed device is on
+  your network, the panel adds it and opens a dialog to set its name and area
+  straight away. The previous flow could silently skip naming when it couldn't
+  match the new device, leaving the setup banner nagging.
 - **Flash firmware from your browser over HTTPS.** When the in-panel USB
   flasher is unavailable — most often because you reach Home Assistant over
   plain HTTP, which browsers block from USB access — the panel now explains why
