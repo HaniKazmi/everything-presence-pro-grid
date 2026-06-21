@@ -3018,7 +3018,33 @@ describe("desktop max-width centering", () => {
 		// saveCancelBarStyles const adds a second .save-cancel-bar block (chrome only),
 		// so match against the composed cssText rather than the first block slice.
 		expect(cssText).toMatch(/\.save-cancel-bar\s*{[^}]*flex-shrink:\s*0/);
-		// Unconditional now — no mobile-only @media gating the scroll/pin.
-		expect(cssText).not.toContain("@media (max-width: 819px)");
+		// Unconditional now — the stylesheet that defines the scroll/pin must not
+		// gate them behind the mobile breakpoint. (Other stylesheets — e.g.
+		// settingStyles' slider-row label wrap — may legitimately use @media, so
+		// guard the scroll/pin sheet specifically rather than the whole cssText.)
+		const scrollPinSheet = (EppSettingsView as any).styles
+			.map((s: { cssText?: string }) => s.cssText ?? String(s))
+			.find((c: string) => c.includes(".settings-scroll {"));
+		expect(scrollPinSheet).toBeDefined();
+		expect(scrollPinSheet).not.toContain("@media (max-width: 819px)");
+	});
+
+	it("stacks slider-row labels above the control on mobile so the slider can't overlap the label", () => {
+		// On narrow screens the right-aligned .setting-input-unit (slider + value +
+		// unit) overflowed LEFT over the label text. A mobile breakpoint drops the
+		// slider-row label onto its own full-width line so the control wraps below
+		// it. Scoped via :has(.setting-range) — toggle/select rows stay on one line.
+		// (happy-dom has no layout; guard the CSS rule + its cascade context.)
+		const cssText = (EppSettingsView as any).styles
+			.map((s: { cssText?: string }) => s.cssText ?? String(s))
+			.join("\n");
+		// Anchor on the mobile media block, then assert the scoped selector sets
+		// flex-basis:100% anywhere within its own rule body ([^}]* stops at the
+		// rule's closing brace) — non-positional so adding another declaration
+		// before flex-basis later doesn't fail this spuriously.
+		const mobile = cssText.slice(cssText.indexOf("@media (max-width: 819px)"));
+		expect(mobile).toMatch(
+			/\.setting-row:has\(\.setting-range\) label:not\(\.toggle-switch\) {[^}]*flex-basis:\s*100%/,
+		);
 	});
 });

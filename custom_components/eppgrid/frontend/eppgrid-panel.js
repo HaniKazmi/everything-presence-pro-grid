@@ -376,6 +376,22 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
     color: var(--epp-text-muted, var(--secondary-text-color, #757575));
     flex-shrink: 0;
   }
+
+  /* Mobile: give a slider row's label its own full-width line above the
+     control. The control group (.setting-input-unit) is right-aligned, so
+     on narrow screens its min-content (slider + value + unit) is wider than
+     its flex-allotted width and overflows LEFT over the label text instead
+     of wrapping. Forcing the label to 100% basis drops the slider, value,
+     unit, reset and info onto the next line with room to breathe. Scoped to
+     rows that actually contain a slider via :has(.setting-range) — toggle
+     and select rows fit fine on one line and must not stack.
+     (@media placed after the base .setting-row rules so it wins on source
+     order; verify it survives in the built bundle.) */
+  @media (max-width: 819px) {
+    .setting-row:has(.setting-range) label:not(.toggle-switch) {
+      flex-basis: 100%;
+    }
+  }
 `,Se=a`
   .toggle-switch {
     position: relative;
