@@ -1824,13 +1824,4 @@ describe("UsbFlashState types", () => {
 		const s: UsbFlashState = { step: "wifi_check" };
 		expect(s.step).toBe("wifi_check");
 	});
-
-	it("accepts autoSkipped field on wifi_configured", () => {
-		const s: UsbFlashState = {
-			step: "wifi_configured",
-			ip: "192.168.1.1",
-			autoSkipped: true,
-		};
-		expect(s.autoSkipped).toBe(true);
-	});
 });

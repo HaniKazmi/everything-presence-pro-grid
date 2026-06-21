@@ -159,6 +159,26 @@ describe("update firmware button navigates to flash tab", () => {
 		const str = JSON.stringify(result);
 		expect(str).toContain("protocol.update_firmware");
 	});
+
+	it("switches to the flasher tab via _updateFirmware when there are no unsaved changes", () => {
+		const el = createPanel("firmware_behind");
+		const a = el as any;
+		a._panelTab = "config";
+		a._dirty = false;
+		a._updateFirmware();
+		expect(a._panelTab).toBe("flasher");
+	});
+
+	it("does NOT switch to the flasher tab when there are unsaved changes — raises the unsaved dialog instead", () => {
+		const el = createPanel("firmware_behind");
+		const a = el as any;
+		a._panelTab = "config";
+		a._dirty = true;
+		a._updateFirmware();
+		// Guarded: the tab switch is blocked and the unsaved-changes dialog is shown.
+		expect(a._panelTab).toBe("config");
+		expect(a._showUnsavedDialog).toBe(true);
+	});
 });
 
 describe("reconnecting state renders connecting screen", () => {

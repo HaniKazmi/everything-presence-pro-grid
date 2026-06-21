@@ -1295,7 +1295,7 @@ describe("_handleWifiScan", () => {
 		expect(runWifiScan).toHaveBeenCalled();
 	});
 
-	describe("_handleWifiScan from autoSkipped", () => {
+	describe("_handleWifiScan opId handling", () => {
 		let ctrl: FlasherController;
 		let mockPort: ReturnType<typeof makeMockPort>;
 
@@ -1306,12 +1306,11 @@ describe("_handleWifiScan", () => {
 			mockPort = makeMockPort();
 		});
 
-		it("invalidates opId when triggered during wifi_configured autoSkipped state", async () => {
+		it("invalidates opId when triggered during a wifi_configured state", async () => {
 			ctrl.serialPort = mockPort as any;
 			ctrl.updateUsbState({
 				step: "wifi_configured",
 				ip: "192.168.1.42",
-				autoSkipped: true,
 			});
 			const beforeOp = ctrl.opId;
 

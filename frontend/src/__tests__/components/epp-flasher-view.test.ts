@@ -2012,47 +2012,6 @@ describe("error state — buttons", () => {
 	});
 });
 
-describe("render() wifi_configured with autoSkipped", () => {
-	it("renders Configure WiFi override link when autoSkipped=true", () => {
-		const el = createView({
-			usbFlashState: {
-				step: "wifi_configured",
-				ip: "192.168.1.42",
-				autoSkipped: true,
-			},
-		});
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-		expect(c.querySelector(".wifi-override-link")).not.toBeNull();
-		expect(c.querySelector(".wifi-override-link")!.textContent).toContain(
-			"flasher.configure_wifi_override",
-		);
-	});
-
-	it("does NOT render override link when autoSkipped is falsy", () => {
-		const el = createView({
-			usbFlashState: { step: "wifi_configured", ip: "192.168.1.42" },
-		});
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-		expect(c.querySelector(".wifi-override-link")).toBeNull();
-	});
-
-	it("fires wifi-scan event when override link is clicked", () => {
-		const el = createView({
-			usbFlashState: {
-				step: "wifi_configured",
-				ip: "192.168.1.42",
-				autoSkipped: true,
-			},
-		});
-		const fired: string[] = [];
-		el.addEventListener("wifi-scan", () => fired.push("wifi-scan"));
-		(el as any)._dispatchWifiScan();
-		expect(fired).toEqual(["wifi-scan"]);
-	});
-});
-
 describe("cancel button on in-flight states", () => {
 	it("renders Cancel on wifi_scan and fires flasher-cancel", () => {
 		const el = createView({
