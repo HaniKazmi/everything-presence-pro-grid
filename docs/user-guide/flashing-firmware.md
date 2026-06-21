@@ -76,6 +76,7 @@ To change Wi-Fi credentials on an already-flashed device without a full re-flash
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | Browser port picker shows no devices | Charge-only USB cable | Swap for a data cable. |
+| Repeated error messages while flashing | Browser's USB serial connection got into a bad state | Refresh the page and try again. |
 | Device flashed but doesn't appear in HA | ESPHome hasn't discovered it yet | Add ESPHome manually with the device's hostname or IP, per the steps above. |
 | Device is on ESPHome but not showing in the Everything Presence Pro Grid panel | Device is still running the original firmware | Check for a **Firmware Version** sensor on the ESPHome device page. If missing, re-flash. |
 
