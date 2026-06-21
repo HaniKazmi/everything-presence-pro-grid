@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 #
-# Stage freshly-built firmware artifacts into fw/latest/ and fw/v{VERSION}/
-# using the short-name convention the HA integration and ESPHome http_request
-# OTA source URLs expect.
+# Stage freshly-built firmware artifacts into fw/v{VERSION}/ (always) and,
+# unless STAGE_LATEST=0, mirror them into fw/latest/ — using the short-name
+# convention the HA integration and ESPHome http_request OTA source URLs expect.
 #
 # Input: artifacts/everything-presence-pro-{variant}.{bin,ota.bin,-bootloader.bin,-partitions.bin}
-# Output: fw/latest/{variant}.{bin,json,ota.bin,-bootloader.bin,-partitions.bin}
-#         fw/v{VERSION}/{variant}.{bin,json,ota.bin,-bootloader.bin,-partitions.bin}
+# Output: fw/v{VERSION}/{variant}.{bin,json,ota.bin,-bootloader.bin,-partitions.bin}  (always)
+#         fw/latest/{variant}.{bin,json,ota.bin,-bootloader.bin,-partitions.bin}      (STAGE_LATEST=1, default)
 #
 # Required env:
 #   VERSION   — firmware version (e.g. "0.90.0-alpha")
