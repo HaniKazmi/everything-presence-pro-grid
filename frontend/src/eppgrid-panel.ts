@@ -2758,6 +2758,23 @@ export class EPPGridPanel extends LitElement {
 		`;
 	}
 
+	/**
+	 * Switch to the flasher tab to update a firmware-behind device. Routed
+	 * through the navigation guard so unsaved config edits raise the
+	 * unsaved-changes dialog and block the switch — otherwise the user could
+	 * land in the flasher while dirty (every other flasher-tab entry point is
+	 * already guarded).
+	 */
+	private _updateFirmware(): void {
+		this._navGuard.guardNavigation(() => {
+			this._panelTab = "flasher";
+			if (this._flasherCtrl.loading) {
+				this._flasherCtrl.hass = this.hass;
+				this._flasherCtrl.subscribeDeviceList();
+			}
+		});
+	}
+
 	private _renderProtocolBanner() {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		if (!dev || dev.firmware_status === "compatible") return nothing;
@@ -2779,13 +2796,7 @@ export class EPPGridPanel extends LitElement {
 				${
 					isBehind
 						? html`<epp-button variant="primary"
-						@click=${() => {
-							this._panelTab = "flasher";
-							if (this._flasherCtrl.loading) {
-								this._flasherCtrl.hass = this.hass;
-								this._flasherCtrl.subscribeDeviceList();
-							}
-						}}
+						@click=${() => this._updateFirmware()}
 					>${this._localize("protocol.update_firmware")}</epp-button>`
 						: nothing
 				}
