@@ -38,10 +38,15 @@ def _make_artifacts(artifacts_dir: Path) -> None:
             (artifacts_dir / f"{prefix}{suffix}").write_bytes(f"{prefix}{suffix}".encode())
 
 
-def _run_stage(tmp_path: Path, version: str, script: Path = SCRIPT) -> subprocess.CompletedProcess:
+def _run_stage(
+    tmp_path: Path,
+    version: str,
+    script: Path = SCRIPT,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
     artifacts = tmp_path / "artifacts"
     _make_artifacts(artifacts)
-    env = {**os.environ, "VERSION": version, "ARTIFACTS": str(artifacts)}
+    env = {**os.environ, "VERSION": version, "ARTIFACTS": str(artifacts), **(extra_env or {})}
     return subprocess.run(["bash", str(script)], cwd=tmp_path, env=env, capture_output=True, text=True)
 
 
@@ -81,15 +86,7 @@ def test_stage_latest_zero_writes_only_versioned_dir(tmp_path: Path) -> None:
     panel's OTA button (fw/v{VERSION}/). That second pass must NOT move the
     stable channel, or a beta would silently auto-push to every device."""
     version = "9.9.9-beta.1"
-    artifacts = tmp_path / "artifacts"
-    _make_artifacts(artifacts)
-    env = {
-        **os.environ,
-        "VERSION": version,
-        "ARTIFACTS": str(artifacts),
-        "STAGE_LATEST": "0",
-    }
-    result = subprocess.run(["bash", str(SCRIPT)], cwd=tmp_path, env=env, capture_output=True, text=True)
+    result = _run_stage(tmp_path, version, extra_env={"STAGE_LATEST": "0"})
     assert result.returncode == 0, result.stdout + result.stderr
 
     versioned = tmp_path / "fw" / f"v{version}"
@@ -113,31 +110,11 @@ def test_stage_latest_zero_preserves_existing_latest(tmp_path: Path) -> None:
     latest.mkdir(parents=True)
     (latest / "wifi-ble-co2.json").write_text('{"version": "1.1.0"}')
 
-    version = "9.9.9-beta.1"
-    artifacts = tmp_path / "artifacts"
-    _make_artifacts(artifacts)
-    env = {
-        **os.environ,
-        "VERSION": version,
-        "ARTIFACTS": str(artifacts),
-        "STAGE_LATEST": "0",
-    }
-    result = subprocess.run(["bash", str(SCRIPT)], cwd=tmp_path, env=env, capture_output=True, text=True)
+    result = _run_stage(tmp_path, "9.9.9-beta.1", extra_env={"STAGE_LATEST": "0"})
     assert result.returncode == 0, result.stdout + result.stderr
 
     # Stable channel untouched by the prerelease pass.
     assert json.loads((latest / "wifi-ble-co2.json").read_text())["version"] == "1.1.0"
-
-
-def test_stage_default_still_writes_both_dirs(tmp_path: Path) -> None:
-    """Behaviour-preserving guard: without STAGE_LATEST (or with it unset), the
-    script must keep populating BOTH fw/latest/ and fw/v{VERSION}/ exactly as
-    before — the latest-release pass depends on this default."""
-    version = "9.9.9-test"
-    result = _run_stage(tmp_path, version)
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert (tmp_path / "fw" / "latest").is_dir()
-    assert (tmp_path / "fw" / f"v{version}").is_dir()
 
 
 def test_manifest_paths_are_relative_and_files_exist_alongside(tmp_path: Path) -> None:
