@@ -20,6 +20,9 @@ export class EppSetupForm extends LitElement {
 	private _initialized = false;
 
 	static styles = css`
+		.recreate-toggle {
+			margin-top: var(--epp-space-3);
+		}
 		.setup-form-actions {
 			display: flex;
 			justify-content: flex-end;
@@ -105,6 +108,7 @@ export class EppSetupForm extends LitElement {
 			${
 				this._hasNewName
 					? html`<epp-toggle
+						class="recreate-toggle"
 						data-test="recreate"
 						.label=${L("device_setup.recreate_entity_ids")}
 						.checked=${this._recreate}
