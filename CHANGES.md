@@ -4,6 +4,17 @@ User-facing changes to Everything Presence Pro Grid. For full release assets
 and firmware downloads, see the
 [GitHub releases page](https://github.com/clintongormley/everything-presence-pro-grid/releases).
 
+## v1.2.1 — 2026-06-21
+
+### Fixes
+
+- **Updating several devices at once is now reliable.** When you started
+  firmware updates on multiple devices together, some could fail to start and
+  stay on the old version. The panel now retries those automatically, and the
+  firmware waits until the update is ready before starting, so batch updates
+  complete. The automatic retry also helps devices still on older firmware; the
+  firmware-side fix takes effect once they're on v1.2.1.
+
 ## v1.2.0 — 2026-06-21
 
 ### New features
