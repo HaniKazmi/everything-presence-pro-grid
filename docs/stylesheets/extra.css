@@ -4,7 +4,7 @@
    <button slot="activate"> buttons are left unstyled, and Material's CSS reset
    strips the native button chrome (transparent background, no padding), so they
    render as plain text. Style them as filled, theme-coloured buttons. */
-.md-typeset esp-web-install-button button {
+.md-typeset esp-web-install-button button[slot="activate"] {
 	display: inline-block;
 	cursor: pointer;
 	padding: 0.6em 1.5em;
@@ -18,11 +18,11 @@
 	transition: opacity 0.2s;
 }
 
-.md-typeset esp-web-install-button button:hover {
+.md-typeset esp-web-install-button button[slot="activate"]:hover {
 	opacity: 0.85;
 }
 
-.md-typeset esp-web-install-button button:focus-visible {
+.md-typeset esp-web-install-button button[slot="activate"]:focus-visible {
 	outline: 2px solid var(--md-accent-fg-color, #00bcd4);
 	outline-offset: 2px;
 }
