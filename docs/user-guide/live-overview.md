@@ -56,6 +56,15 @@ The **Environment** section shows the four environmental sensors:
 
 All four entities are disabled in Home Assistant by default. Enable the ones you want from the device page (Settings → Entities). The **Calibrate CO2** button is also off by default and follows the same path.
 
+## Detection events
+
+A collapsible **Detection events** log sits below the grid once the room is calibrated. Expand it to watch a readable, real-time timeline of what the zone engine is doing — zone and sensor transitions, room occupancy changes, sensor-assisted clears, stuck-target dismissals, and target movement — instead of a raw state dump. It's the quickest way to see *why* a zone turned on or off.
+
+- **Copy all** copies the current log to the clipboard — handy for attaching to a [bug report](troubleshooting.md#reporting-an-issue).
+- **Clear** empties the log so you can capture a clean run.
+
+Requires firmware v1.2.0 or later.
+
 ## Connection and firmware-status banners
 
 If the device can't be reached or the integration and firmware versions don't line up, the live grid is replaced by a banner informing you of the problem:
