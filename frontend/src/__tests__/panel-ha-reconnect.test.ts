@@ -46,6 +46,7 @@ function mockHass(connected = true) {
 describe("panel HA reconnect handling", () => {
 	beforeEach(() => {
 		localStorage.clear();
+		sessionStorage.clear();
 	});
 
 	it("renders a reconnecting UI when hass.connection.connected is false", () => {
@@ -329,5 +330,185 @@ describe("panel HA reconnect handling", () => {
 
 		expect(spy).toHaveBeenCalled();
 		document.body.removeChild(el);
+	});
+
+	async function mountForBundleCheck(serverHash: string | null) {
+		const hass = mockHass(true);
+		hass.callWS = vi.fn().mockImplementation((msg: any) => {
+			if (msg.type === "eppgrid/frontend_version") {
+				return Promise.resolve({ hash: serverHash });
+			}
+			return Promise.resolve({ devices: [] });
+		});
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
+		el.hass = hass;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		return { el, hass, a: el as any };
+	}
+
+	function reconnect(hass: ReturnType<typeof mockHass>) {
+		hass.connection.connected = false;
+		hass.connection.__emit("disconnected");
+		hass.connection.connected = true;
+		hass.connection.__emit("ready");
+	}
+
+	async function flush() {
+		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+	}
+
+	it("reloads the page when a reconnect reveals a newer bundle", async () => {
+		const { el, hass, a } = await mountForBundleCheck("new");
+		a._currentBundleHash = "old";
+		const reload = vi.fn();
+		a._reloadPage = reload;
+
+		reconnect(hass);
+		await flush();
+
+		expect(hass.callWS).toHaveBeenCalledWith({
+			type: "eppgrid/frontend_version",
+		});
+		expect(reload).toHaveBeenCalledTimes(1);
+		document.body.removeChild(el);
+	});
+
+	it("does not reload when the reconnect bundle hash matches", async () => {
+		const { el, hass, a } = await mountForBundleCheck("same");
+		a._currentBundleHash = "same";
+		const reload = vi.fn();
+		a._reloadPage = reload;
+
+		reconnect(hass);
+		await flush();
+
+		expect(reload).not.toHaveBeenCalled();
+		document.body.removeChild(el);
+	});
+
+	it("retries the bundle check until the integration answers, then reloads", async () => {
+		// On a reconnect right after an HA restart, the eppgrid WS command may
+		// not be registered yet — the first lookup errors. The check must keep
+		// trying across re-init passes and reload once the backend answers.
+		const hass = mockHass(true);
+		let attempt = 0;
+		hass.callWS = vi.fn().mockImplementation((msg: any) => {
+			if (msg.type === "eppgrid/frontend_version") {
+				attempt += 1;
+				if (attempt === 1) {
+					return Promise.reject(new Error("unknown_command"));
+				}
+				return Promise.resolve({ hash: "new" });
+			}
+			return Promise.resolve({ devices: [] });
+		});
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
+		el.hass = hass;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const a = el as any;
+		a._currentBundleHash = "old";
+		const reload = vi.fn();
+		a._reloadPage = reload;
+
+		// First reconnect: command errors → no reload yet, but still pending.
+		reconnect(hass);
+		await flush();
+		expect(reload).not.toHaveBeenCalled();
+
+		// A subsequent re-init pass (the panel's existing retry) gets a real
+		// answer → reload.
+		await a._initialize();
+		await flush();
+		expect(reload).toHaveBeenCalledTimes(1);
+		document.body.removeChild(el);
+	});
+
+	it("stops checking once the integration answers (no repeated version queries)", async () => {
+		const { el, hass, a } = await mountForBundleCheck("same");
+		a._currentBundleHash = "same";
+		a._reloadPage = vi.fn();
+
+		reconnect(hass);
+		await flush();
+		// A definitive "same" answer resolves the check; further re-init passes
+		// must not keep polling the version endpoint.
+		await a._initialize();
+		await a._initialize();
+		await flush();
+
+		const versionCalls = (hass.callWS as any).mock.calls.filter(
+			(c: any[]) => c[0]?.type === "eppgrid/frontend_version",
+		);
+		expect(versionCalls).toHaveLength(1);
+		document.body.removeChild(el);
+	});
+
+	it("does not query the bundle version on the initial connect", async () => {
+		const { el, hass } = await mountForBundleCheck("new");
+		await new Promise((r) => setTimeout(r, 0));
+
+		const versionCalls = (hass.callWS as any).mock.calls.filter(
+			(c: any[]) => c[0]?.type === "eppgrid/frontend_version",
+		);
+		expect(versionCalls).toHaveLength(0);
+		document.body.removeChild(el);
+	});
+
+	it("does not issue concurrent version queries while one is in flight", async () => {
+		let resolveFetch!: (v: unknown) => void;
+		const hass = mockHass(true);
+		hass.callWS = vi.fn().mockImplementation((msg: any) => {
+			if (msg.type === "eppgrid/frontend_version") {
+				return new Promise((r) => {
+					resolveFetch = r;
+				});
+			}
+			return Promise.resolve({ devices: [] });
+		});
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
+		el.hass = hass;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const a = el as any;
+		a._currentBundleHash = "old";
+		const reload = vi.fn();
+		a._reloadPage = reload;
+		a._bundleCheckPending = true;
+
+		// Two checks while the first lookup is still pending.
+		void a._maybeCheckForNewBundle();
+		void a._maybeCheckForNewBundle();
+		await flush();
+
+		const versionCalls = (hass.callWS as any).mock.calls.filter(
+			(c: any[]) => c[0]?.type === "eppgrid/frontend_version",
+		);
+		expect(versionCalls).toHaveLength(1);
+
+		resolveFetch({ hash: "new" });
+		await flush();
+		expect(reload).toHaveBeenCalledTimes(1);
+		document.body.removeChild(el);
+	});
+
+	it("reloads the page via location.reload by default", () => {
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
+		const original = window.location.reload;
+		const reload = vi.fn();
+		Object.defineProperty(window.location, "reload", {
+			configurable: true,
+			value: reload,
+		});
+		try {
+			(el as any)._reloadPage();
+			expect(reload).toHaveBeenCalledTimes(1);
+		} finally {
+			Object.defineProperty(window.location, "reload", {
+				configurable: true,
+				value: original,
+			});
+		}
 	});
 });
