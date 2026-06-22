@@ -425,6 +425,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     handler in `hass.data` indexed by command type, so re-registration on
     config-entry reload simply overwrites the prior entry.
     """
+    websocket_api.async_register_command(hass, websocket_frontend_version)
     websocket_api.async_register_command(hass, websocket_subscribe_device_list)
     websocket_api.async_register_command(hass, websocket_list_devices)
     websocket_api.async_register_command(hass, websocket_set_show_room_calibration_tutorial)
@@ -587,3 +588,4 @@ from ._flasher import websocket_add_esphome_device  # noqa: E402
 from ._flasher import websocket_delete_esphome_device  # noqa: E402
 from ._flasher import websocket_list_flashable_devices  # noqa: E402
 from ._flasher import websocket_subscribe_flashable_devices  # noqa: E402
+from ._frontend import websocket_frontend_version  # noqa: E402
