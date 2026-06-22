@@ -17,6 +17,15 @@ and firmware downloads, see the
 
 ## v1.2.0 — 2026-06-21
 
+### Interface
+
+- **Redesigned, responsive interface.** The panel now works on phones and
+  tablets — larger touch targets, a bottom-sheet zone editor on small screens,
+  and a side-by-side editor with a full-width live grid on desktop.
+- **Follows your Home Assistant theme.** Colours, surfaces, and dark mode are
+  now driven by your active theme, so the panel matches the rest of Home
+  Assistant instead of using fixed styling.
+
 ### New features
 
 - **Device Groups editor redesigned.** Pick which devices to include and which
