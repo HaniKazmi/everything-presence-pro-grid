@@ -4,6 +4,18 @@ User-facing changes to Everything Presence Pro Grid. For full release assets
 and firmware downloads, see the
 [GitHub releases page](https://github.com/clintongormley/everything-presence-pro-grid/releases).
 
+## v1.2.2 — 2026-06-22
+
+### Fixes
+
+- **The firmware flasher now lists devices in a predictable order.** Devices
+  used to appear in whatever order they were discovered; they're now sorted
+  alphabetically by name, so the same device is always in the same place.
+- **Calibration controls stay inside their box on narrow layouts.** On narrow
+  screens — and when the editor column tightens on desktop — the uncalibrated
+  field-of-view diagram and the "Calibrate room size" button could spill
+  outside their card. Both now scale and wrap to fit.
+
 ## v1.2.1 — 2026-06-21
 
 ### Fixes
