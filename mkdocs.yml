@@ -58,6 +58,11 @@ extra_javascript:
   - path: https://unpkg.com/esp-web-tools@10/dist/web/install-button.js
     type: module
 
+# Styles the web-flasher activate buttons (esp-web-tools leaves custom slotted
+# buttons unstyled, so they render as plain text without this).
+extra_css:
+  - stylesheets/extra.css
+
 markdown_extensions:
   - admonition
   - attr_list
