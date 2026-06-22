@@ -13,6 +13,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
+from .const import CURRENT_BUNDLE_HASH_KEY
 from .const import DOMAIN
 from .device_groups._registry import zone_name_from_store
 from .device_manager import DeviceManager
@@ -192,6 +193,10 @@ async def _register_frontend_resources(hass: HomeAssistant) -> str:
         js_hash = await hass.async_add_executor_job(_hash_file, js_path)
     except OSError:
         js_hash = "0"
+
+    # Stash the current hash so the eppgrid/frontend_version WS command can hand
+    # it back to an open panel, which reloads itself when its own hash differs.
+    hass.data[CURRENT_BUNDLE_HASH_KEY] = js_hash
 
     registered: set[str] = hass.data.setdefault(_STATIC_HASH_PATHS_KEY, set())
     if js_hash not in registered:

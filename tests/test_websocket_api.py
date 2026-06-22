@@ -6509,3 +6509,45 @@ class TestConfigureDevice:
 
         assert "onboarded" not in mock_dm.store.devices.get(mac, {})
         mock_dm.store.async_save.assert_not_awaited()
+
+
+class TestWebSocketFrontendVersion:
+    """Tests for eppgrid/frontend_version (panel self-reload check)."""
+
+    async def test_returns_stored_bundle_hash(self, hass: HomeAssistant) -> None:
+        """Returns the current bundle hash stashed in hass.data."""
+        from custom_components.eppgrid.const import CURRENT_BUNDLE_HASH_KEY
+        from custom_components.eppgrid.websocket_api import websocket_frontend_version
+
+        hass.data[CURRENT_BUNDLE_HASH_KEY] = "abcd1234"
+        connection = MagicMock()
+        msg = {"id": 7, "type": "eppgrid/frontend_version"}
+
+        websocket_frontend_version(hass, connection, msg)
+
+        connection.send_result.assert_called_once_with(7, {"hash": "abcd1234"})
+
+    async def test_returns_none_hash_when_unset(self, hass: HomeAssistant) -> None:
+        """Returns a null hash (not an error) when no hash has been stored yet."""
+        from custom_components.eppgrid.websocket_api import websocket_frontend_version
+
+        connection = MagicMock()
+        msg = {"id": 8, "type": "eppgrid/frontend_version"}
+
+        websocket_frontend_version(hass, connection, msg)
+
+        connection.send_result.assert_called_once_with(8, {"hash": None})
+
+    async def test_requires_admin(self, hass: HomeAssistant) -> None:
+        """Non-admin callers are rejected (the panel is admin-only)."""
+        from homeassistant.exceptions import Unauthorized
+
+        from custom_components.eppgrid.websocket_api import websocket_frontend_version
+
+        connection = MagicMock()
+        connection.user.is_admin = False
+        msg = {"id": 9, "type": "eppgrid/frontend_version"}
+
+        with pytest.raises(Unauthorized):
+            websocket_frontend_version(hass, connection, msg)
+        connection.send_result.assert_not_called()

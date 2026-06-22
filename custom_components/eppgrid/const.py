@@ -2,6 +2,11 @@
 
 DOMAIN = "eppgrid"
 
+# hass.data key holding the current panel bundle content hash. Set when the
+# frontend resources are registered; read by the eppgrid/frontend_version WS
+# command so an open panel can detect a newer bundle and reload itself.
+CURRENT_BUNDLE_HASH_KEY = f"{DOMAIN}_current_bundle_hash"
+
 # Grid
 GRID_COLS = 20
 GRID_ROWS = 20

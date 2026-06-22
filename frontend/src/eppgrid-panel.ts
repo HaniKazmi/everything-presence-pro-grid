@@ -60,6 +60,7 @@ import {
 } from "./lib/settings-defaults.js";
 import { persistSelectedMac } from "./lib/storage.js";
 import { tablistKeydownIndex } from "./lib/tablist-nav.js";
+import { checkForNewBundle, parseBundleHash } from "./lib/version-check.js";
 import {
 	DEFAULT_SIDEBAR_TAB,
 	parseViewHash,
@@ -95,6 +96,27 @@ import { tokens } from "./ui/tokens.js";
 // for the newly added device to appear in the device list.
 const DEVICE_WAIT_MAX_ATTEMPTS = 30;
 const DEVICE_WAIT_DELAY_MS = 1000;
+
+// Content hash of the running bundle, read from its own content-hashed URL
+// (`/eppgrid_static/<hash>/eppgrid-panel.js`). Compared against the server's
+// current hash on reconnect so an open panel can reload itself after an
+// upgrade. null when the URL isn't the hashed bundle path (e.g. in tests) —
+// the check then no-ops.
+const CURRENT_BUNDLE_HASH = parseBundleHash(import.meta.url);
+
+// Resolve sessionStorage without throwing: in some browsers the property
+// *getter* itself throws (blocked storage / private mode), not just its
+// methods, so a bare `sessionStorage` reference would reject the fire-and-forget
+// version check and defeat the reload in exactly the case the loop guard is
+// meant to tolerate. Returns null when unavailable; the check then runs without
+// a loop guard.
+function safeSessionStorage(): Storage | null {
+	try {
+		return typeof sessionStorage !== "undefined" ? sessionStorage : null;
+	} catch {
+		return null;
+	}
+}
 
 // Everything Presence Pro Grid logo, inlined from custom_components/eppgrid/
 // brand/icon.svg so it ships in the bundle (no extra static path / request).
@@ -814,6 +836,16 @@ export class EPPGridPanel extends LitElement {
 		const wasDisconnected = !this._haConnected;
 		this._haConnected = true;
 		if (wasDisconnected) {
+			// A reconnect right after the backend came back is exactly when an
+			// upgrade+restart would have swapped the bundle. Arm the bundle-version
+			// check and try it now; if the integration's WS command isn't back
+			// yet, `_runInitialize` retries it across re-init passes — see
+			// `_maybeCheckForNewBundle`. The in-flight latch keeps this immediate
+			// attempt from racing the one inside `_runInitialize`. Running it here
+			// too means we don't depend on a fresh (non-deduped) `_initialize`
+			// pass actually reaching the check.
+			this._bundleCheckPending = true;
+			void this._maybeCheckForNewBundle();
 			// Device list / session subscriptions may have been torn down during
 			// the outage — re-bootstrap so the UI recovers without a manual
 			// reload. `_initialize` keys off `_loadedConfigMac` so it won't
@@ -827,6 +859,49 @@ export class EPPGridPanel extends LitElement {
 	private _onHaDisconnected = (): void => {
 		this._haConnected = false;
 	};
+
+	// Bundle self-reload deps — overridable in tests. Defaults read the running
+	// bundle's own hash and reload the whole page.
+	private _currentBundleHash: string | null = CURRENT_BUNDLE_HASH;
+	private _reloadPage: () => void = () => location.reload();
+	// Set on reconnect; stays set until a version check gets a definitive answer
+	// from the backend. Drives the retry in `_maybeCheckForNewBundle` so a
+	// reconnect that races the integration's restart still reloads once the WS
+	// command (and its hash) are available.
+	private _bundleCheckPending = false;
+	// Guards against overlapping checks: `_maybeCheckForNewBundle` is fired
+	// (unawaited) from each `_runInitialize` pass, so a slow lookup could still
+	// be in flight when the next pass — or the 2s retry — fires another. Without
+	// this latch each would issue its own `frontend_version` round-trip.
+	private _bundleCheckInFlight = false;
+
+	/**
+	 * Run the armed bundle-version check, if any. Called from each
+	 * `_runInitialize` pass: the first reconnect may beat the integration's
+	 * setup (the WS command isn't registered yet), so the check keeps retrying
+	 * across re-init passes until the backend gives a definitive answer, then
+	 * disarms. Reload / comparison / loop-guard live in `checkForNewBundle`.
+	 */
+	private async _maybeCheckForNewBundle(): Promise<void> {
+		if (!this._bundleCheckPending || this._bundleCheckInFlight) return;
+		this._bundleCheckInFlight = true;
+		try {
+			const resolved = await checkForNewBundle({
+				currentHash: this._currentBundleHash,
+				fetchServerHash: async () => {
+					const res = await this.hass?.callWS({
+						type: "eppgrid/frontend_version",
+					});
+					return res?.hash ?? null;
+				},
+				reload: this._reloadPage,
+				storage: safeSessionStorage(),
+			});
+			if (resolved) this._bundleCheckPending = false;
+		} finally {
+			this._bundleCheckInFlight = false;
+		}
+	}
 
 	// View mode: live (default), editor (grid/zones), or settings (configuration).
 	// Per-tab state — derived from the URL fragment so each browser tab has
@@ -1125,6 +1200,11 @@ export class EPPGridPanel extends LitElement {
 		// Scheduling a retry on a detached host pins the panel in memory and
 		// runs _initialize() against torn-down controllers.
 		if (!this.isConnected) return;
+		// A successful subscribe means the integration's WS commands are back;
+		// run any armed bundle-version check now (fire-and-forget — it keeps the
+		// pending flag set and retries on the next pass if the backend isn't
+		// ready yet).
+		void this._maybeCheckForNewBundle();
 		if (this._devices.length === 0) {
 			// Either first boot before devices are configured, or the HA
 			// integration is still coming up after a restart (custom WS

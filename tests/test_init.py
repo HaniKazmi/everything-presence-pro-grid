@@ -412,6 +412,20 @@ async def test_register_frontend_resources_registers_static_path(hass: HomeAssis
     assert any(c.url_path == "/eppgrid_static/abcd1234" for c in configs)
 
 
+async def test_register_frontend_resources_stores_current_hash(hass: HomeAssistant) -> None:
+    """The current bundle hash is stashed in hass.data for the frontend_version WS command."""
+    from custom_components.eppgrid import _register_frontend_resources
+    from custom_components.eppgrid.const import CURRENT_BUNDLE_HASH_KEY
+
+    hass.http = MagicMock()
+    hass.http.async_register_static_paths = AsyncMock()
+
+    with patch("custom_components.eppgrid._hash_file", return_value="abcd1234"):
+        await _register_frontend_resources(hass)
+
+    assert hass.data[CURRENT_BUNDLE_HASH_KEY] == "abcd1234"
+
+
 async def test_register_frontend_resources_hash_oserror(hass: HomeAssistant) -> None:
     """_register_frontend_resources falls back to '0' hash on OSError."""
     from custom_components.eppgrid import _register_frontend_resources

@@ -212,6 +212,21 @@ Returns discovered EPP devices.
 
 The build flag fields (`bluetooth_enabled`, `co2_enabled`, `ethernet_enabled`, `board_revision`, `sensor_variant`, `firmware_channel`, `model`) are optional — they are only present after the device has connected and build flags have been fetched via the `get_build_flags` API action. Build flags are merged without overriding the base fields above (`mac`, `name`, `host`, `available`, `configured`, `area`, `firmware_status`, `current_connection_count`) — flag data comes from the device and must not rewrite identity fields.
 
+### `frontend_version`
+
+Returns the content hash of the currently-served panel bundle. The panel reads
+its own hash from `import.meta.url` (the bundle loads from the content-hashed
+path `/eppgrid_static/<hash>/eppgrid-panel.js`) and, on websocket reconnect,
+compares it against this value; if they differ — i.e. an upgrade swapped the
+bundle while the tab stayed open — it reloads the page so the new version is
+picked up automatically. Admin only. See `frontend/src/lib/version-check.ts`.
+
+**Request:** `{ "type": "eppgrid/frontend_version" }`
+**Response:** `{ "hash": str | null }` — `null` until the bundle has been hashed
+(e.g. before the panel is first registered). On a bundle read error the hash is
+the string `"0"` (the same sentinel `_register_frontend_resources` puts in the
+static-path URL); the panel treats `"0"` as "unhashable — never reload to it".
+
 ### `get_config`
 
 Returns stored config for a device.
