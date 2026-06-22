@@ -6537,3 +6537,17 @@ class TestWebSocketFrontendVersion:
         websocket_frontend_version(hass, connection, msg)
 
         connection.send_result.assert_called_once_with(8, {"hash": None})
+
+    async def test_requires_admin(self, hass: HomeAssistant) -> None:
+        """Non-admin callers are rejected (the panel is admin-only)."""
+        from homeassistant.exceptions import Unauthorized
+
+        from custom_components.eppgrid.websocket_api import websocket_frontend_version
+
+        connection = MagicMock()
+        connection.user.is_admin = False
+        msg = {"id": 9, "type": "eppgrid/frontend_version"}
+
+        with pytest.raises(Unauthorized):
+            websocket_frontend_version(hass, connection, msg)
+        connection.send_result.assert_not_called()

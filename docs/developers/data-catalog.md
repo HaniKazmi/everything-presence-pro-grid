@@ -223,7 +223,9 @@ picked up automatically. Admin only. See `frontend/src/lib/version-check.ts`.
 
 **Request:** `{ "type": "eppgrid/frontend_version" }`
 **Response:** `{ "hash": str | null }` — `null` until the bundle has been hashed
-(e.g. before the panel is first registered) or on a read error.
+(e.g. before the panel is first registered). On a bundle read error the hash is
+the string `"0"` (the same sentinel `_register_frontend_resources` puts in the
+static-path URL); the panel treats `"0"` as "unhashable — never reload to it".
 
 ### `get_config`
 

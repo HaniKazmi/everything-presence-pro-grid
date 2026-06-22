@@ -493,6 +493,50 @@ describe("panel HA reconnect handling", () => {
 		document.body.removeChild(el);
 	});
 
+	it("still reloads when accessing sessionStorage throws (blocked storage)", async () => {
+		const hass = mockHass(true);
+		hass.callWS = vi.fn().mockImplementation((msg: any) => {
+			if (msg.type === "eppgrid/frontend_version") {
+				return Promise.resolve({ hash: "new" });
+			}
+			return Promise.resolve({ devices: [] });
+		});
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
+		el.hass = hass;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const a = el as any;
+		a._currentBundleHash = "old";
+		const reload = vi.fn();
+		a._reloadPage = reload;
+
+		// Some browsers throw on the sessionStorage *getter* itself (blocked /
+		// private mode), not just on its methods.
+		const had = Object.hasOwn(globalThis, "sessionStorage");
+		const original = Object.getOwnPropertyDescriptor(
+			globalThis,
+			"sessionStorage",
+		);
+		Object.defineProperty(globalThis, "sessionStorage", {
+			configurable: true,
+			get() {
+				throw new Error("SecurityError: storage is blocked");
+			},
+		});
+		try {
+			reconnect(hass);
+			await flush();
+			expect(reload).toHaveBeenCalledTimes(1);
+		} finally {
+			if (had && original) {
+				Object.defineProperty(globalThis, "sessionStorage", original);
+			} else {
+				delete (globalThis as any).sessionStorage;
+			}
+		}
+		document.body.removeChild(el);
+	});
+
 	it("reloads the page via location.reload by default", () => {
 		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 		const original = window.location.reload;

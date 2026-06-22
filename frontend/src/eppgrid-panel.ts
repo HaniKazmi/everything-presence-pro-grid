@@ -104,6 +104,20 @@ const DEVICE_WAIT_DELAY_MS = 1000;
 // the check then no-ops.
 const CURRENT_BUNDLE_HASH = parseBundleHash(import.meta.url);
 
+// Resolve sessionStorage without throwing: in some browsers the property
+// *getter* itself throws (blocked storage / private mode), not just its
+// methods, so a bare `sessionStorage` reference would reject the fire-and-forget
+// version check and defeat the reload in exactly the case the loop guard is
+// meant to tolerate. Returns null when unavailable; the check then runs without
+// a loop guard.
+function safeSessionStorage(): Storage | null {
+	try {
+		return typeof sessionStorage !== "undefined" ? sessionStorage : null;
+	} catch {
+		return null;
+	}
+}
+
 // Everything Presence Pro Grid logo, inlined from custom_components/eppgrid/
 // brand/icon.svg so it ships in the bundle (no extra static path / request).
 // Sized via the .epp-logo CSS rule; viewBox preserved for crisp scaling.
@@ -881,7 +895,7 @@ export class EPPGridPanel extends LitElement {
 					return res?.hash ?? null;
 				},
 				reload: this._reloadPage,
-				storage: typeof sessionStorage !== "undefined" ? sessionStorage : null,
+				storage: safeSessionStorage(),
 			});
 			if (resolved) this._bundleCheckPending = false;
 		} finally {
