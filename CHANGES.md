@@ -4,6 +4,16 @@ User-facing changes to Everything Presence Pro Grid. For full release assets
 and firmware downloads, see the
 [GitHub releases page](https://github.com/clintongormley/everything-presence-pro-grid/releases).
 
+## v1.2.3 — 2026-06-24
+
+### Fixes
+
+- **The panel reloads itself after an update.** After Everything Presence Pro
+  Grid updates to a new version, the panel now notices the new interface and
+  reloads automatically, so you see the latest version instead of a stale,
+  cached one. Previously you might have needed to refresh the page by hand
+  after updating.
+
 ## v1.2.2 — 2026-06-22
 
 ### Fixes
