@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as CardModule from "../eppgrid-card.js";
 import "../eppgrid-card-editor.js";
 import type { EppGridCardEditor } from "../eppgrid-card-editor.js";
+import { buildSchema } from "../eppgrid-card-editor.js";
 
 afterEach(() => document.body.replaceChildren());
 
@@ -164,6 +165,29 @@ describe("eppgrid-card-editor", () => {
 		} as any;
 		const result = (el as any)._computeLabel({ name: "unknown_field_xyz" });
 		expect(result).toBe("unknown_field_xyz");
+	});
+
+	it("buildSchema has presence as a nested expandable with five boolean keys", () => {
+		const schema = buildSchema([]) as any[];
+		const sensorsEntry = schema.find((s: any) => s.name === "sensors");
+		expect(sensorsEntry).toBeTruthy();
+		const presenceEntry = sensorsEntry.schema.find(
+			(s: any) => s.name === "presence",
+		);
+		expect(presenceEntry).toBeTruthy();
+		expect(presenceEntry.type).toBe("expandable");
+		const presenceKeys = presenceEntry.schema.map((s: any) => s.name);
+		expect(presenceKeys).toEqual([
+			"occupancy",
+			"static_presence",
+			"motion_presence",
+			"target_presence",
+			"mmwave",
+		]);
+		// each is a boolean selector
+		for (const item of presenceEntry.schema) {
+			expect(item.selector).toEqual({ boolean: {} });
+		}
 	});
 
 	it("passes defaulted config to form (show_map true when omitted)", async () => {

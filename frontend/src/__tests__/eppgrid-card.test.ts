@@ -55,7 +55,12 @@ describe("applyCardDefaults", () => {
 		expect(result.layout).toBe("horizontal");
 		expect(result.show_furniture).toBe(true);
 		expect(result.show_overlays).toBe(true);
-		expect(result.sensors.presence).toBe(true);
+		// presence absent → all five true
+		expect(result.sensors.presence.occupancy).toBe(true);
+		expect(result.sensors.presence.static_presence).toBe(true);
+		expect(result.sensors.presence.motion_presence).toBe(true);
+		expect(result.sensors.presence.target_presence).toBe(true);
+		expect(result.sensors.presence.mmwave).toBe(true);
 		expect(result.sensors.zones).toBe(true);
 		expect(result.sensors.environmental.temperature).toBe(true);
 		expect(result.sensors.environmental.humidity).toBe(true);
@@ -74,6 +79,26 @@ describe("applyCardDefaults", () => {
 		expect(result.sensors.environmental.humidity).toBe(true);
 		expect(result.sensors.environmental.illuminance).toBe(true);
 		expect(result.sensors.environmental.co2).toBe(true);
+	});
+
+	it("returns all presence keys true when sensors.presence is absent", () => {
+		const result = applyCardDefaults({ sensors: {} });
+		expect(result.sensors.presence.occupancy).toBe(true);
+		expect(result.sensors.presence.static_presence).toBe(true);
+		expect(result.sensors.presence.motion_presence).toBe(true);
+		expect(result.sensors.presence.target_presence).toBe(true);
+		expect(result.sensors.presence.mmwave).toBe(true);
+	});
+
+	it("returns only occupancy true when presence has only occupancy: true", () => {
+		const result = applyCardDefaults({
+			sensors: { presence: { occupancy: true } },
+		});
+		expect(result.sensors.presence.occupancy).toBe(true);
+		expect(result.sensors.presence.static_presence).toBe(false);
+		expect(result.sensors.presence.motion_presence).toBe(false);
+		expect(result.sensors.presence.target_presence).toBe(false);
+		expect(result.sensors.presence.mmwave).toBe(false);
 	});
 
 	it("returns only temperature true when environmental has only temperature: true", () => {
@@ -262,5 +287,52 @@ describe("eppgrid-card rendering", () => {
 		expect(sidebar).toBeTruthy();
 		// envKeys should only include the true entries
 		expect(sidebar.envKeys).toEqual(["temperature"]);
+	});
+
+	it("passes presenceKeys=null to epp-live-sidebar when sensors.presence is absent", async () => {
+		const el = await mount(
+			{
+				type: "custom:eppgrid-card",
+				device_id: "card-preskeys-null",
+				show_map: false,
+			},
+			makeHass(),
+			CALIBRATED,
+		);
+		const sidebar = el.shadowRoot!.querySelector("epp-live-sidebar") as any;
+		expect(sidebar).toBeTruthy();
+		expect(sidebar.presenceKeys).toBeNull();
+	});
+
+	it("passes presenceKeys=['occupancy'] when only occupancy is true", async () => {
+		const el = await mount(
+			{
+				type: "custom:eppgrid-card",
+				device_id: "card-preskeys-occ",
+				show_map: false,
+				sensors: { presence: { occupancy: true } },
+			},
+			makeHass(),
+			CALIBRATED,
+		);
+		const sidebar = el.shadowRoot!.querySelector("epp-live-sidebar") as any;
+		expect(sidebar).toBeTruthy();
+		expect(sidebar.presenceKeys).toEqual(["occupancy"]);
+	});
+
+	it("passes presenceKeys=[] when all presence keys are false", async () => {
+		const el = await mount(
+			{
+				type: "custom:eppgrid-card",
+				device_id: "card-preskeys-empty",
+				show_map: false,
+				sensors: { presence: {} },
+			},
+			makeHass(),
+			CALIBRATED,
+		);
+		const sidebar = el.shadowRoot!.querySelector("epp-live-sidebar") as any;
+		expect(sidebar).toBeTruthy();
+		expect(sidebar.presenceKeys).toEqual([]);
 	});
 });

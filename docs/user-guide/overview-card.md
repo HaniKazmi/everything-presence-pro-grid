@@ -32,7 +32,7 @@ Expand **Sensors** in the editor to control which sensor groups appear in the si
 
 | Option | Default | Description |
 | --- | --- | --- |
-| **Presence** | on | Show the five presence sensors (Occupancy, mmWave Presence, Motion Presence, Static Presence, Target Presence). |
+| **Presence** | *(expandable)* | Toggle Occupancy, Static presence, Motion presence, Target presence, and mmWave individually. All five are on by default. |
 | **Zones** | on | Show per-zone occupancy indicators. |
 | **Environmental** | *(expandable)* | Toggle Temperature, Humidity, Illuminance, and CO2 individually. All four are on by default. Sensors with no current value are hidden automatically. |
 

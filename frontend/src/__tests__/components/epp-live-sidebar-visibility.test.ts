@@ -39,8 +39,8 @@ describe("epp-live-sidebar visibility props", () => {
 		expect(headers(el).length).toBeGreaterThanOrEqual(3);
 	});
 
-	it("hides the presence section when showPresence is false", async () => {
-		const el = await mount({ showPresence: false });
+	it("hides the presence section when presenceKeys is empty array", async () => {
+		const el = await mount({ presenceKeys: [] });
 		// The presence section header is gone entirely.
 		expect(headers(el)).not.toContain("live.presence");
 		// All five presence sensor labels are gone (default localize returns
@@ -56,6 +56,43 @@ describe("epp-live-sidebar visibility props", () => {
 			"live.mmwave",
 		]) {
 			expect(labels).not.toContain(presenceKey);
+		}
+	});
+
+	it("shows only the occupancy row when presenceKeys is ['occupancy']", async () => {
+		const el = await mount({ presenceKeys: ["occupancy"] });
+		// The presence section header must still show.
+		expect(headers(el)).toContain("live.presence");
+		const labels = [
+			...el.shadowRoot!.querySelectorAll(".live-sensor-label"),
+		].map((n) => (n.textContent ?? "").trim());
+		// occupancy row must be present
+		expect(labels).toContain("live.occupancy");
+		// the other four presence rows must NOT be present
+		for (const presenceKey of [
+			"live.static_presence",
+			"live.motion_presence",
+			"live.target_presence",
+			"live.mmwave",
+		]) {
+			expect(labels).not.toContain(presenceKey);
+		}
+	});
+
+	it("shows all five presence rows when presenceKeys is null (default)", async () => {
+		const el = await mount({ presenceKeys: null });
+		expect(headers(el)).toContain("live.presence");
+		const labels = [
+			...el.shadowRoot!.querySelectorAll(".live-sensor-label"),
+		].map((n) => (n.textContent ?? "").trim());
+		for (const presenceKey of [
+			"live.occupancy",
+			"live.static_presence",
+			"live.motion_presence",
+			"live.target_presence",
+			"live.mmwave",
+		]) {
+			expect(labels).toContain(presenceKey);
 		}
 	});
 

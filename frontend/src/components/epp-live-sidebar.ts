@@ -54,7 +54,16 @@ export class EppLiveSidebar extends LitElement {
 
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
-	@property({ type: Boolean }) showPresence = true;
+	/** null = show all five presence rows; [] = hide the whole section; otherwise only the listed keys. */
+	@property({ attribute: false }) presenceKeys:
+		| (
+				| "occupancy"
+				| "static_presence"
+				| "motion_presence"
+				| "target_presence"
+				| "mmwave"
+		  )[]
+		| null = null;
 
 	@property({ type: Boolean }) showZones = true;
 
@@ -199,19 +208,19 @@ export class EppLiveSidebar extends LitElement {
 				info: this.localize("info.occupancy"),
 			},
 			{
-				id: "static",
+				id: "static_presence",
 				label: this.localize("live.static_presence"),
 				on: ss.static_state ? ss.static_state !== "I" : ss.static_presence,
 				info: this.localize("info.static_presence"),
 			},
 			{
-				id: "motion",
+				id: "motion_presence",
 				label: this.localize("live.motion_presence"),
 				on: ss.motion_state ? ss.motion_state !== "I" : ss.motion_presence,
 				info: this.localize("info.motion_presence"),
 			},
 			{
-				id: "target",
+				id: "target_presence",
 				label: this.localize("live.target_presence"),
 				on: ss.target_presence,
 				info: this.localize("info.target_presence"),
@@ -223,6 +232,10 @@ export class EppLiveSidebar extends LitElement {
 				info: this.localize("info.mmwave"),
 			},
 		];
+
+		const filteredPresence = this.presenceKeys
+			? sensorDefs.filter((s) => this.presenceKeys?.includes(s.id as never))
+			: sensorDefs;
 
 		// Zone occupancy entries: rest-of-room (slot 0) first to match editor
 		// ordering, then configured named zones in slot order.
@@ -294,7 +307,7 @@ export class EppLiveSidebar extends LitElement {
 			? envSensors.filter((s) => this.envKeys?.includes(s.id as never))
 			: envSensors;
 
-		const showPres = this.showPresence;
+		const showPres = filteredPresence.length > 0;
 		const showZ = this.showZones && this.hasPerspective;
 		const showEnv = filteredEnv.length > 0;
 		const sep = html`<hr style="border: none; border-top: 1px solid var(--divider-color, #eee); margin: 10px 12px;"/>`;
@@ -316,7 +329,7 @@ export class EppLiveSidebar extends LitElement {
         ${
 					showPres
 						? html`<div class="live-section-header">${this.localize("live.presence")}</div>
-            ${sensorDefs.map((s) => this._renderRow(s))}`
+            ${filteredPresence.map((s) => this._renderRow(s))}`
 						: nothing
 				}
         ${

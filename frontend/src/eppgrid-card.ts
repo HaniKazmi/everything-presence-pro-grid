@@ -13,6 +13,12 @@ import { defaultLocalize, type LocalizeFn, setupLocalize } from "./localize.js";
 import { tokens } from "./ui/tokens.js";
 
 type EnvKey = "temperature" | "humidity" | "illuminance" | "co2";
+type PresenceKey =
+	| "occupancy"
+	| "static_presence"
+	| "motion_presence"
+	| "target_presence"
+	| "mmwave";
 
 export interface EppGridCardConfig {
 	type: string;
@@ -22,7 +28,7 @@ export interface EppGridCardConfig {
 	show_sensors?: boolean;
 	layout?: "horizontal" | "vertical";
 	sensors?: {
-		presence?: boolean;
+		presence?: Partial<Record<PresenceKey, boolean>>;
 		zones?: boolean;
 		environmental?: Partial<Record<EnvKey, boolean>>;
 	};
@@ -37,7 +43,7 @@ type ResolvedCardConfig = Omit<EppGridCardConfig, "sensors"> & {
 	show_furniture: boolean;
 	show_overlays: boolean;
 	sensors: {
-		presence: boolean;
+		presence: Record<PresenceKey, boolean>;
 		zones: boolean;
 		environmental: Record<EnvKey, boolean>;
 	};
@@ -48,6 +54,7 @@ export function applyCardDefaults(
 ): ResolvedCardConfig {
 	const sensors = config.sensors ?? {};
 	const envSrc = sensors.environmental;
+	const presSrc = sensors.presence;
 	return {
 		type: config.type ?? "custom:eppgrid-card",
 		device_id: config.device_id ?? "",
@@ -58,7 +65,14 @@ export function applyCardDefaults(
 		show_furniture: config.show_furniture !== false,
 		show_overlays: config.show_overlays !== false,
 		sensors: {
-			presence: sensors.presence !== false,
+			presence: {
+				// presence absent entirely → all on; presence present → only keys explicitly true
+				occupancy: presSrc ? presSrc.occupancy === true : true,
+				static_presence: presSrc ? presSrc.static_presence === true : true,
+				motion_presence: presSrc ? presSrc.motion_presence === true : true,
+				target_presence: presSrc ? presSrc.target_presence === true : true,
+				mmwave: presSrc ? presSrc.mmwave === true : true,
+			},
 			zones: sensors.zones !== false,
 			environmental: {
 				// env absent entirely → all on; env present → only keys explicitly true
@@ -304,6 +318,14 @@ export class EppGridCard extends LitElement {
 					(k) => s.environmental[k as EnvKey],
 				) as EnvKey[])
 			: null;
+		// If the raw config had presence absent, pass null (show all).
+		// If present, derive presenceKeys from the defaulted presence keys that are true.
+		const rawPres = this._config?.sensors?.presence;
+		const presenceKeys = rawPres
+			? (Object.keys(s.presence).filter(
+					(k) => s.presence[k as PresenceKey],
+				) as PresenceKey[])
+			: null;
 		return html`
 			<epp-live-sidebar
 				.sensorState=${data?.sensors ?? EMPTY_SENSORS}
@@ -311,7 +333,7 @@ export class EppGridCard extends LitElement {
 				.zoneConfigs=${parsed?.zoneConfigs ?? []}
 				.hasPerspective=${parsed?.calibration.perspective != null}
 				.localize=${this._localize}
-				.showPresence=${s.presence}
+				.presenceKeys=${presenceKeys}
 				.showZones=${s.zones}
 				.envKeys=${envKeys}
 				.interactive=${false}

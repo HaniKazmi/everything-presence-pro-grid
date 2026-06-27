@@ -44,7 +44,18 @@ export function buildSchema(devices: DeviceOption[]): unknown[] {
 			type: "expandable",
 			title: "Sensors",
 			schema: [
-				{ name: "presence", selector: { boolean: {} } },
+				{
+					name: "presence",
+					type: "expandable",
+					title: "Presence",
+					schema: [
+						{ name: "occupancy", selector: { boolean: {} } },
+						{ name: "static_presence", selector: { boolean: {} } },
+						{ name: "motion_presence", selector: { boolean: {} } },
+						{ name: "target_presence", selector: { boolean: {} } },
+						{ name: "mmwave", selector: { boolean: {} } },
+					],
+				},
 				{ name: "zones", selector: { boolean: {} } },
 				{
 					name: "environmental",
