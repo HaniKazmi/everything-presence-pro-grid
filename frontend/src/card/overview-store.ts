@@ -25,6 +25,11 @@ interface Entry {
 	listeners: Set<Listener>;
 	unsubWs: (() => void) | null;
 	connection: unknown;
+	// True while a websocket open is in flight whose entry has been torn down
+	// (last subscriber left before subscribeMessage resolved). The pending
+	// promise checks this on resolve and calls unsub immediately, so the
+	// backend subscription is not leaked.
+	closing: boolean;
 }
 
 const registry = new Map<string, Entry>();
@@ -41,9 +46,15 @@ function handleMsg(entry: Entry, msg: unknown): void {
 	} else if ("available" in m && !("targets" in m)) {
 		entry.state = { ...entry.state, available: m.available as boolean };
 	} else if ("targets" in m) {
+		// Extract only the OverviewData fields so wire-only keys (id/type/etc.)
+		// don't leak into the cached state.
 		entry.state = {
 			...entry.state,
-			data: m as unknown as OverviewData,
+			data: {
+				targets: m.targets as unknown[],
+				sensors: m.sensors as OverviewData["sensors"],
+				zones: m.zones as OverviewData["zones"],
+			},
 			available: true,
 		};
 	} else {
@@ -58,12 +69,20 @@ function openWs(
 	entry: Entry,
 ): void {
 	entry.connection = hass.connection;
+	entry.closing = false;
 	hass.connection
 		.subscribeMessage((msg: unknown) => handleMsg(entry, msg), {
 			type: "eppgrid/overview/subscribe",
 			device_id: deviceId,
 		})
 		.then((unsub: () => void) => {
+			// If the entry was torn down (last subscriber left, or it was
+			// reopened on a fresh connection) while this open was in flight,
+			// drop the resolved subscription immediately so it isn't leaked.
+			if (entry.closing || registry.get(deviceId) !== entry) {
+				unsub();
+				return;
+			}
 			entry.unsubWs = unsub;
 			entry.state = { ...entry.state, connected: true };
 			emit(entry);
@@ -78,6 +97,10 @@ function closeWs(entry: Entry): void {
 	if (entry.unsubWs) {
 		entry.unsubWs();
 		entry.unsubWs = null;
+	} else {
+		// No unsub yet — the open is still in flight. Flag it so the pending
+		// promise calls unsub on resolve instead of storing it on a dead entry.
+		entry.closing = true;
 	}
 }
 
@@ -96,16 +119,23 @@ export function subscribeOverview(
 	if (!entry) {
 		entry = {
 			refcount: 0,
+			// available starts true so the card doesn't flash "offline" before
+			// the first frame (or an available:false event) arrives.
 			state: { snapshot: null, data: null, available: true, connected: false },
 			listeners: new Set(),
 			unsubWs: null,
 			connection: null,
+			closing: false,
 		};
 		registry.set(deviceId, entry);
 		openWs(hass as { connection: any }, deviceId, entry);
 	} else if (entry.connection !== hass.connection) {
 		// Reconnect: HA handed us a fresh connection — reopen for all listeners.
+		// Flip connected to false first so listeners see the connection
+		// re-establishing rather than a stale true from the dead connection.
 		closeWs(entry);
+		entry.state = { ...entry.state, connected: false };
+		emit(entry);
 		openWs(hass as { connection: any }, deviceId, entry);
 	}
 

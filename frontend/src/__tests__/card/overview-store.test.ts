@@ -68,4 +68,75 @@ describe("OverviewStore", () => {
 		h.emit({ available: false });
 		expect(l.mock.calls.at(-1)![0].available).toBe(false);
 	});
+
+	it("calls unsub if the last subscriber leaves before subscribeMessage resolves", async () => {
+		// Deferred mock: control exactly when the subscribeMessage promise resolves.
+		const unsub = vi.fn();
+		let resolve!: (u: () => void) => void;
+		const subscribeMessage = vi.fn(
+			() =>
+				new Promise<() => void>((r) => {
+					resolve = r;
+				}),
+		);
+		const hass = { connection: { subscribeMessage } };
+
+		const off = subscribeOverview(hass, "devRace", vi.fn());
+		// Unsubscribe synchronously, BEFORE the promise resolves.
+		off();
+		// Now the in-flight subscription resolves with its unsub.
+		resolve(unsub);
+		await Promise.resolve();
+		// The resolved unsub must be called so the backend session is not leaked.
+		expect(unsub).toHaveBeenCalledTimes(1);
+	});
+
+	it("ignores message shapes it does not recognise", async () => {
+		const h = makeHass();
+		const l = vi.fn();
+		subscribeOverview(h.hass, "devUnknown", l);
+		await Promise.resolve();
+		const before = l.mock.calls.length;
+		h.emit({ something: "unexpected" }); // matches no known shape
+		h.emit(null); // non-object guard
+		// No further state emissions for unrecognised frames.
+		expect(l.mock.calls.length).toBe(before);
+	});
+
+	it("marks disconnected and unavailable when the open rejects", async () => {
+		const subscribeMessage = vi.fn(() => Promise.reject(new Error("boom")));
+		const hass = { connection: { subscribeMessage } };
+		const l = vi.fn();
+		subscribeOverview(hass, "devReject", l);
+		await Promise.resolve();
+		await Promise.resolve();
+		const last = l.mock.calls.at(-1)![0];
+		expect(last.connected).toBe(false);
+		expect(last.available).toBe(false);
+	});
+
+	it("reopens on a fresh connection and resets connected during reconnect", async () => {
+		const h = makeHass();
+		const l = vi.fn();
+		subscribeOverview(h.hass, "devReconnect", l);
+		await Promise.resolve();
+		h.emit({ snapshot: { calibration: {} } }); // connected: true via snapshot
+		// Sanity: the snapshot has driven connected to true.
+		expect(l.mock.calls.at(-1)![0].connected).toBe(true);
+		const callsBeforeReconnect = l.mock.calls.length;
+
+		// HA hands us a fresh connection object (reconnect).
+		const conn2 = { subscribeMessage: vi.fn(async () => vi.fn()) };
+		const hass2 = { connection: conn2 };
+		subscribeOverview(hass2, "devReconnect", vi.fn());
+
+		// The old connection's subscription was torn down.
+		expect(h.unsub).toHaveBeenCalledTimes(1);
+		// The new connection was used to reopen.
+		expect(conn2.subscribeMessage).toHaveBeenCalledTimes(1);
+		// During the reconnect window (after the true snapshot) listeners saw
+		// connected flip back to false rather than a stale true.
+		const reconnectCalls = l.mock.calls.slice(callsBeforeReconnect);
+		expect(reconnectCalls.some((c) => c[0].connected === false)).toBe(true);
+	});
 });
