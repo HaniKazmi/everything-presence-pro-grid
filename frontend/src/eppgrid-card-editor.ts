@@ -81,6 +81,7 @@ export class EppGridCardEditor extends LitElement {
 	private _config?: EppGridCardConfig;
 	private _localize: LocalizeFn = defaultLocalize;
 	@state() private _devices: DeviceOption[] = [];
+	private _loading = false;
 
 	setConfig(config: EppGridCardConfig): void {
 		this._config = config;
@@ -111,7 +112,8 @@ export class EppGridCardEditor extends LitElement {
 	}
 
 	private async _loadDevices(): Promise<void> {
-		if (!this.__hass || this._devices.length) return;
+		if (!this.__hass || this._devices.length || this._loading) return;
+		this._loading = true;
 		try {
 			const list = (await this.__hass.callWS({
 				type: "eppgrid/overview/list_devices",
@@ -133,6 +135,8 @@ export class EppGridCardEditor extends LitElement {
 			}
 		} catch {
 			this._devices = [];
+		} finally {
+			this._loading = false;
 		}
 	}
 

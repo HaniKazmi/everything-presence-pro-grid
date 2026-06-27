@@ -94,8 +94,14 @@ async def websocket_overview_subscribe(
         connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
         return
 
-    on_state = _make_grid_target_on_state(connection, msg["id"], mac, device_conn)
-    await device_conn.subscribe_states(on_state)
+    try:
+        on_state = _make_grid_target_on_state(connection, msg["id"], mac, device_conn)
+        await device_conn.subscribe_states(on_state)
+    except Exception as err:
+        _LOGGER.warning("overview/subscribe: subscribe failed for %s: %s", mac, err)
+        manager.release_session(mac, device_conn)
+        connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
+        return
     manager.note_target_subscribe(mac, "grid_target_subs")
     hass.async_create_task(manager.async_push_pipeline_to_device(mac))
 

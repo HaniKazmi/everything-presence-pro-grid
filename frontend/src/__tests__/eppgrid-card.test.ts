@@ -342,6 +342,65 @@ describe("eppgrid-card rendering", () => {
 	});
 });
 
+describe("eppgrid-card loading vs uncalibrated", () => {
+	it("shows loading placeholder when no snapshot has arrived yet", async () => {
+		// Mount WITHOUT emitting a snapshot event — _data.snapshot stays null
+		const h = makeHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-loading-state",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		// Should show loading, NOT uncalibrated
+		const placeholder = el.shadowRoot!.querySelector(".placeholder");
+		expect(placeholder).toBeTruthy();
+		const text = placeholder!.textContent ?? "";
+		expect(text).toContain("Loading");
+		expect(text).not.toContain("calibrated");
+	});
+
+	it("shows uncalibrated placeholder when snapshot has no perspective", async () => {
+		// Emit an empty snapshot — snapshot != null but no perspective calibration
+		const h = makeHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-uncal-state",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		h.emit({ snapshot: {} });
+		await el.updateComplete;
+		const placeholder = el.shadowRoot!.querySelector(".placeholder");
+		expect(placeholder).toBeTruthy();
+		const text = placeholder!.textContent ?? "";
+		// Should show uncalibrated text, NOT loading text
+		expect(text).toContain("calibrated");
+		expect(el.shadowRoot!.querySelector("epp-grid")).toBeNull();
+	});
+
+	it("shows epp-grid when snapshot has a perspective calibration", async () => {
+		// Emit a calibrated snapshot
+		const h = makeHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-calibrated-state",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		h.emit({ snapshot: CALIBRATED });
+		await el.updateComplete;
+		expect(el.shadowRoot!.querySelector("epp-grid")).toBeTruthy();
+		expect(el.shadowRoot!.querySelector(".placeholder")).toBeNull();
+	});
+});
+
 describe("getEntitySuggestion", () => {
 	beforeEach(() => __resetEntitySuggestionCache());
 

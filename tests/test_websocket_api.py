@@ -6767,3 +6767,33 @@ class TestOverviewSubscribe:
         if unsub is not None:
             unsub()
         assert mock_dm.release_session.call_count == 1
+
+    async def test_subscribe_states_raises_releases_session(self, hass, config_entry):
+        """If subscribe_states raises after session is opened, the session must be
+        released, note_target_subscribe must NOT be called, and an available:false
+        event must be sent.
+        """
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe
+
+        mac = "AA:BB:CC:DD:EE:01"
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value=mac)
+        mock_dm.store.devices = {mac: {}}
+        device_conn = MagicMock()
+        device_conn.entities = []
+        device_conn.subscribe_states = AsyncMock(side_effect=ConnectionError("boom"))
+        mock_dm.async_open_session = AsyncMock(return_value=device_conn)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 17, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe, connection, msg)
+
+        mock_dm.release_session.assert_called_once_with(mac, device_conn)
+        mock_dm.note_target_subscribe.assert_not_called()
+        avail_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and c.args[0].get("event", {}).get("available") is False
+        ]
+        assert avail_events, "expected an available:false event"

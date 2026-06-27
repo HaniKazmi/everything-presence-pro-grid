@@ -109,6 +109,7 @@ export class EppGridCard extends LitElement {
 			:host {
 				display: block;
 				container-type: inline-size;
+				--epp-card-sensors-width: 240px;
 			}
 			.overview {
 				display: flex;
@@ -127,7 +128,7 @@ export class EppGridCard extends LitElement {
 				min-width: 0;
 			}
 			.overview--horizontal .sensors {
-				flex: 0 0 240px;
+				flex: 0 0 var(--epp-card-sensors-width);
 			}
 			.content {
 				padding: var(--epp-space-3);
@@ -297,6 +298,9 @@ export class EppGridCard extends LitElement {
 	}
 
 	private _renderMap(cfg: ResolvedCardConfig) {
+		if (this._data.snapshot == null) {
+			return html`<div class="placeholder">${this._localize("card.loading")}</div>`;
+		}
 		const parsed = this._parsedSnapshot;
 		if (!parsed || parsed.calibration.perspective == null) {
 			return html`<div class="placeholder">${this._localize("card.uncalibrated")}</div>`;

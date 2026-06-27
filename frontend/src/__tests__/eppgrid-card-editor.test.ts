@@ -190,6 +190,41 @@ describe("eppgrid-card-editor", () => {
 		}
 	});
 
+	it("guards against double-invocation of _loadDevices while in-flight", async () => {
+		// Use a resolver pattern so we can control when callWS resolves
+		let resolveFirst!: (v: unknown) => void;
+		const firstCallPromise = new Promise((res) => {
+			resolveFirst = res;
+		});
+		const callWS = vi.fn(() => firstCallPromise);
+
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "" } as any);
+
+		const fired = vi.fn();
+		el.addEventListener("config-changed", (e: any) => fired(e.detail.config));
+
+		// Trigger _loadDevices twice before the first resolves:
+		// set hass calls _loadDevices, then connectedCallback (via appendChild) calls it again
+		el.hass = { callWS, locale: { language: "en" } } as any;
+		document.body.appendChild(el); // triggers connectedCallback → _loadDevices again (guarded by _loading)
+
+		// Still in-flight — callWS should have been called only once (the _loading flag blocked the second)
+		expect(callWS).toHaveBeenCalledTimes(1);
+
+		// Now resolve the first call with a device list
+		resolveFirst([{ device_id: "d1", name: "Room", mac: "AA" }]);
+		await el.updateComplete;
+		await Promise.resolve();
+		await Promise.resolve();
+
+		// config-changed should fire exactly once (auto-selected first device)
+		expect(fired).toHaveBeenCalledTimes(1);
+		document.body.removeChild(el);
+	});
+
 	it("passes defaulted config to form (show_map true when omitted)", async () => {
 		// Spy on applyCardDefaults to verify the editor calls it
 		const spy = vi.spyOn(CardModule, "applyCardDefaults");
