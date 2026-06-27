@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import * as CardModule from "../eppgrid-card.js";
 import "../eppgrid-card-editor.js";
 import type { EppGridCardEditor } from "../eppgrid-card-editor.js";
 
@@ -120,5 +121,74 @@ describe("eppgrid-card-editor", () => {
 		await el.updateComplete;
 		// No hass/config — render guard returns nothing, no error
 		expect(el.shadowRoot?.children.length ?? 0).toBe(0);
+	});
+
+	it("auto-selects first device when config has no device_id", async () => {
+		const callWS = vi.fn(async () => [
+			{ device_id: "d1", name: "Room", mac: "AA" },
+		]);
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "" } as any);
+		const fired = vi.fn();
+		el.addEventListener("config-changed", (e: any) => fired(e.detail.config));
+		el.hass = { callWS, locale: { language: "en" } } as any;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(fired).toHaveBeenCalled();
+		expect(fired.mock.calls.at(-1)![0].device_id).toBe("d1");
+	});
+
+	it("_computeLabel returns localized label for known key", async () => {
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.hass = {
+			callWS: vi.fn(async () => []),
+			locale: { language: "en" },
+		} as any;
+		const result = (el as any)._computeLabel({ name: "show_map" });
+		expect(result).toBe("Show map");
+	});
+
+	it("_computeLabel falls back to raw name for unknown key", async () => {
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.hass = {
+			callWS: vi.fn(async () => []),
+			locale: { language: "en" },
+		} as any;
+		const result = (el as any)._computeLabel({ name: "unknown_field_xyz" });
+		expect(result).toBe("unknown_field_xyz");
+	});
+
+	it("passes defaulted config to form (show_map true when omitted)", async () => {
+		// Spy on applyCardDefaults to verify the editor calls it
+		const spy = vi.spyOn(CardModule, "applyCardDefaults");
+
+		const callWS = vi.fn(async () => []);
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "d1" } as any);
+		el.hass = { callWS, locale: { language: "en" } } as any;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		await Promise.resolve();
+
+		// Verify the spy was called with the config
+		expect(spy).toHaveBeenCalledWith(
+			expect.objectContaining({ device_id: "d1" }),
+		);
+
+		// Verify the spy's return value had show_map: true
+		const result = spy.mock.results[spy.mock.results.length - 1]?.value;
+		expect(result?.show_map).toBe(true);
+
+		spy.mockRestore();
 	});
 });

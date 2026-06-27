@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "../eppgrid-card.js";
-import type { EppGridCard } from "../eppgrid-card.js";
+import { applyCardDefaults, type EppGridCard } from "../eppgrid-card.js";
 
 // A calibrated snapshot so the map renders (parseConfig needs a perspective).
 // NOTE: parseCalibration requires exactly 8 numbers — [1, 0, 0, 0, 1, 0, 0, 0]
@@ -45,24 +45,80 @@ async function mount(
 
 afterEach(() => document.body.replaceChildren());
 
-describe("eppgrid-card setConfig", () => {
-	it("throws without device_id", () => {
-		const el = document.createElement("eppgrid-card") as EppGridCard;
-		expect(() =>
-			el.setConfig({ type: "custom:eppgrid-card" } as any),
-		).toThrow();
+describe("applyCardDefaults", () => {
+	it("returns all defaults when no config is provided", () => {
+		const result = applyCardDefaults({});
+		expect(result.type).toBe("custom:eppgrid-card");
+		expect(result.device_id).toBe("");
+		expect(result.show_map).toBe(true);
+		expect(result.show_sensors).toBe(true);
+		expect(result.layout).toBe("horizontal");
+		expect(result.show_furniture).toBe(true);
+		expect(result.show_overlays).toBe(true);
+		expect(result.sensors.presence).toBe(true);
+		expect(result.sensors.zones).toBe(true);
+		expect(result.sensors.environmental.temperature).toBe(true);
+		expect(result.sensors.environmental.humidity).toBe(true);
+		expect(result.sensors.environmental.illuminance).toBe(true);
+		expect(result.sensors.environmental.co2).toBe(true);
 	});
 
-	it("throws when both parts are disabled", () => {
+	it("preserves show_map: false", () => {
+		const result = applyCardDefaults({ show_map: false });
+		expect(result.show_map).toBe(false);
+	});
+
+	it("returns all env keys true when sensors.environmental is absent", () => {
+		const result = applyCardDefaults({ sensors: {} });
+		expect(result.sensors.environmental.temperature).toBe(true);
+		expect(result.sensors.environmental.humidity).toBe(true);
+		expect(result.sensors.environmental.illuminance).toBe(true);
+		expect(result.sensors.environmental.co2).toBe(true);
+	});
+
+	it("returns only temperature true when environmental has only temperature: true", () => {
+		const result = applyCardDefaults({
+			sensors: { environmental: { temperature: true } },
+		});
+		expect(result.sensors.environmental.temperature).toBe(true);
+		expect(result.sensors.environmental.humidity).toBe(false);
+		expect(result.sensors.environmental.illuminance).toBe(false);
+		expect(result.sensors.environmental.co2).toBe(false);
+	});
+
+	it("preserves device_id", () => {
+		const result = applyCardDefaults({ device_id: "my-device" });
+		expect(result.device_id).toBe("my-device");
+	});
+});
+
+describe("eppgrid-card setConfig", () => {
+	it("renders a placeholder when no device_id is configured", async () => {
 		const el = document.createElement("eppgrid-card") as EppGridCard;
-		expect(() =>
-			el.setConfig({
-				type: "custom:eppgrid-card",
-				device_id: "d",
-				show_map: false,
-				show_sensors: false,
-			} as any),
-		).toThrow();
+		el.setConfig({ type: "custom:eppgrid-card" } as any);
+		const h = makeHass();
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el.shadowRoot!.querySelector(".placeholder")).toBeTruthy();
+		expect(el.shadowRoot!.querySelector("epp-grid")).toBeNull();
+	});
+
+	it("renders a placeholder when both map and sensors are disabled", async () => {
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "d",
+			show_map: false,
+			show_sensors: false,
+		} as any);
+		const h = makeHass();
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el.shadowRoot!.querySelector(".placeholder")).toBeTruthy();
+		expect(el.shadowRoot!.querySelector("epp-grid")).toBeNull();
+		expect(el.shadowRoot!.querySelector("epp-live-sidebar")).toBeNull();
 	});
 
 	it("registers the card type in window.customCards", () => {

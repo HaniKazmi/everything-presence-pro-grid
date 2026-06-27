@@ -30,6 +30,47 @@ export interface EppGridCardConfig {
 	show_overlays?: boolean;
 }
 
+type ResolvedCardConfig = Omit<EppGridCardConfig, "sensors"> & {
+	show_map: boolean;
+	show_sensors: boolean;
+	layout: "horizontal" | "vertical";
+	show_furniture: boolean;
+	show_overlays: boolean;
+	sensors: {
+		presence: boolean;
+		zones: boolean;
+		environmental: Record<EnvKey, boolean>;
+	};
+};
+
+export function applyCardDefaults(
+	config: Partial<EppGridCardConfig>,
+): ResolvedCardConfig {
+	const sensors = config.sensors ?? {};
+	const envSrc = sensors.environmental;
+	return {
+		type: config.type ?? "custom:eppgrid-card",
+		device_id: config.device_id ?? "",
+		title: config.title,
+		show_map: config.show_map !== false,
+		show_sensors: config.show_sensors !== false,
+		layout: config.layout ?? "horizontal",
+		show_furniture: config.show_furniture !== false,
+		show_overlays: config.show_overlays !== false,
+		sensors: {
+			presence: sensors.presence !== false,
+			zones: sensors.zones !== false,
+			environmental: {
+				// env absent entirely → all on; env present → only keys explicitly true
+				temperature: envSrc ? envSrc.temperature === true : true,
+				humidity: envSrc ? envSrc.humidity === true : true,
+				illuminance: envSrc ? envSrc.illuminance === true : true,
+				co2: envSrc ? envSrc.co2 === true : true,
+			},
+		},
+	};
+}
+
 const EMPTY_SENSORS: SensorState = {
 	occupancy: false,
 	static_presence: false,
@@ -49,10 +90,16 @@ export class EppGridCard extends LitElement {
 		css`
 			:host {
 				display: block;
+				container-type: inline-size;
+			}
+			ha-card {
+				height: 100%;
+				box-sizing: border-box;
 			}
 			.overview {
 				display: flex;
 				gap: var(--epp-space-3);
+				height: 100%;
 			}
 			.overview--vertical,
 			.overview--single {
@@ -71,6 +118,13 @@ export class EppGridCard extends LitElement {
 			}
 			.content {
 				padding: var(--epp-space-3);
+				height: 100%;
+				box-sizing: border-box;
+			}
+			.overview--single .map,
+			.overview--vertical .map {
+				height: 100%;
+				min-height: 0;
 			}
 			.placeholder {
 				padding: var(--epp-space-5);
@@ -82,7 +136,7 @@ export class EppGridCard extends LitElement {
 				color: var(--epp-warning);
 				padding: 0 var(--epp-space-3) var(--epp-space-2);
 			}
-			@media (max-width: 820px) {
+			@container (max-width: 500px) {
 				.overview--horizontal {
 					flex-direction: column;
 				}
@@ -108,14 +162,6 @@ export class EppGridCard extends LitElement {
 	private _subDevice: string | null = null;
 
 	setConfig(config: EppGridCardConfig): void {
-		if (!config || !config.device_id) {
-			throw new Error("eppgrid-card: 'device_id' is required");
-		}
-		if (config.show_map === false && config.show_sensors === false) {
-			throw new Error(
-				"eppgrid-card: enable at least one of 'show_map' or 'show_sensors'",
-			);
-		}
 		this._config = config;
 		this._maybeResubscribe();
 	}
@@ -167,8 +213,9 @@ export class EppGridCard extends LitElement {
 	}
 
 	getCardSize(): number {
-		const showMap = this._config?.show_map !== false;
-		const showSensors = this._config?.show_sensors !== false;
+		const cfg = applyCardDefaults(this._config ?? {});
+		const showMap = cfg.show_map;
+		const showSensors = cfg.show_sensors;
 		let size = 1;
 		if (showMap) size += 6;
 		if (showSensors && !showMap) size += 4;
@@ -176,12 +223,13 @@ export class EppGridCard extends LitElement {
 	}
 
 	getGridOptions(): { columns: number; rows: string; min_columns: number } {
-		const showMap = this._config?.show_map !== false;
-		const showSensors = this._config?.show_sensors !== false;
+		const cfg = applyCardDefaults(this._config ?? {});
+		const showMap = cfg.show_map;
+		const showSensors = cfg.show_sensors;
 		if (showMap && showSensors)
 			return { columns: 12, rows: "auto", min_columns: 6 };
 		if (showMap) return { columns: 8, rows: "auto", min_columns: 6 };
-		return { columns: 6, rows: "auto", min_columns: 3 };
+		return { columns: 6, rows: "auto", min_columns: 4 };
 	}
 
 	static getConfigElement(): HTMLElement {
@@ -194,11 +242,15 @@ export class EppGridCard extends LitElement {
 
 	render() {
 		if (!this._config) return nothing;
-		const cfg = this._config;
-		const showMap = cfg.show_map !== false;
-		const showSensors = cfg.show_sensors !== false;
-		const both = showMap && showSensors;
-		const layout = both ? (cfg.layout ?? "horizontal") : "single";
+		const cfg = applyCardDefaults(this._config);
+		if (!cfg.device_id) {
+			return html`<ha-card .header=${cfg.title}><div class="placeholder">${this._localize("card.no_device")}</div></ha-card>`;
+		}
+		if (!cfg.show_map && !cfg.show_sensors) {
+			return html`<ha-card .header=${cfg.title}><div class="placeholder">${this._localize("card.nothing_to_show")}</div></ha-card>`;
+		}
+		const both = cfg.show_map && cfg.show_sensors;
+		const layout = both ? cfg.layout : "single";
 		const parsed = this._data.snapshot
 			? parseConfig(this._data.snapshot)
 			: null;
@@ -212,19 +264,21 @@ export class EppGridCard extends LitElement {
 				}
 				<div class="content">
 					<div class="overview overview--${layout}">
-						${showMap ? html`<div class="map">${this._renderMap(parsed)}</div>` : nothing}
-						${showSensors ? html`<div class="sensors">${this._renderSensors(parsed)}</div>` : nothing}
+						${cfg.show_map ? html`<div class="map">${this._renderMap(cfg, parsed)}</div>` : nothing}
+						${cfg.show_sensors ? html`<div class="sensors">${this._renderSensors(cfg, parsed)}</div>` : nothing}
 					</div>
 				</div>
 			</ha-card>
 		`;
 	}
 
-	private _renderMap(parsed: ReturnType<typeof parseConfig> | null) {
+	private _renderMap(
+		cfg: ResolvedCardConfig,
+		parsed: ReturnType<typeof parseConfig> | null,
+	) {
 		if (!parsed || parsed.calibration.perspective == null) {
 			return html`<div class="placeholder">${this._localize("card.uncalibrated")}</div>`;
 		}
-		const cfg = this._config as EppGridCardConfig;
 		const data = this._data.data;
 		const maxRange = parsed.settings.targetAutoDistance
 			? MAX_RANGE
@@ -237,23 +291,29 @@ export class EppGridCard extends LitElement {
 				.roomWidth=${parsed.calibration.roomWidth}
 				.roomDepth=${parsed.calibration.roomDepth}
 				.perspective=${parsed.calibration.perspective}
-				.furniture=${cfg.show_furniture === false ? [] : parsed.furniture}
+				.furniture=${cfg.show_furniture ? parsed.furniture : []}
 				.occupancy=${data?.zones?.occupancy ?? {}}
 				.localize=${this._localize}
 				.maxRangeMm=${maxRange}
-				.maxGridPx=${480}
-				.showOverlays=${cfg.show_overlays !== false}
+				.maxGridPx=${1000}
+				.showOverlays=${cfg.show_overlays}
 			></epp-grid>
 		`;
 	}
 
-	private _renderSensors(parsed: ReturnType<typeof parseConfig> | null) {
-		const cfg = this._config as EppGridCardConfig;
+	private _renderSensors(
+		cfg: ResolvedCardConfig,
+		parsed: ReturnType<typeof parseConfig> | null,
+	) {
 		const data = this._data.data;
-		const s = cfg.sensors ?? {};
-		const env = s.environmental;
-		const envKeys = env
-			? (Object.keys(env).filter((k) => env[k as EnvKey]) as EnvKey[])
+		const s = cfg.sensors;
+		// If the raw config had environmental absent, pass null (show all).
+		// If present, derive envKeys from the defaulted env keys that are true.
+		const rawEnv = this._config?.sensors?.environmental;
+		const envKeys = rawEnv
+			? (Object.keys(s.environmental).filter(
+					(k) => s.environmental[k as EnvKey],
+				) as EnvKey[])
 			: null;
 		return html`
 			<epp-live-sidebar
@@ -262,8 +322,8 @@ export class EppGridCard extends LitElement {
 				.zoneConfigs=${parsed?.zoneConfigs ?? []}
 				.hasPerspective=${parsed?.calibration.perspective != null}
 				.localize=${this._localize}
-				.showPresence=${s.presence !== false}
-				.showZones=${s.zones !== false}
+				.showPresence=${s.presence}
+				.showZones=${s.zones}
 				.envKeys=${envKeys}
 				.interactive=${false}
 			></epp-live-sidebar>

@@ -502,6 +502,23 @@
 	},
 	"card": {
 		"offline": "Dispositivo sin conexión",
-		"uncalibrated": "Este dispositivo aún no está calibrado. Abre el panel de Everything Presence Pro Grid para configurar la habitación."
+		"uncalibrated": "Este dispositivo aún no está calibrado. Abre el panel de Everything Presence Pro Grid para configurar la habitación.",
+		"no_device": "Selecciona un dispositivo en el editor de tarjetas.",
+		"nothing_to_show": "Activa el mapa o los sensores para mostrar esta tarjeta.",
+		"editor": {
+			"device_id": "Dispositivo",
+			"title": "Título",
+			"layout": "Disposición",
+			"show_map": "Mostrar mapa",
+			"show_sensors": "Mostrar sensores",
+			"show_furniture": "Mostrar mobiliario",
+			"show_overlays": "Mostrar superposiciones",
+			"presence": "Presencia",
+			"zones": "Zonas",
+			"temperature": "Temperatura",
+			"humidity": "Humedad",
+			"illuminance": "Iluminancia",
+			"co2": "CO₂"
+		}
 	}
 }

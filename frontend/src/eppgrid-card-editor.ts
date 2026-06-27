@@ -1,6 +1,7 @@
 import { html, LitElement, nothing } from "lit";
 import { state } from "lit/decorators.js";
-import type { EppGridCardConfig } from "./eppgrid-card.js";
+import { applyCardDefaults, type EppGridCardConfig } from "./eppgrid-card.js";
+import { setupLocalize } from "./localize.js";
 
 interface DeviceOption {
 	device_id: string;
@@ -22,8 +23,6 @@ export function buildSchema(devices: DeviceOption[]): unknown[] {
 			},
 		},
 		{ name: "title", selector: { text: {} } },
-		{ name: "show_map", selector: { boolean: {} } },
-		{ name: "show_sensors", selector: { boolean: {} } },
 		{
 			name: "layout",
 			selector: {
@@ -36,6 +35,10 @@ export function buildSchema(devices: DeviceOption[]): unknown[] {
 				},
 			},
 		},
+		{ name: "show_map", selector: { boolean: {} } },
+		{ name: "show_sensors", selector: { boolean: {} } },
+		{ name: "show_furniture", selector: { boolean: {} } },
+		{ name: "show_overlays", selector: { boolean: {} } },
 		{
 			name: "sensors",
 			type: "expandable",
@@ -56,13 +59,14 @@ export function buildSchema(devices: DeviceOption[]): unknown[] {
 				},
 			],
 		},
-		{ name: "show_furniture", selector: { boolean: {} } },
-		{ name: "show_overlays", selector: { boolean: {} } },
 	];
 }
 
 export class EppGridCardEditor extends LitElement {
-	private __hass?: { callWS: (msg: unknown) => Promise<unknown> };
+	private __hass?: {
+		callWS: (msg: unknown) => Promise<unknown>;
+		locale?: { language?: string };
+	};
 	private _config?: EppGridCardConfig;
 	@state() private _devices: DeviceOption[] = [];
 
@@ -70,13 +74,21 @@ export class EppGridCardEditor extends LitElement {
 		this._config = config;
 	}
 
-	set hass(hass: { callWS: (msg: unknown) => Promise<unknown> }) {
+	set hass(hass: {
+		callWS: (msg: unknown) => Promise<unknown>;
+		locale?: { language?: string };
+	}) {
 		this.__hass = hass;
 		this._loadDevices();
 		this.requestUpdate();
 	}
 
-	get hass(): { callWS: (msg: unknown) => Promise<unknown> } | undefined {
+	get hass():
+		| {
+				callWS: (msg: unknown) => Promise<unknown>;
+				locale?: { language?: string };
+		  }
+		| undefined {
 		return this.__hass;
 	}
 
@@ -92,10 +104,31 @@ export class EppGridCardEditor extends LitElement {
 				type: "eppgrid/overview/list_devices",
 			})) as DeviceOption[];
 			this._devices = list ?? [];
+			if (this._config && !this._config.device_id && this._devices.length > 0) {
+				this.dispatchEvent(
+					new CustomEvent("config-changed", {
+						detail: {
+							config: {
+								...this._config,
+								device_id: this._devices[0].device_id,
+							},
+						},
+						bubbles: true,
+						composed: true,
+					}),
+				);
+			}
 		} catch {
 			this._devices = [];
 		}
 	}
+
+	_computeLabel = (schema: { name: string }): string => {
+		const l = setupLocalize(this.__hass as Parameters<typeof setupLocalize>[0]);
+		const key = `card.editor.${schema.name}`;
+		const s = l(key);
+		return s === key ? schema.name : s;
+	};
 
 	// Exposed for testing; HA fires `value-changed` from <ha-form>.
 	_valueChanged(ev: {
@@ -122,8 +155,9 @@ export class EppGridCardEditor extends LitElement {
 		return html`
 			<ha-form
 				.hass=${this.__hass}
-				.data=${this._config}
+				.data=${applyCardDefaults(this._config)}
 				.schema=${buildSchema(this._devices)}
+				.computeLabel=${this._computeLabel}
 				@value-changed=${this._valueChanged}
 			></ha-form>
 		`;
