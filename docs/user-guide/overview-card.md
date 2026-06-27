@@ -16,6 +16,8 @@ You can show the map only, the sensors only, or both together.
 3. Pick the device from the **Device** dropdown. The dropdown lists all Everything Presence Pro Grid devices with an active HA registry entry.
 4. Adjust the options below and click **Save**.
 
+On Home Assistant 2026.6 and newer, the card is offered as a suggestion in the card picker when you select an entity that belongs to an Everything Presence Pro Grid device.
+
 ## Options
 
 | Option | Default | Description |

@@ -1,6 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../eppgrid-card.js";
-import { applyCardDefaults, type EppGridCard } from "../eppgrid-card.js";
+import {
+	__resetEntitySuggestionCache,
+	applyCardDefaults,
+	type EppGridCard,
+	getEntitySuggestion,
+} from "../eppgrid-card.js";
 
 // A calibrated snapshot so the map renders (parseConfig needs a perspective).
 // NOTE: parseCalibration requires exactly 8 numbers — [1, 0, 0, 0, 1, 0, 0, 0]
@@ -334,5 +339,64 @@ describe("eppgrid-card rendering", () => {
 		const sidebar = el.shadowRoot!.querySelector("epp-live-sidebar") as any;
 		expect(sidebar).toBeTruthy();
 		expect(sidebar.presenceKeys).toEqual([]);
+	});
+});
+
+describe("getEntitySuggestion", () => {
+	beforeEach(() => __resetEntitySuggestionCache());
+
+	it("returns null when the entity device_id is not in the EPP set", async () => {
+		// Warm the cache with a device list that does NOT include "other-device"
+		const hass = {
+			callWS: vi
+				.fn()
+				.mockResolvedValue([{ device_id: "dev1", mac: "AA", name: "X" }]),
+			entities: { "binary_sensor.other": { device_id: "other-device" } },
+		};
+		getEntitySuggestion(hass, "binary_sensor.other"); // kick off load
+		// flush microtasks so the promise resolves
+		await new Promise((r) => setTimeout(r, 0));
+		expect(getEntitySuggestion(hass, "binary_sensor.other")).toBeNull();
+	});
+
+	it("returns null when the entity has no registry entry or no device_id", async () => {
+		const hass = {
+			callWS: vi
+				.fn()
+				.mockResolvedValue([{ device_id: "dev1", mac: "AA", name: "X" }]),
+			entities: {},
+		};
+		getEntitySuggestion(hass, "binary_sensor.unknown"); // kick off load
+		await new Promise((r) => setTimeout(r, 0));
+		expect(getEntitySuggestion(hass, "binary_sensor.unknown")).toBeNull();
+	});
+
+	it("returns null on first call then suggests the card after the cache warms", async () => {
+		const hass = {
+			callWS: vi
+				.fn()
+				.mockResolvedValue([{ device_id: "dev1", mac: "AA", name: "X" }]),
+			entities: { "binary_sensor.epp_occupancy": { device_id: "dev1" } },
+		};
+		// First call: cache not yet populated → null
+		const first = getEntitySuggestion(hass, "binary_sensor.epp_occupancy");
+		expect(first).toBeNull();
+		// Flush microtasks so callWS resolves and cache populates
+		await new Promise((r) => setTimeout(r, 0));
+		// Second call: cache populated → suggest the card
+		const second = getEntitySuggestion(hass, "binary_sensor.epp_occupancy");
+		expect(second).toEqual({
+			config: { type: "custom:eppgrid-card", device_id: "dev1" },
+		});
+	});
+
+	it("returns null and does not throw when hass has no callWS", () => {
+		const hass = {
+			entities: { "binary_sensor.epp_occupancy": { device_id: "dev1" } },
+		};
+		expect(() =>
+			getEntitySuggestion(hass, "binary_sensor.epp_occupancy"),
+		).not.toThrow();
+		expect(getEntitySuggestion(hass, "binary_sensor.epp_occupancy")).toBeNull();
 	});
 });

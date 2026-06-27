@@ -346,11 +346,62 @@ if (!customElements.get("eppgrid-card")) {
 	customElements.define("eppgrid-card", EppGridCard);
 }
 
+// --- Entity suggestion (HA 2026.6+) ---
+// getEntitySuggestion is synchronous, but EPP devices can only be identified
+// authoritatively via the backend device list, so we lazily cache it; the
+// picker can be reopened if the first open predates the cache.
+
+let _eppDeviceIds: Set<string> | null = null;
+let _eppDeviceIdsLoading = false;
+
+function _ensureEppDeviceIds(hass: {
+	callWS?: (msg: unknown) => Promise<unknown>;
+}): void {
+	if (_eppDeviceIds !== null || _eppDeviceIdsLoading || !hass?.callWS) return;
+	_eppDeviceIdsLoading = true;
+	hass
+		.callWS({ type: "eppgrid/overview/list_devices" })
+		.then((list) => {
+			_eppDeviceIds = new Set(
+				((list as { device_id: string }[]) ?? []).map((d) => d.device_id),
+			);
+		})
+		.catch(() => {
+			_eppDeviceIds = new Set();
+		})
+		.finally(() => {
+			_eppDeviceIdsLoading = false;
+		});
+}
+
+/** Suggest the card when the picked entity belongs to a known EPP device. */
+export function getEntitySuggestion(
+	hass: {
+		callWS?: (msg: unknown) => Promise<unknown>;
+		entities?: Record<string, { device_id?: string }>;
+	},
+	entityId: string,
+): { config: { type: string; device_id: string } } | null {
+	_ensureEppDeviceIds(hass); // warms the cache; first call may return null until it resolves
+	const deviceId = hass?.entities?.[entityId]?.device_id;
+	if (!deviceId || _eppDeviceIds === null || !_eppDeviceIds.has(deviceId)) {
+		return null;
+	}
+	return { config: { type: "custom:eppgrid-card", device_id: deviceId } };
+}
+
+// Test-only: reset the module cache between tests.
+export function __resetEntitySuggestionCache(): void {
+	_eppDeviceIds = null;
+	_eppDeviceIdsLoading = false;
+}
+
 interface CustomCardEntry {
 	type: string;
 	name: string;
 	description: string;
 	preview: boolean;
+	getEntitySuggestion?: typeof getEntitySuggestion;
 }
 const w = window as unknown as { customCards?: CustomCardEntry[] };
 w.customCards = w.customCards || [];
@@ -361,5 +412,6 @@ if (!w.customCards.some((c) => c.type === "eppgrid-card")) {
 		description:
 			"Live overview map and sensors for an Everything Presence Pro Grid device.",
 		preview: true,
+		getEntitySuggestion,
 	});
 }
