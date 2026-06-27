@@ -5772,9 +5772,20 @@ class TestAdminGateAllCommands:
                 await call_async_handler(hass, handler, connection, msg_payload)
         connection.send_result.assert_not_called()
 
+    # Commands that are intentionally NOT admin-gated — read-only display data
+    # meant for shared (non-admin) dashboards. Add new non-admin commands here
+    # along with a comment explaining why they're exempt.
+    _NON_ADMIN_COMMANDS: frozenset[str] = frozenset(
+        {
+            # overview card picker — display-only, no config mutation
+            "websocket_overview_list_devices",
+        }
+    )
+
     def test_all_registered_commands_are_admin_gated(self) -> None:
         """Every command registered in async_register_websocket_commands must have
-        @websocket_api.require_admin in its decorator stack.
+        @websocket_api.require_admin in its decorator stack, unless explicitly listed
+        in _NON_ADMIN_COMMANDS (read-only commands for shared dashboards).
 
         This is a meta-test: it walks the __wrapped__ chain on each handler and
         checks __code__.co_name for "with_admin" (the inner function that
@@ -5809,6 +5820,8 @@ class TestAdminGateAllCommands:
         unresolvable: list[str] = []
         ungated: list[str] = []
         for name in registered:
+            if name in self._NON_ADMIN_COMMANDS:
+                continue
             fn = getattr(ws_mod, name, None)
             if fn is None:
                 unresolvable.append(name)
@@ -6551,3 +6564,38 @@ class TestWebSocketFrontendVersion:
         with pytest.raises(Unauthorized):
             websocket_frontend_version(hass, connection, msg)
         connection.send_result.assert_not_called()
+
+
+class TestOverviewListDevices:
+    async def test_lists_devices_with_registry_id(self, hass, config_entry):
+        """Returns device_id/mac/name for devices that have a registry device_id; non-admin."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import websocket_overview_list_devices
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:01": ManagedDevice(mac="AA:BB:CC:DD:EE:01", name="Living Room"),
+            "AA:BB:CC:DD:EE:02": ManagedDevice(mac="AA:BB:CC:DD:EE:02", name="Bedroom"),
+        }
+        mock_dm.devices["AA:BB:CC:DD:EE:01"].device_id = "dev1"
+        # second device has no registry id → omitted
+
+        connection = MagicMock()
+        msg = {"id": 7, "type": "eppgrid/overview/list_devices"}
+        websocket_overview_list_devices(hass, connection, msg)
+
+        connection.send_result.assert_called_once()
+        sent = connection.send_result.call_args.args
+        assert sent[0] == 7
+        assert sent[1] == [{"device_id": "dev1", "mac": "AA:BB:CC:DD:EE:01", "name": "Living Room"}]
+
+    async def test_not_loaded_when_manager_absent(self, hass):
+        """Short-circuits with not_ready when the integration is unloaded."""
+        from custom_components.eppgrid.websocket_api import websocket_overview_list_devices
+
+        connection = MagicMock()
+        msg = {"id": 8, "type": "eppgrid/overview/list_devices"}
+        websocket_overview_list_devices(hass, connection, msg)
+
+        connection.send_error.assert_called_once()
+        assert connection.send_error.call_args.args[1] == "not_ready"
