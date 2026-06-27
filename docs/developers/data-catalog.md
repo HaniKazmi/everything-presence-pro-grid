@@ -184,7 +184,7 @@ Returns a minimal device list for the card editor's device picker. Only devices 
 
 **Request:** `{ "type": "eppgrid/overview/list_devices" }`
 
-**Response:** `[{ "device_id": str, "mac": str, "name": str }, ...]`
+**Response:** `[{ "device_id": str, "name": str }, ...]`
 
 #### `eppgrid/overview/subscribe`
 

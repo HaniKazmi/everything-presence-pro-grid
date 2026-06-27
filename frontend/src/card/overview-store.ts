@@ -67,9 +67,10 @@ function openWs(
 	deviceId: string,
 	entry: Entry,
 ): void {
-	entry.connection = hass.connection;
+	const conn = hass.connection;
+	entry.connection = conn;
 	entry.closing = false;
-	hass.connection
+	conn
 		.subscribeMessage((msg: unknown) => handleMsg(entry, msg), {
 			type: "eppgrid/overview/subscribe",
 			device_id: deviceId,
@@ -78,7 +79,15 @@ function openWs(
 			// If the entry was torn down (last subscriber left, or it was
 			// reopened on a fresh connection) while this open was in flight,
 			// drop the resolved subscription immediately so it isn't leaked.
-			if (entry.closing || registry.get(deviceId) !== entry) {
+			// The connection check catches the reconnect-during-in-flight case:
+			// when openWs is called again for a new connection, entry.connection
+			// advances to conn2, so this stale conn1 resolve sees the mismatch
+			// and calls unsub() instead of storing it.
+			if (
+				entry.closing ||
+				entry.connection !== conn ||
+				registry.get(deviceId) !== entry
+			) {
 				unsub();
 				return;
 			}

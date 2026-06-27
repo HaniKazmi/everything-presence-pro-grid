@@ -6571,7 +6571,7 @@ class TestWebSocketFrontendVersion:
 
 class TestOverviewListDevices:
     async def test_lists_devices_with_registry_id(self, hass, config_entry):
-        """Returns device_id/mac/name for devices that have a registry device_id; non-admin."""
+        """Returns device_id/name for devices that have a registry device_id; non-admin."""
         from custom_components.eppgrid.device_manager import ManagedDevice
         from custom_components.eppgrid.websocket_api import websocket_overview_list_devices
 
@@ -6590,7 +6590,7 @@ class TestOverviewListDevices:
         connection.send_result.assert_called_once()
         sent = connection.send_result.call_args.args
         assert sent[0] == 7
-        assert sent[1] == [{"device_id": "dev1", "mac": "AA:BB:CC:DD:EE:01", "name": "Living Room"}]
+        assert sent[1] == [{"device_id": "dev1", "name": "Living Room"}]
 
     async def test_not_loaded_when_manager_absent(self, hass):
         """Short-circuits with not_ready when the integration is unloaded."""

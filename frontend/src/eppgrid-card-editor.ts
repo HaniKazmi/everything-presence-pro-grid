@@ -6,7 +6,6 @@ import { defaultLocalize, type LocalizeFn, setupLocalize } from "./localize.js";
 interface DeviceOption {
 	device_id: string;
 	name: string;
-	mac: string;
 }
 
 /** Pure: build the ha-form schema for the given device options. Testable. */

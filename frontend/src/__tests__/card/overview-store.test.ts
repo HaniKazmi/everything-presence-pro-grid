@@ -139,4 +139,49 @@ describe("OverviewStore", () => {
 		const reconnectCalls = l.mock.calls.slice(callsBeforeReconnect);
 		expect(reconnectCalls.some((c) => c[0].connected === false)).toBe(true);
 	});
+
+	it("calls stale unsub when connection changes before in-flight subscribeMessage resolves", async () => {
+		// Reproduces the reconnect-during-in-flight-open leak:
+		// conn A's subscribeMessage promise is held; before it resolves, conn B
+		// opens a second subscription.  When conn A's promise DOES resolve its
+		// unsub must be called immediately — not stored on the entry — because
+		// entry.connection has already advanced to conn B.
+
+		const unsubA = vi.fn();
+		let resolveA!: (u: () => void) => void;
+		const connA = {
+			subscribeMessage: vi.fn(
+				() =>
+					new Promise<() => void>((r) => {
+						resolveA = r;
+					}),
+			),
+		};
+		const hassA = { connection: connA };
+
+		// conn B resolves immediately so openWs for B completes synchronously.
+		const unsubB = vi.fn();
+		const connB = {
+			subscribeMessage: vi.fn(() => Promise.resolve(unsubB)),
+		};
+		const hassB = { connection: connB };
+
+		// Subscribe with conn A — promise is in-flight, NOT resolved yet.
+		subscribeOverview(hassA, "devInflight", vi.fn());
+
+		// Before conn A resolves, a new hass with conn B triggers the reconnect branch.
+		// closeWs sees entry.unsubWs===null (A hasn't resolved) → sets entry.closing=true.
+		// openWs for B immediately resets entry.closing=false and sets entry.connection=connB.
+		subscribeOverview(hassB, "devInflight", vi.fn());
+
+		// Let conn B's promise resolve.
+		await Promise.resolve();
+
+		// Now resolve conn A's deferred promise.
+		resolveA(unsubA);
+		await Promise.resolve();
+
+		// The stale conn A unsub MUST have been called to avoid a backend leak.
+		expect(unsubA).toHaveBeenCalledTimes(1);
+	});
 });

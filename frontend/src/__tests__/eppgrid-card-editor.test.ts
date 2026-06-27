@@ -9,7 +9,7 @@ afterEach(() => document.body.replaceChildren());
 describe("eppgrid-card-editor", () => {
 	it("loads the device list from the overview ws command", async () => {
 		const callWS = vi.fn(async () => [
-			{ device_id: "d1", name: "Living Room", mac: "AA" },
+			{ device_id: "d1", name: "Living Room" },
 		]);
 		const el = document.createElement(
 			"eppgrid-card-editor",
@@ -94,7 +94,7 @@ describe("eppgrid-card-editor", () => {
 		let callCount = 0;
 		const callWS = vi.fn(async () => {
 			callCount += 1;
-			return [{ device_id: "d1", name: "Room", mac: "BB" }];
+			return [{ device_id: "d1", name: "Room" }];
 		});
 		const el = document.createElement(
 			"eppgrid-card-editor",
@@ -125,9 +125,7 @@ describe("eppgrid-card-editor", () => {
 	});
 
 	it("auto-selects first device when config has no device_id", async () => {
-		const callWS = vi.fn(async () => [
-			{ device_id: "d1", name: "Room", mac: "AA" },
-		]);
+		const callWS = vi.fn(async () => [{ device_id: "d1", name: "Room" }]);
 		const el = document.createElement(
 			"eppgrid-card-editor",
 		) as EppGridCardEditor;
@@ -215,7 +213,7 @@ describe("eppgrid-card-editor", () => {
 		expect(callWS).toHaveBeenCalledTimes(1);
 
 		// Now resolve the first call with a device list
-		resolveFirst([{ device_id: "d1", name: "Room", mac: "AA" }]);
+		resolveFirst([{ device_id: "d1", name: "Room" }]);
 		await el.updateComplete;
 		await Promise.resolve();
 		await Promise.resolve();

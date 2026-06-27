@@ -35,15 +35,13 @@ def websocket_overview_list_devices(
     msg: dict[str, Any],
     manager: Any,
 ) -> None:
-    """List EPP devices (device_id, mac, name) for the card editor's picker.
+    """List EPP devices (device_id, name) for the card editor's picker.
 
     Only devices with a registry device_id are returned — the card stores a
     device_id and needs it to resolve a mac server-side on subscribe.
     """
     devices = [
-        {"device_id": dev.device_id, "mac": mac, "name": dev.name}
-        for mac, dev in manager.devices.items()
-        if dev.device_id is not None
+        {"device_id": dev.device_id, "name": dev.name} for dev in manager.devices.values() if dev.device_id is not None
     ]
     connection.send_result(msg["id"], devices)
 
