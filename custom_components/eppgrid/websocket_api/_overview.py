@@ -16,6 +16,7 @@ from homeassistant.core import callback
 
 from ..const import DOMAIN
 from . import _LOGGER
+from . import _connection_is_closed
 from . import _get_manager
 from . import _require_manager
 from ._devices import _make_grid_target_on_state
@@ -114,3 +115,9 @@ async def websocket_overview_subscribe(
             mgr.release_session(mac, device_conn)
 
     connection.subscriptions[msg["id"]] = _unsub
+    # If the connection closed during the awaits above, HA already cleared
+    # connection.subscriptions, so the unsub we just registered will never
+    # fire — invoke it now to release the session ref we took. The `released`
+    # guard makes this safe against a later double-call.
+    if _connection_is_closed(connection):
+        _unsub()

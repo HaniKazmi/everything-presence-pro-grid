@@ -6723,3 +6723,47 @@ class TestOverviewSubscribe:
         ]
         assert avail_events, "expected an available:false event"
         mock_dm.note_target_subscribe.assert_not_called()
+
+    async def test_releases_session_when_connection_closes_during_open(self, hass, config_entry):
+        """If the WS connection drops DURING the open/subscribe awaits, HA's
+        `async_handle_close` clears `connection.subscriptions` — so the unsub
+        we register afterward never fires. The handler must detect the closed
+        connection and release the session ref the open took, or it leaks.
+        """
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+        mock_dm.store.devices = {"AA:BB:CC:DD:EE:01": {"calibration": {"room_width": 3000}}}
+        device_conn = MagicMock()
+        device_conn.entities = []
+        device_conn.subscribe_states = AsyncMock()
+        device_conn.unsubscribe_states = MagicMock()
+        mock_dm.release_session = MagicMock(return_value=None)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+
+        async def _open(mac: str) -> MagicMock:
+            # Simulate HA's async_handle_close landing mid-await: it clears the
+            # subscriptions dict and swaps send_message for the closed-error
+            # stub (and does NOT cancel this background task).
+            connection.subscriptions.clear()
+            connection.send_message = connection._connect_closed_error
+            return device_conn
+
+        mock_dm.async_open_session = AsyncMock(side_effect=_open)
+
+        msg = {"id": 16, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe, connection, msg)
+
+        # The ref the open took must be released immediately, since the unsub
+        # can never be invoked from the cleared subscriptions dict.
+        mock_dm.release_session.assert_called_once_with("AA:BB:CC:DD:EE:01", device_conn)
+        mock_dm.note_target_unsubscribe.assert_called_once_with("AA:BB:CC:DD:EE:01", "grid_target_subs")
+        # The `released` guard prevents a double-release if the unsub the
+        # handler registered also somehow fires.
+        unsub = connection.subscriptions.get(16)
+        if unsub is not None:
+            unsub()
+        assert mock_dm.release_session.call_count == 1
