@@ -43,6 +43,7 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=test",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         patch(
             "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",

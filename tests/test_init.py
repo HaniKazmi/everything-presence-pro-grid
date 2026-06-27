@@ -55,6 +55,7 @@ async def test_setup_entry_registers_manager(hass: HomeAssistant, config_entry: 
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         patch(
             "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
@@ -85,6 +86,7 @@ async def test_setup_entry_registers_frontend_resources_always(
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ) as mock_resources,
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock) as mock_panel,
         patch(
             "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
@@ -113,6 +115,7 @@ async def test_setup_entry_registers_panel_when_enabled(hass: HomeAssistant, con
         patch(
             "custom_components.eppgrid._register_frontend_resources", new_callable=AsyncMock, return_value=module_url
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock) as mock_panel,
         patch(
             "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
@@ -139,6 +142,7 @@ async def test_setup_entry_skips_panel_when_disabled(hass: HomeAssistant, config
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock) as mock_panel,
         patch(
             "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
@@ -167,6 +171,8 @@ async def test_unload_entry_stops_manager(hass: HomeAssistant, config_entry: Moc
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
+        patch("custom_components.eppgrid._unregister_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         patch(
             "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
@@ -214,6 +220,7 @@ async def test_unload_entry_returns_false_when_platform_unload_fails(
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         patch(
             "homeassistant.config_entries.ConfigEntries.async_unload_platforms",
@@ -249,6 +256,7 @@ async def test_options_update_does_not_reload_entry(hass: HomeAssistant, config_
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock) as mock_reload,
         patch(
@@ -317,6 +325,8 @@ async def test_unload_entry_removes_panel(hass: HomeAssistant, config_entry: Moc
             new_callable=AsyncMock,
             return_value=module_url,
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
+        patch("custom_components.eppgrid._unregister_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         patch("custom_components.eppgrid.async_remove_panel") as mock_remove_panel,
         patch(
@@ -351,6 +361,8 @@ async def test_unload_entry_skips_panel_when_not_registered(hass: HomeAssistant,
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
+        patch("custom_components.eppgrid._unregister_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         patch("custom_components.eppgrid.async_remove_panel") as mock_remove_panel,
         patch(
@@ -494,6 +506,7 @@ async def test_setup_entry_unwinds_on_start_failure_and_allows_retry(
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock) as mock_panel,
         patch("custom_components.eppgrid.async_remove_panel") as mock_remove_panel,
     ):
@@ -541,6 +554,7 @@ async def test_setup_unwind_stop_failure_does_not_mask_original_error(
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         caplog.at_level(logging.ERROR, logger="custom_components.eppgrid"),
     ):
@@ -575,6 +589,7 @@ async def test_setup_unwind_panel_visibility_failure_does_not_mask_original_erro
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         patch(
             "custom_components.eppgrid.async_apply_panel_visibility",
@@ -616,6 +631,7 @@ async def test_setup_entry_unwinds_on_panel_failure(hass: HomeAssistant, config_
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch(
             "custom_components.eppgrid._register_panel",
             new_callable=AsyncMock,
@@ -647,6 +663,7 @@ async def test_setup_unwind_unloads_binary_sensor_platform(hass: HomeAssistant, 
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch(
             "custom_components.eppgrid._register_panel",
             new_callable=AsyncMock,
@@ -690,6 +707,7 @@ async def test_setup_entry_registers_panel_after_manager_start(
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", side_effect=record_panel),
     ):
         mock_dm = mock_dm_cls.return_value
@@ -718,6 +736,8 @@ async def test_setup_entry_registers_proxy_view_once_across_reloads(
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
+        patch("custom_components.eppgrid._unregister_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         patch.object(hass.http, "register_view") as mock_register_view,
     ):
@@ -751,3 +771,63 @@ async def test_hash_file(tmp_path) -> None:
     result = _hash_file(str(test_file))
     assert len(result) == 8
     assert result.isalnum()
+
+
+class TestCardResource:
+    async def test_registers_module_resource(self, hass):
+        """_register_card_resource serves the card hash path and creates a module resource."""
+        from custom_components.eppgrid import _register_card_resource
+
+        hass.http = MagicMock()
+        hass.http.async_register_static_paths = AsyncMock()
+
+        resources = MagicMock()
+        resources.loaded = True
+        resources.async_items = MagicMock(return_value=[])
+        resources.async_create_item = AsyncMock(return_value={"id": "res1"})
+        lovelace = MagicMock()
+        lovelace.resources = resources
+        hass.data["lovelace"] = lovelace
+
+        with patch("custom_components.eppgrid._hash_file", return_value="card1234"):
+            await _register_card_resource(hass)
+
+        resources.async_create_item.assert_awaited_once()
+        created = resources.async_create_item.call_args.args[0]
+        assert created["res_type"] == "module"
+        assert created["url"] == "/eppgrid_static/card1234/eppgrid-card.js"
+
+    async def test_updates_existing_stale_resource(self, hass):
+        from custom_components.eppgrid import _register_card_resource
+
+        hass.http = MagicMock()
+        hass.http.async_register_static_paths = AsyncMock()
+        resources = MagicMock()
+        resources.loaded = True
+        resources.async_items = MagicMock(return_value=[{"id": "old", "url": "/eppgrid_static/OLD/eppgrid-card.js"}])
+        resources.async_update_item = AsyncMock()
+        resources.async_create_item = AsyncMock()
+        lovelace = MagicMock()
+        lovelace.resources = resources
+        hass.data["lovelace"] = lovelace
+
+        with patch("custom_components.eppgrid._hash_file", return_value="new5678"):
+            await _register_card_resource(hass)
+
+        resources.async_update_item.assert_awaited_once()
+        resources.async_create_item.assert_not_called()
+
+    async def test_yaml_mode_fallback_to_extra_js_url(self, hass):
+        from custom_components.eppgrid import _register_card_resource
+
+        hass.http = MagicMock()
+        hass.http.async_register_static_paths = AsyncMock()
+        hass.data["lovelace"] = MagicMock(resources=None)
+
+        with (
+            patch("custom_components.eppgrid._hash_file", return_value="card1234"),
+            patch("custom_components.eppgrid._ha_frontend.add_extra_js_url") as mock_extra,
+        ):
+            await _register_card_resource(hass)
+
+        mock_extra.assert_called_once()
