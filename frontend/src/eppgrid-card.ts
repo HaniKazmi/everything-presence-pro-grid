@@ -92,14 +92,9 @@ export class EppGridCard extends LitElement {
 				display: block;
 				container-type: inline-size;
 			}
-			ha-card {
-				height: 100%;
-				box-sizing: border-box;
-			}
 			.overview {
 				display: flex;
 				gap: var(--epp-space-3);
-				height: 100%;
 			}
 			.overview--vertical,
 			.overview--single {
@@ -118,13 +113,6 @@ export class EppGridCard extends LitElement {
 			}
 			.content {
 				padding: var(--epp-space-3);
-				height: 100%;
-				box-sizing: border-box;
-			}
-			.overview--single .map,
-			.overview--vertical .map {
-				height: 100%;
-				min-height: 0;
 			}
 			.placeholder {
 				padding: var(--epp-space-5);
@@ -283,6 +271,7 @@ export class EppGridCard extends LitElement {
 		const maxRange = parsed.settings.targetAutoDistance
 			? MAX_RANGE
 			: Math.round(parsed.settings.targetMaxDistance * 1000);
+		// maxGridPx=480: map is aspect-locked and width-fit; a height:100% fill chain caused scroll-driven resize oscillation
 		return html`
 			<epp-grid
 				.grid=${parsed.grid}
@@ -295,7 +284,7 @@ export class EppGridCard extends LitElement {
 				.occupancy=${data?.zones?.occupancy ?? {}}
 				.localize=${this._localize}
 				.maxRangeMm=${maxRange}
-				.maxGridPx=${1000}
+				.maxGridPx=${480}
 				.showOverlays=${cfg.show_overlays}
 			></epp-grid>
 		`;
