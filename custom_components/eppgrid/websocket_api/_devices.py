@@ -813,6 +813,148 @@ async def websocket_subscribe_raw_targets(
 # -- subscribe_grid_targets --
 
 
+def _make_grid_target_on_state(
+    connection: websocket_api.ActiveConnection,
+    msg_id: int,
+    mac: str,
+    device_conn: Any,
+) -> Callable[[Any], None]:
+    """Build the per-session state callback that accumulates target/zone/sensor
+    state and emits the full snapshot to `connection` for `msg_id`.
+
+    Shared by `subscribe_grid_targets` (admin) and `overview/subscribe`
+    (non-admin) so both stream identical {targets, sensors, zones} frames.
+    """
+    key_map = _build_entity_key_map(device_conn.entities)
+
+    target_keys = {}
+    for i in range(3):
+        name = f"Target {i + 1} Position"
+        if name in key_map:
+            target_keys[key_map[name]] = i
+
+    zone_state_key = key_map.get("Zone State")
+
+    binary_sensor_keys = {}
+    for name, field in (
+        ("Occupancy", "occupancy"),
+        ("Static Presence", "static_presence"),
+        ("Motion Presence", "motion_presence"),
+        ("Zone Tracking", "target_presence"),
+        ("mmWave Presence", "mmwave"),
+    ):
+        if name in key_map:
+            binary_sensor_keys[key_map[name]] = field
+
+    numeric_sensor_keys = {}
+    for name, field in (
+        ("Temperature", "temperature"),
+        ("Humidity", "humidity"),
+        ("Illuminance", "illuminance"),
+        ("CO2", "co2"),
+    ):
+        if name in key_map:
+            numeric_sensor_keys[key_map[name]] = field
+
+    targets: list[dict[str, float | int | str | None]] = [
+        {"x": None, "y": None, "signal": 0, "status": "inactive"} for _ in range(3)
+    ]
+    sensors: dict[str, Any] = {
+        "occupancy": False,
+        "static_presence": False,
+        "motion_presence": False,
+        "target_presence": False,
+        "mmwave": False,
+        "temperature": None,
+        "humidity": None,
+        "illuminance": None,
+        "co2": None,
+    }
+    zones: dict[str, Any] = {"occupancy": {}, "target_counts": {}, "frame_count": 0}
+
+    @callback
+    def _emit() -> None:
+        connection.send_message(
+            websocket_api.event_message(
+                msg_id,
+                {
+                    "targets": list(targets),
+                    "sensors": dict(sensors),
+                    "zones": dict(zones),
+                },
+            )
+        )
+
+    @callback
+    def _on_state(state: Any) -> None:
+        if isinstance(state, TextSensorState):
+            if state.key in target_keys:
+                idx = target_keys[state.key]
+                if state.state:
+                    parsed = _parse_position_csv(state.state)
+                    if parsed is None:
+                        return
+                    targets[idx]["x"] = parsed[0]
+                    targets[idx]["y"] = parsed[1]
+                    if parsed[2] is not None:
+                        targets[idx]["status"] = parsed[2]
+                else:
+                    targets[idx] = {"x": None, "y": None, "signal": 0, "status": "inactive"}
+                _emit()
+            elif zone_state_key is not None and state.key == zone_state_key and state.state:
+                try:
+                    zs = json.loads(state.state)
+                    for i, t in enumerate(zs.get("targets", [])):
+                        if i < 3:
+                            targets[i]["signal"] = t.get("signal", 0)
+                            targets[i]["status"] = t.get("status", "inactive")
+                    zone_occ = zs.get("zones", {}).get("occupancy", [])
+                    zones["occupancy"] = {str(i): v for i, v in enumerate(zone_occ)}
+                    zones["frame_count"] = zs.get("frame_count", 0)
+                    debug_log = zs.get("debug_log")
+                    if debug_log:
+                        zones["debug_log"] = debug_log
+                    events = zs.get("ev")
+                    if isinstance(events, list):
+                        valid_events = [e for e in events if isinstance(e, str)]
+                        if valid_events:
+                            zones["events"] = valid_events
+                    sensors["target_presence"] = zs.get("zones", {}).get("tracking", False)
+                    static_state = zs.get("static_state")
+                    if static_state is not None:
+                        sensors["static_state"] = static_state
+                    motion_state = zs.get("motion_state")
+                    if motion_state is not None:
+                        sensors["motion_state"] = motion_state
+                    fw_occupancy = zs.get("occupancy")
+                    if fw_occupancy is not None:
+                        sensors["occupancy_state"] = fw_occupancy
+                    fw_mmwave = zs.get("mmwave")
+                    if fw_mmwave is not None:
+                        sensors["mmwave"] = fw_mmwave
+                except (ValueError, KeyError, TypeError, AttributeError) as err:
+                    _LOGGER.debug(
+                        "grid_target stream: bad zone-state JSON for %s: %s",
+                        mac,
+                        err,
+                    )
+                    return
+                _emit()
+                zones.pop("events", None)
+
+        elif isinstance(state, BinarySensorState):
+            if state.key in binary_sensor_keys:
+                sensors[binary_sensor_keys[state.key]] = state.state
+                _emit()
+
+        elif isinstance(state, SensorState) and state.key in numeric_sensor_keys:
+            field = numeric_sensor_keys[state.key]
+            sensors[field] = None if math.isnan(state.state) else state.state
+            _emit()
+
+    return _on_state
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/subscribe_grid_targets",
@@ -830,179 +972,13 @@ async def websocket_subscribe_grid_targets(
 ) -> None:
     """Stream target positions, zone state, and sensor data from the device session."""
     mac = msg["mac"]
-
-    def _make_on_state(device_conn: Any) -> Any:
-        key_map = _build_entity_key_map(device_conn.entities)
-
-        # Map target position sensor keys to indices (display names are 1-based)
-        target_keys = {}
-        for i in range(3):
-            name = f"Target {i + 1} Position"
-            if name in key_map:
-                target_keys[key_map[name]] = i
-
-        # Zone state text sensor key
-        zone_state_key = key_map.get("Zone State")
-
-        # Binary sensor keys for sensors dict
-        binary_sensor_keys = {}
-        for name, field in (
-            ("Occupancy", "occupancy"),
-            ("Static Presence", "static_presence"),
-            ("Motion Presence", "motion_presence"),
-            ("Zone Tracking", "target_presence"),
-            ("mmWave Presence", "mmwave"),
-        ):
-            if name in key_map:
-                binary_sensor_keys[key_map[name]] = field
-
-        # Numeric sensor keys for environmental data
-        numeric_sensor_keys = {}
-        for name, field in (
-            ("Temperature", "temperature"),
-            ("Humidity", "humidity"),
-            ("Illuminance", "illuminance"),
-            ("CO2", "co2"),
-        ):
-            if name in key_map:
-                numeric_sensor_keys[key_map[name]] = field
-
-        # Accumulated state
-        targets: list[dict[str, float | int | str | None]] = [
-            {"x": None, "y": None, "signal": 0, "status": "inactive"} for _ in range(3)
-        ]
-        sensors: dict[str, Any] = {
-            "occupancy": False,
-            "static_presence": False,
-            "motion_presence": False,
-            "target_presence": False,
-            "mmwave": False,
-            "temperature": None,
-            "humidity": None,
-            "illuminance": None,
-            "co2": None,
-        }
-        zones: dict[str, Any] = {"occupancy": {}, "target_counts": {}, "frame_count": 0}
-
-        @callback
-        def _emit() -> None:
-            """Send the full accumulated snapshot to the subscriber."""
-            connection.send_message(
-                websocket_api.event_message(
-                    msg["id"],
-                    {
-                        "targets": list(targets),
-                        "sensors": dict(sensors),
-                        "zones": dict(zones),
-                    },
-                )
-            )
-
-        @callback
-        def _on_state(state: Any) -> None:
-            if isinstance(state, TextSensorState):
-                if state.key in target_keys:
-                    idx = target_keys[state.key]
-                    if state.state:
-                        parsed = _parse_position_csv(state.state)
-                        if parsed is None:
-                            return  # garbled firmware emit — drop silently
-                        targets[idx]["x"] = parsed[0]
-                        targets[idx]["y"] = parsed[1]
-                        # Status comes from position text sensor (active/pending)
-                        if parsed[2] is not None:
-                            targets[idx]["status"] = parsed[2]
-                    else:
-                        targets[idx] = {"x": None, "y": None, "signal": 0, "status": "inactive"}
-                    # Send full event on each position update (5Hz)
-                    _emit()
-                elif zone_state_key is not None and state.key == zone_state_key and state.state:
-                    # Parse zone state JSON (1Hz). The try block is scoped to
-                    # parse/normalize only — a send-path bug must fail loudly
-                    # (the fan-out's drop policy handles it), not be demoted
-                    # to a silently dropped frame.
-                    try:
-                        zs = json.loads(state.state)
-                        # Update target signal/status
-                        for i, t in enumerate(zs.get("targets", [])):
-                            if i < 3:
-                                targets[i]["signal"] = t.get("signal", 0)
-                                targets[i]["status"] = t.get("status", "inactive")
-                        # Update zone data
-                        zone_occ = zs.get("zones", {}).get("occupancy", [])
-                        zones["occupancy"] = {str(i): v for i, v in enumerate(zone_occ)}
-                        zones["frame_count"] = zs.get("frame_count", 0)
-                        debug_log = zs.get("debug_log")
-                        if debug_log:
-                            zones["debug_log"] = debug_log
-                        events = zs.get("ev")
-                        if isinstance(events, list):
-                            # Defensive: only forward string codes. A malformed
-                            # `ev` (non-list, or non-string items) must never reach
-                            # the frontend, which treats events as string[].
-                            valid_events = [e for e in events if isinstance(e, str)]
-                            if valid_events:
-                                zones["events"] = valid_events
-                        sensors["target_presence"] = zs.get("zones", {}).get("tracking", False)
-                        # Parse sensor presence states from firmware
-                        static_state = zs.get("static_state")
-                        if static_state is not None:
-                            sensors["static_state"] = static_state
-                        motion_state = zs.get("motion_state")
-                        if motion_state is not None:
-                            sensors["motion_state"] = motion_state
-                        fw_occupancy = zs.get("occupancy")
-                        if fw_occupancy is not None:
-                            sensors["occupancy_state"] = fw_occupancy
-                        fw_mmwave = zs.get("mmwave")
-                        if fw_mmwave is not None:
-                            sensors["mmwave"] = fw_mmwave
-                    except (ValueError, KeyError, TypeError, AttributeError) as err:
-                        # Malformed zone-state JSON from firmware (truncated buffer,
-                        # boot-time garbage), or valid JSON of the wrong shape
-                        # (non-dict root → AttributeError on .get; scalar `targets` →
-                        # TypeError on enumerate). Drop the frame but log so we don't
-                        # lose visibility when a real parse bug regresses. Letting any
-                        # of these escape would make DeviceConnection._dispatch_state
-                        # drop this subscriber permanently, silently freezing the
-                        # client's grid stream.
-                        _LOGGER.debug(
-                            "subscribe_grid_targets: bad zone-state JSON for %s: %s",
-                            mac,
-                            err,
-                        )
-                        return
-                    # Send on zone state update (not just target position
-                    # updates) so sensor state changes appear without delay.
-                    _emit()
-                    # `events` are discrete occurrences, not persistent state:
-                    # drop after emitting so the ~5Hz target/sensor emits don't
-                    # re-send (and re-render, undeduped) the same events.
-                    zones.pop("events", None)
-
-            elif isinstance(state, BinarySensorState):
-                if state.key in binary_sensor_keys:
-                    sensors[binary_sensor_keys[state.key]] = state.state
-                    # Push the update — without this, env/binary sensor changes
-                    # only reach the frontend when piggy-backed on a target or
-                    # zone-state event. After a reconnect with no target movement
-                    # and quiet zone state, env sliders stay at "—" indefinitely.
-                    _emit()
-
-            elif isinstance(state, SensorState) and state.key in numeric_sensor_keys:
-                field = numeric_sensor_keys[state.key]
-                sensors[field] = None if math.isnan(state.state) else state.state
-                _emit()
-
-        return _on_state
-
     await _start_target_stream(
         hass,
         connection,
         msg,
         manager,
         counter_attr="grid_target_subs",
-        make_on_state=_make_on_state,
+        make_on_state=lambda dc: _make_grid_target_on_state(connection, msg["id"], mac, dc),
     )
 
 

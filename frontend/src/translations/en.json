@@ -499,5 +499,32 @@
 		"save_settings": "Saving the settings failed. Check that the device is online and try again.",
 		"save_configuration": "Saving the configuration backup failed. Try again.",
 		"load_configuration": "Restoring the configuration failed. It may be in an old format — re-save it and try again."
+	},
+	"card": {
+		"offline": "Device offline",
+		"loading": "Loading…",
+		"uncalibrated": "This device isn't calibrated yet. Open the Everything Presence Pro Grid panel to set up the room.",
+		"no_device": "Select a device in the card editor.",
+		"nothing_to_show": "Enable the map or sensors to show this card.",
+		"editor": {
+			"device_id": "Device",
+			"title": "Title",
+			"layout": "Layout",
+			"show_map": "Show map",
+			"show_sensors": "Show sensors",
+			"show_furniture": "Show furniture",
+			"show_overlays": "Show overlays",
+			"presence": "Presence",
+			"zones": "Zones",
+			"occupancy": "Occupancy",
+			"static_presence": "Static presence",
+			"motion_presence": "Motion presence",
+			"target_presence": "Target presence",
+			"mmwave": "mmWave",
+			"temperature": "Temperature",
+			"humidity": "Humidity",
+			"illuminance": "Illuminance",
+			"co2": "CO₂"
+		}
 	}
 }

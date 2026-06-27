@@ -54,6 +54,27 @@ export class EppLiveSidebar extends LitElement {
 
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
+	/** null = show all five presence rows; [] = hide the whole section; otherwise only the listed keys. */
+	@property({ attribute: false }) presenceKeys:
+		| (
+				| "occupancy"
+				| "static_presence"
+				| "motion_presence"
+				| "target_presence"
+				| "mmwave"
+		  )[]
+		| null = null;
+
+	@property({ type: Boolean }) showZones = true;
+
+	/** null = show every reported env sensor; otherwise only the listed keys. */
+	@property({ attribute: false }) envKeys:
+		| ("temperature" | "humidity" | "illuminance" | "co2")[]
+		| null = null;
+
+	/** When false, the zone-section header is a plain label, not an editor link. */
+	@property({ type: Boolean }) interactive = true;
+
 	static styles = css`
     :host {
       display: block;
@@ -187,19 +208,19 @@ export class EppLiveSidebar extends LitElement {
 				info: this.localize("info.occupancy"),
 			},
 			{
-				id: "static",
+				id: "static_presence",
 				label: this.localize("live.static_presence"),
 				on: ss.static_state ? ss.static_state !== "I" : ss.static_presence,
 				info: this.localize("info.static_presence"),
 			},
 			{
-				id: "motion",
+				id: "motion_presence",
 				label: this.localize("live.motion_presence"),
 				on: ss.motion_state ? ss.motion_state !== "I" : ss.motion_presence,
 				info: this.localize("info.motion_presence"),
 			},
 			{
-				id: "target",
+				id: "target_presence",
 				label: this.localize("live.target_presence"),
 				on: ss.target_presence,
 				info: this.localize("info.target_presence"),
@@ -211,6 +232,10 @@ export class EppLiveSidebar extends LitElement {
 				info: this.localize("info.mmwave"),
 			},
 		];
+
+		const filteredPresence = this.presenceKeys
+			? sensorDefs.filter((s) => this.presenceKeys?.includes(s.id as never))
+			: sensorDefs;
 
 		// Zone occupancy entries: rest-of-room (slot 0) first to match editor
 		// ordering, then configured named zones in slot order.
@@ -278,17 +303,17 @@ export class EppLiveSidebar extends LitElement {
 				value: this.localize("live.co2_value", { value: ss.co2 }),
 			});
 
-		return html`
-      <div style="padding: 8px 0;">
-        <div class="live-section-header">${this.localize("live.presence")}</div>
-        ${sensorDefs.map((s) => this._renderRow(s))}
+		const filteredEnv = this.envKeys
+			? envSensors.filter((s) => this.envKeys?.includes(s.id as never))
+			: envSensors;
 
-        ${
-					this.hasPerspective
-						? html`
-        <hr style="border: none; border-top: 1px solid var(--divider-color, #eee); margin: 10px 12px;"/>
+		const showPres = filteredPresence.length > 0;
+		const showZ = this.showZones && this.hasPerspective;
+		const showEnv = filteredEnv.length > 0;
+		const sep = html`<hr style="border: none; border-top: 1px solid var(--divider-color, #eee); margin: 10px 12px;"/>`;
 
-        <button class="live-section-header live-section-link" @click=${() => {
+		const zoneHeader = this.interactive
+			? html`<button class="live-section-header live-section-link" @click=${() => {
 					this.dispatchEvent(
 						new CustomEvent("view-change", {
 							detail: { view: "editor", sidebarTab: "zones" },
@@ -296,30 +321,36 @@ export class EppLiveSidebar extends LitElement {
 							composed: true,
 						}),
 					);
-				}}>${this.localize("sidebar.detection_zones")}</button>
-        ${zoneDefs.map((s) => this._renderRow(s))}
-        `
-						: nothing
-				}
+				}}>${this.localize("sidebar.detection_zones")}</button>`
+			: html`<div class="live-section-header">${this.localize("sidebar.detection_zones")}</div>`;
 
-        <hr style="border: none; border-top: 1px solid var(--divider-color, #eee); margin: 10px 12px;"/>
-
+		return html`
+      <div style="padding: 8px 0;">
         ${
-					envSensors.length
-						? html`
-          <div class="live-section-header">${this.localize("live.environment")}</div>
-          ${envSensors.map(
-						(s) => html`
-            <div class="live-sensor-row">
-              <span class="live-sensor-label">${s.label}</span>
-              <span class="live-sensor-value">${s.value}</span>
-            </div>
-          `,
-					)}
-        `
+					showPres
+						? html`<div class="live-section-header">${this.localize("live.presence")}</div>
+            ${filteredPresence.map((s) => this._renderRow(s))}`
 						: nothing
 				}
-
+        ${
+					showZ
+						? html`${showPres ? sep : nothing}${zoneHeader}
+            ${zoneDefs.map((s) => this._renderRow(s))}`
+						: nothing
+				}
+        ${
+					showEnv
+						? html`${showPres || showZ ? sep : nothing}
+            <div class="live-section-header">${this.localize("live.environment")}</div>
+            ${filteredEnv.map(
+							(s) => html`
+              <div class="live-sensor-row">
+                <span class="live-sensor-label">${s.label}</span>
+                <span class="live-sensor-value">${s.value}</span>
+              </div>`,
+						)}`
+						: nothing
+				}
       </div>
     `;
 	}

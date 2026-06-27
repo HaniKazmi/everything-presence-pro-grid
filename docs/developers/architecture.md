@@ -66,7 +66,8 @@ everything-presence-pro-grid/
 │   │   ├── __init__.py            # Registration, validators, error/version helpers
 │   │   ├── _devices.py            # Device list/config, sessions, settings, pipeline
 │   │   ├── _firmware.py           # OTA, dismiss target
-│   │   └── _flasher.py            # Flashable devices, ESPHome device CRUD
+│   │   ├── _flasher.py            # Flashable devices, ESPHome device CRUD
+│   │   └── _overview.py           # Non-admin read-only commands for the dashboard card
 │   ├── firmware_proxy.py        # Auth-required proxy for firmware binaries from GitHub Releases
 │   ├── diagnostics.py           # HA diagnostics dump (entry + per-device snapshots, MAC/host redacted)
 │   ├── repairs.py               # Repairs flow: triggers OTA from firmware_behind_<mac>, polls version sensor
@@ -75,11 +76,17 @@ everything-presence-pro-grid/
 │   ├── translations/            # HA-managed locale translations
 │   ├── brand/                   # Brand assets (icons)
 │   └── frontend/
-│       └── eppgrid-panel.js     # Built JS bundle
+│       ├── eppgrid-panel.js     # Built panel bundle
+│       └── eppgrid-card.js      # Built dashboard card bundle
 ├── frontend/
 │   ├── src/
 │   │   ├── eppgrid-panel.ts         # Orchestrator (view routing, controllers, inlined views)
-│   │   ├── index.ts                 # Module entry — re-exports EPPGridPanel
+│   │   ├── eppgrid-card.ts          # Dashboard card element (<eppgrid-card>), read-only
+│   │   ├── eppgrid-card-editor.ts   # Visual config editor for the dashboard card
+│   │   ├── index.ts                 # Panel bundle entry — re-exports EPPGridPanel
+│   │   ├── card/
+│   │   │   ├── index.ts             # Card bundle entry — registers card + editor elements
+│   │   │   └── overview-store.ts    # Module-level ref-counted store (one WS sub per device)
 │   │   ├── panel-mount-guard.ts     # Re-mount guard for HA frontend rebuilds
 │   │   ├── localize.ts              # IntlMessageFormat translation factory
 │   │   ├── translations/            # en.json, es.json (nested string keys)
@@ -417,13 +424,63 @@ Rollup bundles `src/index.ts` → minified ES module at
 TypeScript with strict mode and experimental decorators for Lit.
 Biome for linting/formatting.
 
-### Embedding
+### Embedding: panel and dashboard card
 
-`panel_custom.async_register_panel` registers `<eppgrid-panel>` as a
-full-screen webcomponent on the `/eppgrid` URL with `require_admin=True`.
-The panel is the only mounting surface — no Lovelace card or dashboard
-strategy is exposed, since both would have wrapped the same full-screen UI
-without the admin gate, breaking the access-control model.
+There are two distinct frontend mounting surfaces, each with a different access model:
+
+**Admin panel** — `panel_custom.async_register_panel` registers `<eppgrid-panel>` as a
+full-screen webcomponent on the `/eppgrid` URL with `require_admin=True`. HA hides it from
+non-admin users and rejects direct URL access. The panel is admin-gated because it **mutates**
+device config (calibration, zones, settings, OTA flashing); it is not appropriate for shared
+household dashboards.
+
+**Read-only dashboard card** (`custom:eppgrid-card`) — a separate Lit element that
+displays a live map and/or sensor sidebar for a single device, with no mutation capability.
+It is backed by non-admin WebSocket commands, so it can be placed on dashboards visible to
+any authenticated household user. See [Dashboard Card Architecture](#dashboard-card-architecture)
+below.
+
+### Dashboard Card Architecture
+
+`custom:eppgrid-card` is a self-contained read-only display surface. Key design points:
+
+**Separate JS bundle.** The card ships as `eppgrid-card.js`, a second Rollup output
+(`src/card/index.ts` entry) built alongside the panel bundle. It is registered as a
+**Lovelace module resource** (not via `add_extra_js_url`). The reason: `add_extra_js_url`
+injects the module before HA lazily installs the scoped-custom-element-registry polyfill;
+that polyfill swaps `window.customElements` for a fresh registry, silently dropping any
+element registered before the swap. Lovelace resources load during Lovelace init,
+post-swap, so the element is always present. YAML-mode dashboards have no mutable resource
+store, so `add_extra_js_url` is used as a fallback there.
+(`__init__.py`: `_register_card_resource` / `_unregister_card_resource`)
+
+**Component reuse.** The card renders `<epp-grid>` (read-only, with `showOverlays`) and
+`<epp-live-sidebar>` (with `presenceKeys` / `showZones` / `envKeys` / `interactive=false`)
+— the same components the panel uses in its live-overview view. No duplication of rendering
+logic.
+
+**Non-admin backend commands** (`websocket_api/_overview.py`):
+
+- `eppgrid/overview/list_devices` — returns the list of EPP devices (device_id, mac, name)
+  for the card editor's device picker. Synchronous, no admin gate.
+- `eppgrid/overview/subscribe` — sends a stored-layout snapshot (so the card can draw the
+  room even while the device is offline), then opens a refcounted device session and streams
+  the same `{targets, sensors, zones}` frames as `subscribe_grid_targets`, reusing
+  `_make_grid_target_on_state`. The command owns the session lifecycle (open + release).
+
+**`OverviewStore` (`frontend/src/card/overview-store.ts`).** A module-level, ref-counted
+store keyed by `device_id`. Multiple cards for the same device share a single
+`eppgrid/overview/subscribe` WebSocket subscription; the last card to disconnect closes it.
+The backend `DeviceManager` independently ref-counts the ESPHome session per MAC, so there
+is only ever one physical TCP connection to a device regardless of how many cards or panel
+sessions are open.
+
+**`getEntitySuggestion` (HA 2026.6+).** When the dashboard card picker is opened for an
+entity, `getEntitySuggestion` checks whether that entity's device is a known EPP device
+(using a lazily-populated cache filled via `eppgrid/overview/list_devices`) and, if so,
+suggests `custom:eppgrid-card` pre-filled with the matching `device_id`. Because the lookup
+is async but the HA API is synchronous, the cache is warmed on first call; reopening the
+picker after the cache resolves returns the suggestion.
 
 ### Panel Architecture
 

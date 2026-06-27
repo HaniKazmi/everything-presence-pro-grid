@@ -30,6 +30,7 @@ def _stub_frontend_deps(hass):
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=test",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
     ):
         yield

@@ -6,6 +6,7 @@ import hashlib
 import logging
 import os
 
+import homeassistant.components.frontend as _ha_frontend
 from homeassistant.components import panel_custom
 from homeassistant.components.frontend import async_remove_panel
 from homeassistant.components.http import StaticPathConfig
@@ -13,6 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
+from .const import CARD_RESOURCE_ID_KEY
 from .const import CURRENT_BUNDLE_HASH_KEY
 from .const import DOMAIN
 from .device_groups._registry import zone_name_from_store
@@ -24,6 +26,7 @@ from .websocket_api import async_register_websocket_commands
 _LOGGER = logging.getLogger(__name__)
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
+CARD_JS = "eppgrid-card.js"
 
 # Key in hass.data marking that the static path has been registered with the
 # HTTP component. Static path registration can only happen once per HA process
@@ -55,6 +58,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register the static path unconditionally so Lovelace dashboards can
     # fetch the bundled JS module even when the sidebar panel is disabled.
     await _register_frontend_resources(hass)
+    await _register_card_resource(hass)
 
     from .device_groups import DeviceGroupManager
 
@@ -142,6 +146,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await manager.async_stop()
 
     await async_apply_panel_visibility(hass, False)
+    await _unregister_card_resource(hass)
 
     return True
 
@@ -167,6 +172,22 @@ async def async_apply_panel_visibility(hass: HomeAssistant, visible: bool) -> No
         async_remove_panel(hass, DOMAIN, warn_if_unknown=False)
 
 
+async def _ensure_static_hash_path(hass: HomeAssistant, js_filename: str) -> str:
+    """Hash a frontend bundle, register its content-hashed static path once per process, and return the served URL."""
+    js_path = os.path.join(FRONTEND_DIR, js_filename)
+    try:
+        js_hash = await hass.async_add_executor_job(_hash_file, js_path)
+    except OSError:
+        js_hash = "0"
+    registered: set[str] = hass.data.setdefault(_STATIC_HASH_PATHS_KEY, set())
+    if js_hash not in registered:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(url_path=f"/{DOMAIN}_static/{js_hash}", path=FRONTEND_DIR, cache_headers=True)]
+        )
+        registered.add(js_hash)
+    return f"/{DOMAIN}_static/{js_hash}/{js_filename}"
+
+
 async def _register_frontend_resources(hass: HomeAssistant) -> str:
     """Register a content-hashed static path for the bundle and return its URL.
 
@@ -188,30 +209,61 @@ async def _register_frontend_resources(hass: HomeAssistant) -> str:
     base `/eppgrid_static` mapping is registered, so the hashed prefixes can't
     collide with it in the aiohttp router.
     """
-    js_path = os.path.join(FRONTEND_DIR, "eppgrid-panel.js")
-    try:
-        js_hash = await hass.async_add_executor_job(_hash_file, js_path)
-    except OSError:
-        js_hash = "0"
+    module_url = await _ensure_static_hash_path(hass, "eppgrid-panel.js")
 
     # Stash the current hash so the eppgrid/frontend_version WS command can hand
     # it back to an open panel, which reloads itself when its own hash differs.
-    hass.data[CURRENT_BUNDLE_HASH_KEY] = js_hash
+    hass.data[CURRENT_BUNDLE_HASH_KEY] = module_url.split("/")[2]
 
-    registered: set[str] = hass.data.setdefault(_STATIC_HASH_PATHS_KEY, set())
-    if js_hash not in registered:
-        await hass.http.async_register_static_paths(
-            [
-                StaticPathConfig(
-                    url_path=f"/{DOMAIN}_static/{js_hash}",
-                    path=FRONTEND_DIR,
-                    cache_headers=True,
-                )
-            ]
-        )
-        registered.add(js_hash)
+    return module_url
 
-    return f"/{DOMAIN}_static/{js_hash}/eppgrid-panel.js"
+
+async def _register_card_resource(hass: HomeAssistant) -> None:
+    """Serve the dashboard card bundle and register it as a Lovelace module resource.
+
+    Cards must load as a Lovelace resource (not add_extra_js_url): add_extra_js_url
+    injects the module before HA installs the scoped-custom-element-registry
+    polyfill, which then swaps the registry and drops the element. Resources are
+    loaded during Lovelace init (post-swap). YAML-mode dashboards have no
+    mutable resource store, so fall back to add_extra_js_url there.
+    """
+    card_url = await _ensure_static_hash_path(hass, CARD_JS)
+
+    lovelace = hass.data.get("lovelace")
+    resources = getattr(lovelace, "resources", None)
+    if resources is not None and hasattr(resources, "async_create_item"):
+        if not getattr(resources, "loaded", False):
+            await resources.async_load()
+            resources.loaded = True
+        for item in resources.async_items():
+            url = item.get("url", "")
+            if url == card_url:
+                hass.data[CARD_RESOURCE_ID_KEY] = item.get("id")
+                return
+            if f"/{DOMAIN}_static/" in url and url.split("?")[0].endswith(f"/{CARD_JS}"):
+                await resources.async_update_item(item["id"], {"url": card_url})
+                hass.data[CARD_RESOURCE_ID_KEY] = item["id"]
+                return
+        created = await resources.async_create_item({"res_type": "module", "url": card_url})
+        if isinstance(created, dict):
+            hass.data[CARD_RESOURCE_ID_KEY] = created.get("id")
+    else:
+        # YAML-mode dashboards: no mutable resource store.
+        _ha_frontend.add_extra_js_url(hass, card_url)
+
+
+async def _unregister_card_resource(hass: HomeAssistant) -> None:
+    """Remove the Lovelace card resource registered at setup, if any."""
+    resource_id = hass.data.pop(CARD_RESOURCE_ID_KEY, None)
+    if resource_id is None:
+        return
+    lovelace = hass.data.get("lovelace")
+    resources = getattr(lovelace, "resources", None)
+    if resources is not None and hasattr(resources, "async_delete_item"):
+        try:
+            await resources.async_delete_item(resource_id)
+        except Exception:
+            _LOGGER.exception("Failed to remove eppgrid card Lovelace resource")
 
 
 async def _register_panel(hass: HomeAssistant, module_url: str) -> None:

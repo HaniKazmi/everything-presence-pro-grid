@@ -43,6 +43,7 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
             new_callable=AsyncMock,
             return_value="/eppgrid_static/eppgrid-panel.js?v=test",
         ),
+        patch("custom_components.eppgrid._register_card_resource", new_callable=AsyncMock),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         patch(
             "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
@@ -5772,9 +5773,22 @@ class TestAdminGateAllCommands:
                 await call_async_handler(hass, handler, connection, msg_payload)
         connection.send_result.assert_not_called()
 
+    # Commands that are intentionally NOT admin-gated — read-only display data
+    # meant for shared (non-admin) dashboards. Add new non-admin commands here
+    # along with a comment explaining why they're exempt.
+    _NON_ADMIN_COMMANDS: frozenset[str] = frozenset(
+        {
+            # overview card picker — display-only, no config mutation
+            "websocket_overview_list_devices",
+            # overview card live stream — read-only, non-admin shared dashboard
+            "websocket_overview_subscribe",
+        }
+    )
+
     def test_all_registered_commands_are_admin_gated(self) -> None:
         """Every command registered in async_register_websocket_commands must have
-        @websocket_api.require_admin in its decorator stack.
+        @websocket_api.require_admin in its decorator stack, unless explicitly listed
+        in _NON_ADMIN_COMMANDS (read-only commands for shared dashboards).
 
         This is a meta-test: it walks the __wrapped__ chain on each handler and
         checks __code__.co_name for "with_admin" (the inner function that
@@ -5809,6 +5823,8 @@ class TestAdminGateAllCommands:
         unresolvable: list[str] = []
         ungated: list[str] = []
         for name in registered:
+            if name in self._NON_ADMIN_COMMANDS:
+                continue
             fn = getattr(ws_mod, name, None)
             if fn is None:
                 unresolvable.append(name)
@@ -6551,3 +6567,259 @@ class TestWebSocketFrontendVersion:
         with pytest.raises(Unauthorized):
             websocket_frontend_version(hass, connection, msg)
         connection.send_result.assert_not_called()
+
+
+class TestOverviewListDevices:
+    async def test_lists_devices_with_registry_id(self, hass, config_entry):
+        """Returns device_id/name for devices that have a registry device_id; non-admin."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import websocket_overview_list_devices
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:01": ManagedDevice(mac="AA:BB:CC:DD:EE:01", name="Living Room"),
+            "AA:BB:CC:DD:EE:02": ManagedDevice(mac="AA:BB:CC:DD:EE:02", name="Bedroom"),
+        }
+        mock_dm.devices["AA:BB:CC:DD:EE:01"].device_id = "dev1"
+        # second device has no registry id → omitted
+
+        connection = MagicMock()
+        msg = {"id": 7, "type": "eppgrid/overview/list_devices"}
+        websocket_overview_list_devices(hass, connection, msg)
+
+        connection.send_result.assert_called_once()
+        sent = connection.send_result.call_args.args
+        assert sent[0] == 7
+        assert sent[1] == [{"device_id": "dev1", "name": "Living Room"}]
+
+    async def test_devices_sorted_by_name_case_insensitive(self, hass, config_entry):
+        """Devices are returned sorted by name (case-insensitive), device_id as tiebreak."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import websocket_overview_list_devices
+
+        mock_dm = await setup_integration(hass, config_entry)
+        # Insert Zebra first, Alpha second — insertion order is wrong order
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:01": ManagedDevice(mac="AA:BB:CC:DD:EE:01", name="Zebra Room"),
+            "AA:BB:CC:DD:EE:02": ManagedDevice(mac="AA:BB:CC:DD:EE:02", name="Alpha Room"),
+        }
+        mock_dm.devices["AA:BB:CC:DD:EE:01"].device_id = "dev-zebra"
+        mock_dm.devices["AA:BB:CC:DD:EE:02"].device_id = "dev-alpha"
+
+        connection = MagicMock()
+        msg = {"id": 9, "type": "eppgrid/overview/list_devices"}
+        websocket_overview_list_devices(hass, connection, msg)
+
+        connection.send_result.assert_called_once()
+        sent = connection.send_result.call_args.args
+        assert sent[0] == 9
+        assert sent[1] == [
+            {"device_id": "dev-alpha", "name": "Alpha Room"},
+            {"device_id": "dev-zebra", "name": "Zebra Room"},
+        ]
+
+    async def test_not_loaded_when_manager_absent(self, hass):
+        """Short-circuits with not_ready when the integration is unloaded."""
+        from custom_components.eppgrid.websocket_api import websocket_overview_list_devices
+
+        connection = MagicMock()
+        msg = {"id": 8, "type": "eppgrid/overview/list_devices"}
+        websocket_overview_list_devices(hass, connection, msg)
+
+        connection.send_error.assert_called_once()
+        assert connection.send_error.call_args.args[1] == "not_ready"
+
+
+class TestOverviewSubscribe:
+    async def test_unknown_device_id(self, hass, config_entry):
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value=None)
+
+        connection = MagicMock()
+        msg = {"id": 11, "type": "eppgrid/overview/subscribe", "device_id": "ghost"}
+        await call_async_handler(hass, websocket_overview_subscribe, connection, msg)
+
+        connection.send_error.assert_called_once()
+        assert connection.send_error.call_args.args[1] == "device_not_found"
+
+    async def test_sends_snapshot_then_streams(self, hass, config_entry):
+        """Acks, sends a layout snapshot from stored config, opens a session and subscribes."""
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+        mock_dm.store.devices = {"AA:BB:CC:DD:EE:01": {"calibration": {"room_width": 3000}}}
+        device_conn = MagicMock()
+        device_conn.entities = []
+        device_conn.subscribe_states = AsyncMock()
+        device_conn.unsubscribe_states = MagicMock()
+        mock_dm.async_open_session = AsyncMock(return_value=device_conn)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 12, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe, connection, msg)
+
+        connection.send_result.assert_called_once_with(12)
+        # snapshot event carries the stored config under "snapshot"
+        snapshot_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and c.args[0].get("event", {}).get("snapshot") is not None
+        ]
+        assert snapshot_events, "expected a snapshot event"
+        device_conn.subscribe_states.assert_awaited_once()
+        mock_dm.note_target_subscribe.assert_called_once_with("AA:BB:CC:DD:EE:01", "grid_target_subs")
+        # the pipeline push is scheduled on subscribe (via hass.async_create_task)
+        mock_dm.async_push_pipeline_to_device.assert_called_with("AA:BB:CC:DD:EE:01")
+        # unsubscribe releases the session + decrements the counter
+        assert 12 in connection.subscriptions
+        connection.subscriptions[12]()
+        mock_dm.note_target_unsubscribe.assert_called_once_with("AA:BB:CC:DD:EE:01", "grid_target_subs")
+        mock_dm.release_session.assert_called_once_with("AA:BB:CC:DD:EE:01", device_conn)
+
+    async def test_offline_device_still_sends_snapshot(self, hass, config_entry):
+        """When no live session is available, snapshot is sent + available:false; no stream."""
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+        mock_dm.store.devices = {"AA:BB:CC:DD:EE:01": {}}
+        mock_dm.async_open_session = AsyncMock(return_value=None)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 13, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe, connection, msg)
+
+        connection.send_result.assert_called_once_with(13)
+        avail_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and c.args[0].get("event", {}).get("available") is False
+        ]
+        assert avail_events, "expected an available:false event"
+        mock_dm.note_target_subscribe.assert_not_called()
+
+    async def test_double_fire_unsub_is_noop(self, hass, config_entry):
+        """A double-invoked unsub must release the session only once (released guard)."""
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+        mock_dm.store.devices = {"AA:BB:CC:DD:EE:01": {"calibration": {"room_width": 3000}}}
+        device_conn = MagicMock()
+        device_conn.entities = []
+        device_conn.subscribe_states = AsyncMock()
+        device_conn.unsubscribe_states = MagicMock()
+        mock_dm.async_open_session = AsyncMock(return_value=device_conn)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 14, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe, connection, msg)
+
+        # Fire the unsub twice — the `released` guard must make the second a no-op.
+        connection.subscriptions[14]()
+        connection.subscriptions[14]()
+        assert mock_dm.release_session.call_count == 1
+        assert mock_dm.note_target_unsubscribe.call_count == 1
+
+    async def test_open_session_raises_goes_offline(self, hass, config_entry):
+        """A raising async_open_session is swallowed → snapshot + available:false; no ref taken."""
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+        mock_dm.store.devices = {"AA:BB:CC:DD:EE:01": {}}
+        mock_dm.async_open_session = AsyncMock(side_effect=ConnectionError("boom"))
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 15, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe, connection, msg)
+
+        connection.send_result.assert_called_once_with(15)
+        avail_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and c.args[0].get("event", {}).get("available") is False
+        ]
+        assert avail_events, "expected an available:false event"
+        mock_dm.note_target_subscribe.assert_not_called()
+
+    async def test_releases_session_when_connection_closes_during_open(self, hass, config_entry):
+        """If the WS connection drops DURING the open/subscribe awaits, HA's
+        `async_handle_close` clears `connection.subscriptions` — so the unsub
+        we register afterward never fires. The handler must detect the closed
+        connection and release the session ref the open took, or it leaks.
+        """
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+        mock_dm.store.devices = {"AA:BB:CC:DD:EE:01": {"calibration": {"room_width": 3000}}}
+        device_conn = MagicMock()
+        device_conn.entities = []
+        device_conn.subscribe_states = AsyncMock()
+        device_conn.unsubscribe_states = MagicMock()
+        mock_dm.release_session = MagicMock(return_value=None)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+
+        async def _open(mac: str) -> MagicMock:
+            # Simulate HA's async_handle_close landing mid-await: it clears the
+            # subscriptions dict and swaps send_message for the closed-error
+            # stub (and does NOT cancel this background task).
+            connection.subscriptions.clear()
+            connection.send_message = connection._connect_closed_error
+            return device_conn
+
+        mock_dm.async_open_session = AsyncMock(side_effect=_open)
+
+        msg = {"id": 16, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe, connection, msg)
+
+        # The ref the open took must be released immediately, since the unsub
+        # can never be invoked from the cleared subscriptions dict.
+        mock_dm.release_session.assert_called_once_with("AA:BB:CC:DD:EE:01", device_conn)
+        mock_dm.note_target_unsubscribe.assert_called_once_with("AA:BB:CC:DD:EE:01", "grid_target_subs")
+        # The `released` guard prevents a double-release if the unsub the
+        # handler registered also somehow fires.
+        unsub = connection.subscriptions.get(16)
+        if unsub is not None:
+            unsub()
+        assert mock_dm.release_session.call_count == 1
+
+    async def test_subscribe_states_raises_releases_session(self, hass, config_entry):
+        """If subscribe_states raises after session is opened, the session must be
+        released, note_target_subscribe must NOT be called, and an available:false
+        event must be sent.
+        """
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe
+
+        mac = "AA:BB:CC:DD:EE:01"
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value=mac)
+        mock_dm.store.devices = {mac: {}}
+        device_conn = MagicMock()
+        device_conn.entities = []
+        device_conn.subscribe_states = AsyncMock(side_effect=ConnectionError("boom"))
+        mock_dm.async_open_session = AsyncMock(return_value=device_conn)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 17, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe, connection, msg)
+
+        mock_dm.release_session.assert_called_once_with(mac, device_conn)
+        mock_dm.note_target_subscribe.assert_not_called()
+        avail_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and c.args[0].get("event", {}).get("available") is False
+        ]
+        assert avail_events, "expected an available:false event"

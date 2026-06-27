@@ -499,5 +499,32 @@
 		"save_settings": "No se pudieron guardar los ajustes. Comprueba que el dispositivo está en línea e inténtalo de nuevo.",
 		"save_configuration": "No se pudo guardar la copia de seguridad de la configuración. Inténtalo de nuevo.",
 		"load_configuration": "No se pudo restaurar la configuración. Puede que esté en un formato antiguo — vuelve a guardarla e inténtalo de nuevo."
+	},
+	"card": {
+		"offline": "Dispositivo sin conexión",
+		"loading": "Cargando…",
+		"uncalibrated": "Este dispositivo aún no está calibrado. Abre el panel de Everything Presence Pro Grid para configurar la habitación.",
+		"no_device": "Selecciona un dispositivo en el editor de tarjetas.",
+		"nothing_to_show": "Activa el mapa o los sensores para mostrar esta tarjeta.",
+		"editor": {
+			"device_id": "Dispositivo",
+			"title": "Título",
+			"layout": "Disposición",
+			"show_map": "Mostrar mapa",
+			"show_sensors": "Mostrar sensores",
+			"show_furniture": "Mostrar mobiliario",
+			"show_overlays": "Mostrar superposiciones",
+			"presence": "Presencia",
+			"zones": "Zonas",
+			"occupancy": "Ocupación",
+			"static_presence": "Presencia estática",
+			"motion_presence": "Presencia en movimiento",
+			"target_presence": "Presencia de objetivo",
+			"mmwave": "mmWave",
+			"temperature": "Temperatura",
+			"humidity": "Humedad",
+			"illuminance": "Iluminancia",
+			"co2": "CO₂"
+		}
 	}
 }

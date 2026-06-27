@@ -26,7 +26,7 @@ Python HA custom component. Thin by design — it does no signal processing. Its
 
 Top-level modules:
 
-- **`__init__.py`** — `async_setup_entry`, storage init, device-manager startup, WebSocket command registration, frontend-panel registration (admin-only) with a hashed cache-busting URL for the bundled JS.
+- **`__init__.py`** — `async_setup_entry`, storage init, device-manager startup, WebSocket command registration, frontend-panel registration (admin-only), and Lovelace card resource registration (`_register_card_resource` / `_unregister_card_resource`) for the dashboard card bundle.
 - **`config_flow.py`** — HA config flow. Mostly a shell because the integration's real "discovery" happens by scanning the entity registry for ESPHome devices that match the firmware signature (see `device_manager/`).
 - **`storage.py`** — per-device config persistence via HA's `Store` API. Calibration, room layout, zone slots, furniture, sensor settings, plus a separate "saved configurations" store (named room layouts the user can restore later). Settings are stored sparsely — only fields that differ from `SETTINGS_DEFAULTS` are written; missing fields are filled from defaults on restore.
 - **`firmware_proxy.py`** — auth-required HTTP view (`requires_auth = True`) that proxies firmware manifests + binaries from `github.com/.../releases/download/v{FIRMWARE_VERSION}/` so the in-browser flasher avoids GitHub's missing CORS headers. 60 s upstream timeout, 16 MiB body cap.
@@ -36,7 +36,8 @@ Top-level modules:
 - **`const.py`** — constants. Notably `MANIFEST_BASE_URL` (the per-version GitHub Releases URL the proxy fetches from), `FIRMWARE_VERSION` (the firmware version this integration release expects), `MAC_SCHEMA` and the various input-validation schemas.
 - **`strings.json`** and **`translations/`** — user-facing strings. The pre-push hook checks that strings.json updates ride alongside relevant code changes.
 - **`brand/`** — brand assets (icons) used by the HA UI.
-- **`frontend/eppgrid-panel.js`** — the built frontend bundle (tracked in git — see [Contributing](contributing.md)).
+- **`frontend/eppgrid-panel.js`** — the built panel bundle (tracked in git — see [Contributing](contributing.md)).
+- **`frontend/eppgrid-card.js`** — the built dashboard card bundle (second Rollup output, also tracked in git).
 
 The two main subsystems are split into packages:
 
@@ -56,8 +57,9 @@ Frontend ↔ device relay. Each module is a small group of related WS commands; 
 - **`_devices.py`** — device list + per-device session, get_config, set_setup, set_room_layout, set_settings, set_distance_override, set_entity_enabled, save_configuration, list_configurations, delete_configuration, set_show_room_calibration_tutorial, plus the live `subscribe_device`, `subscribe_grid_targets`, `subscribe_raw_targets` streams.
 - **`_firmware.py`** — `update_firmware` (OTA), `subscribe_ota_progress`, `dismiss_target`.
 - **`_flasher.py`** — `list_flashable_devices`, `subscribe_flashable_devices`, `add_esphome_device`, `delete_esphome_device` (USB / Wi-Fi flasher support).
+- **`_overview.py`** — `eppgrid/overview/list_devices` and `eppgrid/overview/subscribe`: non-admin, read-only commands powering the dashboard card. Unlike all other commands these carry **no** `@websocket_api.require_admin` gate, so the card can appear on shared household dashboards.
 
-Every command carries `@websocket_api.require_admin` — the panel is admin-only, so both state-mutating and read-only (`list_*` / `subscribe_*` / `get_config` / `dismiss_target`) commands are gated to administrators.
+Every other command carries `@websocket_api.require_admin` — the panel is admin-only, so both state-mutating and read-only (`list_*` / `subscribe_*` / `get_config` / `dismiss_target`) panel commands are gated to administrators.
 
 For the flow of data through these files at runtime, see [Architecture](architecture.md).
 
@@ -67,8 +69,12 @@ TypeScript/Lit panel. Mounted in HA via `panel_custom`, admin-only.
 
 Top-level files:
 
-- **`index.ts`** — module entry point. Re-exports `EPPGridPanel`.
+- **`index.ts`** — panel bundle entry point. Re-exports `EPPGridPanel`.
 - **`eppgrid-panel.ts`** — top-level `<eppgrid-panel>` custom element. Tab bar (Device Configuration / Flash Firmware), global state, event routing, view + setup-step management, Lit reactive controllers. The USB/Wi-Fi flash flow and the unsaved-changes navigation guard have been extracted into their own controllers (see `controllers/usb-flash-flow.ts` and `controllers/navigation-guard.ts`).
+- **`eppgrid-card.ts`** — `<eppgrid-card>` Lit element: read-only dashboard card. Implements the HA card surface (`setConfig`, `hass`, `getCardSize`, `getGridOptions`, `getConfigElement`, `getStubConfig`), renders `<epp-grid>` and/or `<epp-live-sidebar>`, and registers `window.customCards` with `getEntitySuggestion` (HA 2026.6+).
+- **`eppgrid-card-editor.ts`** — `<eppgrid-card-editor>` visual config editor. Uses `ha-form` with a `buildSchema()` driven by the device list from `eppgrid/overview/list_devices`; handles nested presence/environmental sensor groups.
+- **`card/index.ts`** — card bundle entry point. Imports `eppgrid-card.ts` and `eppgrid-card-editor.ts`, registering both custom elements and the `window.customCards` entry.
+- **`card/overview-store.ts`** — `OverviewStore`: module-level, ref-counted store keyed by `device_id`. Collapses multiple cards for the same device into one `eppgrid/overview/subscribe` WebSocket subscription; replays cached state to late subscribers; handles connection replacement gracefully.
 - **`panel-mount-guard.ts`** — re-mount guard for HA frontend rebuilds (panel can disappear and reappear without an unmount notification).
 - **`localize.ts`** — `IntlMessageFormat` translation factory. LRU-capped formatter cache.
 - **`types.ts`, `constants.ts`, `styles.ts`** — shared types, SVG / catalog / threshold constants, HA theme tokens and reusable CSS fragments.
@@ -129,7 +135,7 @@ Pure-logic modules — no Lit, no HA, testable in isolation.
 
 ### Build
 
-- **`rollup.config.js`** — bundles TypeScript source to `custom_components/eppgrid/frontend/eppgrid-panel.js`, which is committed to git so Home Assistant serves it without a build step.
+- **`rollup.config.js`** — two-output Rollup config. First output: panel bundle (`src/index.ts` → `custom_components/eppgrid/frontend/eppgrid-panel.js`). Second output: dashboard card bundle (`src/card/index.ts` → `custom_components/eppgrid/frontend/eppgrid-card.js`). Both are committed to git so Home Assistant serves them without a build step.
 - **`biome.json`** — linter / formatter config.
 - **`vitest.config.ts`** — frontend test config (90% lines / 85% branches / 90% functions / 90% statements per-file thresholds).
 

@@ -107,3 +107,6 @@ MAX_SOURCES_PER_DEVICE_GROUP = 8
 # device's own zone-0 sensor and the py<->ts projection parity test passes.
 REST_OF_ROOM_ID = "rest_of_room"
 REST_OF_ROOM_NAME = "Zone Rest of Room"
+
+# Lovelace resource id for the dashboard card, tracked so unload can remove it.
+CARD_RESOURCE_ID_KEY = f"{DOMAIN}_card_resource_id"
