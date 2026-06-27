@@ -41,18 +41,41 @@ describe("epp-live-sidebar visibility props", () => {
 
 	it("hides the presence section when showPresence is false", async () => {
 		const el = await mount({ showPresence: false });
-		const rows = el.shadowRoot!.querySelectorAll(".live-sensor-row");
-		// occupancy/static/motion/target/mmwave rows are gone; env rows remain
-		expect([...rows].some((r) => r.textContent?.includes("Occupancy"))).toBe(
-			false,
-		);
+		// The presence section header is gone entirely.
+		expect(headers(el)).not.toContain("live.presence");
+		// All five presence sensor labels are gone (default localize returns
+		// the raw translation key, so we assert against those keys).
+		const labels = [
+			...el.shadowRoot!.querySelectorAll(".live-sensor-label"),
+		].map((n) => (n.textContent ?? "").trim());
+		for (const presenceKey of [
+			"live.occupancy",
+			"live.static_presence",
+			"live.motion_presence",
+			"live.target_presence",
+			"live.mmwave",
+		]) {
+			expect(labels).not.toContain(presenceKey);
+		}
 	});
 
 	it("hides the zones section when showZones is false", async () => {
-		const elBefore = await mount({});
-		const withZones = headers(elBefore).length;
 		const el = await mount({ showZones: false });
-		expect(headers(el).length).toBeLessThan(withZones);
+		// With presence + environment still on, exactly two headers remain.
+		expect(headers(el)).toEqual(["live.presence", "live.environment"]);
+		expect(headers(el)).not.toContain("sidebar.detection_zones");
+	});
+
+	it("hides the zones section when hasPerspective is false even with showZones true", async () => {
+		// showZones && hasPerspective gate: no perspective => no zone section.
+		const el = await mount({ hasPerspective: false, showZones: true });
+		expect(headers(el)).not.toContain("sidebar.detection_zones");
+		// No zone-header link, and no rest-of-room / zone rows rendered.
+		expect(el.shadowRoot!.querySelector("button.live-section-link")).toBeNull();
+		const labels = [
+			...el.shadowRoot!.querySelectorAll(".live-sensor-label"),
+		].map((n) => (n.textContent ?? "").trim());
+		expect(labels).not.toContain("sidebar.rest_of_room");
 	});
 
 	it("filters environment to envKeys", async () => {
@@ -66,5 +89,16 @@ describe("epp-live-sidebar visibility props", () => {
 	it("renders the zone header as a plain label (no button) when interactive is false", async () => {
 		const el = await mount({ interactive: false });
 		expect(el.shadowRoot!.querySelector("button.live-section-link")).toBeNull();
+		// The zone section content must still render (non-interactive branch
+		// must keep zoneDefs.map — dropping it would be a regression). The
+		// rest-of-room row is the zone-specific row that proves it.
+		expect(headers(el)).toContain("sidebar.detection_zones");
+		const labels = [
+			...el.shadowRoot!.querySelectorAll(".live-sensor-label"),
+		].map((n) => (n.textContent ?? "").trim());
+		expect(labels).toContain("sidebar.rest_of_room");
+		expect(
+			el.shadowRoot!.querySelectorAll(".live-sensor-row").length,
+		).toBeGreaterThan(0);
 	});
 });
