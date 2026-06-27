@@ -11,7 +11,10 @@ durable rulebook — follow it for any frontend work.
 
 The layer lives in [`frontend/src/ui/`](../../frontend/src/ui/): `tokens.ts` + the
 primitives. Tokens are applied at the panel host (`eppgrid-panel`) `:host`, so the
-`--epp-*` custom properties cascade into every nested shadow root.
+`--epp-*` custom properties cascade into every nested shadow root. The dashboard card
+(`eppgrid-card`) also applies the `tokens` stylesheet at its own `:host`, so `--epp-*`
+tokens are available throughout the card's shadow tree (including the `<epp-grid>` and
+`<epp-live-sidebar>` it renders).
 
 ## Tokens (`frontend/src/ui/tokens.ts`)
 
