@@ -5779,6 +5779,8 @@ class TestAdminGateAllCommands:
         {
             # overview card picker — display-only, no config mutation
             "websocket_overview_list_devices",
+            # overview card live stream — read-only, non-admin shared dashboard
+            "websocket_overview_subscribe",
         }
     )
 
@@ -6599,3 +6601,75 @@ class TestOverviewListDevices:
 
         connection.send_error.assert_called_once()
         assert connection.send_error.call_args.args[1] == "not_ready"
+
+
+class TestOverviewSubscribe:
+    async def test_unknown_device_id(self, hass, config_entry):
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value=None)
+
+        connection = MagicMock()
+        msg = {"id": 11, "type": "eppgrid/overview/subscribe", "device_id": "ghost"}
+        await call_async_handler(hass, websocket_overview_subscribe, connection, msg)
+
+        connection.send_error.assert_called_once()
+        assert connection.send_error.call_args.args[1] == "device_not_found"
+
+    async def test_sends_snapshot_then_streams(self, hass, config_entry):
+        """Acks, sends a layout snapshot from stored config, opens a session and subscribes."""
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+        mock_dm.store.devices = {"AA:BB:CC:DD:EE:01": {"calibration": {"room_width": 3000}}}
+        device_conn = MagicMock()
+        device_conn.entities = []
+        device_conn.subscribe_states = AsyncMock()
+        device_conn.unsubscribe_states = MagicMock()
+        mock_dm.async_open_session = AsyncMock(return_value=device_conn)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 12, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe, connection, msg)
+
+        connection.send_result.assert_called_once_with(12)
+        # snapshot event carries the stored config under "snapshot"
+        snapshot_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and c.args[0].get("event", {}).get("snapshot") is not None
+        ]
+        assert snapshot_events, "expected a snapshot event"
+        device_conn.subscribe_states.assert_awaited_once()
+        mock_dm.note_target_subscribe.assert_called_once_with("AA:BB:CC:DD:EE:01", "grid_target_subs")
+        # unsubscribe releases the session + decrements the counter
+        assert 12 in connection.subscriptions
+        connection.subscriptions[12]()
+        mock_dm.note_target_unsubscribe.assert_called_once_with("AA:BB:CC:DD:EE:01", "grid_target_subs")
+        mock_dm.release_session.assert_called_once_with("AA:BB:CC:DD:EE:01", device_conn)
+
+    async def test_offline_device_still_sends_snapshot(self, hass, config_entry):
+        """When no live session is available, snapshot is sent + available:false; no stream."""
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+        mock_dm.store.devices = {"AA:BB:CC:DD:EE:01": {}}
+        mock_dm.async_open_session = AsyncMock(return_value=None)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 13, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe, connection, msg)
+
+        connection.send_result.assert_called_once_with(13)
+        avail_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and c.args[0].get("event", {}).get("available") is False
+        ]
+        assert avail_events, "expected an available:false event"
+        mock_dm.note_target_subscribe.assert_not_called()

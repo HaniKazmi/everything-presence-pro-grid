@@ -1507,6 +1507,11 @@ class DeviceManager:
         task.add_done_callback(_drop)
 
     @callback
+    def mac_for_device_id(self, device_id: str) -> str | None:
+        """Resolve an HA registry device_id to its mac (O(1)), or None if unknown."""
+        return self._device_id_to_mac.get(device_id)
+
+    @callback
     def note_target_subscribe(self, mac: str, kind: str) -> None:
         """Record one new frontend target-stream subscriber for `mac`.
 

@@ -8728,3 +8728,20 @@ class TestAsyncTriggerOtaSessionReuse:
             await manager.async_trigger_ota(mac)
 
         mock_conn.async_disconnect.assert_awaited_once()
+
+
+def test_mac_for_device_id_maps_registry_id_to_mac(hass):
+    """mac_for_device_id resolves a registry device_id to its mac, else None."""
+    from unittest.mock import MagicMock
+
+    from custom_components.eppgrid.device_manager import DeviceManager
+    from custom_components.eppgrid.device_manager import ManagedDevice
+
+    mgr = DeviceManager(hass, MagicMock())
+    dev = ManagedDevice(mac="AA:BB:CC:DD:EE:01", name="LR")
+    dev.device_id = "dev1"
+    mgr.devices["AA:BB:CC:DD:EE:01"] = dev
+    mgr._device_id_to_mac["dev1"] = "AA:BB:CC:DD:EE:01"
+
+    assert mgr.mac_for_device_id("dev1") == "AA:BB:CC:DD:EE:01"
+    assert mgr.mac_for_device_id("nope") is None

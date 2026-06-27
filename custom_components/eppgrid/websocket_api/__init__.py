@@ -455,6 +455,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_delete_device_group)
     websocket_api.async_register_command(hass, websocket_subscribe_device_groups)
     websocket_api.async_register_command(hass, websocket_overview_list_devices)
+    websocket_api.async_register_command(hass, websocket_overview_subscribe)
 
 
 def _get_manager(hass: HomeAssistant) -> Any:
@@ -591,3 +592,4 @@ from ._flasher import websocket_list_flashable_devices  # noqa: E402
 from ._flasher import websocket_subscribe_flashable_devices  # noqa: E402
 from ._frontend import websocket_frontend_version  # noqa: E402
 from ._overview import websocket_overview_list_devices  # noqa: E402
+from ._overview import websocket_overview_subscribe  # noqa: E402
