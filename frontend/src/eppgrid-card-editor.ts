@@ -1,0 +1,135 @@
+import { html, LitElement, nothing } from "lit";
+import { state } from "lit/decorators.js";
+import type { EppGridCardConfig } from "./eppgrid-card.js";
+
+interface DeviceOption {
+	device_id: string;
+	name: string;
+	mac: string;
+}
+
+/** Pure: build the ha-form schema for the given device options. Testable. */
+export function buildSchema(devices: DeviceOption[]): unknown[] {
+	return [
+		{
+			name: "device_id",
+			required: true,
+			selector: {
+				select: {
+					mode: "dropdown",
+					options: devices.map((d) => ({ value: d.device_id, label: d.name })),
+				},
+			},
+		},
+		{ name: "title", selector: { text: {} } },
+		{ name: "show_map", selector: { boolean: {} } },
+		{ name: "show_sensors", selector: { boolean: {} } },
+		{
+			name: "layout",
+			selector: {
+				select: {
+					mode: "dropdown",
+					options: [
+						{ value: "horizontal", label: "Horizontal" },
+						{ value: "vertical", label: "Vertical" },
+					],
+				},
+			},
+		},
+		{
+			name: "sensors",
+			type: "expandable",
+			title: "Sensors",
+			schema: [
+				{ name: "presence", selector: { boolean: {} } },
+				{ name: "zones", selector: { boolean: {} } },
+				{
+					name: "environmental",
+					type: "expandable",
+					title: "Environmental",
+					schema: [
+						{ name: "temperature", selector: { boolean: {} } },
+						{ name: "humidity", selector: { boolean: {} } },
+						{ name: "illuminance", selector: { boolean: {} } },
+						{ name: "co2", selector: { boolean: {} } },
+					],
+				},
+			],
+		},
+		{ name: "show_furniture", selector: { boolean: {} } },
+		{ name: "show_overlays", selector: { boolean: {} } },
+	];
+}
+
+export class EppGridCardEditor extends LitElement {
+	private __hass?: { callWS: (msg: unknown) => Promise<unknown> };
+	private _config?: EppGridCardConfig;
+	@state() private _devices: DeviceOption[] = [];
+
+	setConfig(config: EppGridCardConfig): void {
+		this._config = config;
+	}
+
+	set hass(hass: { callWS: (msg: unknown) => Promise<unknown> }) {
+		this.__hass = hass;
+		this._loadDevices();
+		this.requestUpdate();
+	}
+
+	get hass(): { callWS: (msg: unknown) => Promise<unknown> } | undefined {
+		return this.__hass;
+	}
+
+	connectedCallback(): void {
+		super.connectedCallback();
+		this._loadDevices();
+	}
+
+	private async _loadDevices(): Promise<void> {
+		if (!this.__hass || this._devices.length) return;
+		try {
+			const list = (await this.__hass.callWS({
+				type: "eppgrid/overview/list_devices",
+			})) as DeviceOption[];
+			this._devices = list ?? [];
+		} catch {
+			this._devices = [];
+		}
+	}
+
+	// Exposed for testing; HA fires `value-changed` from <ha-form>.
+	_valueChanged(ev: {
+		stopPropagation: () => void;
+		detail: { value: EppGridCardConfig };
+	}): void {
+		ev.stopPropagation();
+		let config = ev.detail.value;
+		if (config.show_map === false && config.show_sensors === false) {
+			// Never let the user end up with nothing to show — re-enable the map.
+			config = { ...config, show_map: true };
+		}
+		this.dispatchEvent(
+			new CustomEvent("config-changed", {
+				detail: { config },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	}
+
+	render() {
+		if (!this.__hass || !this._config) return nothing;
+		return html`
+			<ha-form
+				.hass=${this.__hass}
+				.data=${this._config}
+				.schema=${buildSchema(this._devices)}
+				@value-changed=${this._valueChanged}
+			></ha-form>
+		`;
+	}
+}
+
+if (!customElements.get("eppgrid-card-editor")) {
+	customElements.define("eppgrid-card-editor", EppGridCardEditor);
+}
