@@ -499,5 +499,9 @@
 		"save_settings": "Saving the settings failed. Check that the device is online and try again.",
 		"save_configuration": "Saving the configuration backup failed. Try again.",
 		"load_configuration": "Restoring the configuration failed. It may be in an old format — re-save it and try again."
+	},
+	"card": {
+		"offline": "Device offline",
+		"uncalibrated": "This device isn't calibrated yet. Open the Everything Presence Pro Grid panel to set up the room."
 	}
 }

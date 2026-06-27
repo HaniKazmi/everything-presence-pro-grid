@@ -1,0 +1,210 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import "../eppgrid-card.js";
+import type { EppGridCard } from "../eppgrid-card.js";
+
+// A calibrated snapshot so the map renders (parseConfig needs a perspective).
+// NOTE: parseCalibration requires exactly 8 numbers — [1, 0, 0, 0, 1, 0, 0, 0]
+// is the identity-like 8-element form used throughout the test suite.
+const CALIBRATED = {
+	calibration: {
+		perspective: [1, 0, 0, 0, 1, 0, 0, 0],
+		room_width: 3000,
+		room_depth: 3000,
+	},
+};
+
+// Each test uses a UNIQUE device_id — the OverviewStore registry is a
+// module-level singleton that persists across tests in this file.
+function makeHass() {
+	let cb: ((msg: unknown) => void) | undefined;
+	const subscribeMessage = vi.fn(async (c: (msg: unknown) => void) => {
+		cb = c;
+		return vi.fn();
+	});
+	return {
+		hass: { connection: { subscribeMessage }, locale: { language: "en" } },
+		emit: (m: unknown) => cb?.(m),
+		subscribeMessage,
+	};
+}
+
+async function mount(
+	config: any,
+	h = makeHass(),
+	snapshot: unknown = CALIBRATED,
+): Promise<EppGridCard> {
+	const el = document.createElement("eppgrid-card") as EppGridCard;
+	el.setConfig(config);
+	el.hass = h.hass as never;
+	document.body.appendChild(el);
+	await el.updateComplete;
+	h.emit({ snapshot });
+	await el.updateComplete;
+	return el;
+}
+
+afterEach(() => document.body.replaceChildren());
+
+describe("eppgrid-card setConfig", () => {
+	it("throws without device_id", () => {
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		expect(() =>
+			el.setConfig({ type: "custom:eppgrid-card" } as any),
+		).toThrow();
+	});
+
+	it("throws when both parts are disabled", () => {
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		expect(() =>
+			el.setConfig({
+				type: "custom:eppgrid-card",
+				device_id: "d",
+				show_map: false,
+				show_sensors: false,
+			} as any),
+		).toThrow();
+	});
+
+	it("registers the card type in window.customCards", () => {
+		const entry = (window as any).customCards?.find(
+			(c: any) => c.type === "eppgrid-card",
+		);
+		expect(entry).toBeTruthy();
+		expect(entry.name).toContain("Everything Presence Pro Grid");
+	});
+});
+
+describe("eppgrid-card rendering", () => {
+	it("renders only the map when show_sensors is false", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-map",
+			show_sensors: false,
+		});
+		expect(el.shadowRoot!.querySelector("epp-grid")).toBeTruthy();
+		expect(el.shadowRoot!.querySelector("epp-live-sidebar")).toBeNull();
+	});
+
+	it("renders only the sensors when show_map is false", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-sensors",
+			show_map: false,
+		});
+		expect(el.shadowRoot!.querySelector("epp-grid")).toBeNull();
+		expect(el.shadowRoot!.querySelector("epp-live-sidebar")).toBeTruthy();
+	});
+
+	it("shows the uncalibrated placeholder when the snapshot has no perspective", async () => {
+		const el = await mount(
+			{ type: "custom:eppgrid-card", device_id: "card-uncal" },
+			makeHass(),
+			{},
+		);
+		expect(el.shadowRoot!.querySelector("epp-grid")).toBeNull();
+		expect(el.shadowRoot!.querySelector(".placeholder")).toBeTruthy();
+	});
+
+	it("subscribes once via the store and updates on snapshot/data", async () => {
+		const h = makeHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "card-sub" });
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(h.subscribeMessage).toHaveBeenCalledTimes(1);
+		h.emit({ snapshot: CALIBRATED });
+		h.emit({
+			targets: [],
+			sensors: {
+				occupancy: true,
+				illuminance: null,
+				temperature: null,
+				humidity: null,
+				co2: null,
+			},
+			zones: { occupancy: {}, target_counts: {}, frame_count: 1 },
+		});
+		await el.updateComplete;
+		expect(el.shadowRoot!.querySelector("epp-grid")).toBeTruthy();
+		expect(el.shadowRoot!.querySelector("epp-live-sidebar")).toBeTruthy();
+	});
+
+	it("getGridOptions adapts to the configured parts", () => {
+		const both = document.createElement("eppgrid-card") as EppGridCard;
+		both.setConfig({ type: "custom:eppgrid-card", device_id: "card-grid-a" });
+		const sensorsOnly = document.createElement("eppgrid-card") as EppGridCard;
+		sensorsOnly.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-grid-b",
+			show_map: false,
+		});
+		expect(both.getGridOptions().columns).toBeGreaterThan(
+			sensorsOnly.getGridOptions().columns,
+		);
+	});
+
+	it("getCardSize returns larger size for map-only than sensors-only", () => {
+		const mapOnly = document.createElement("eppgrid-card") as EppGridCard;
+		mapOnly.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-cs-map",
+			show_sensors: false,
+		});
+		const sensorsOnly = document.createElement("eppgrid-card") as EppGridCard;
+		sensorsOnly.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-cs-sensors",
+			show_map: false,
+		});
+		// map adds 6, sensors-only adds 4 to the base of 1
+		expect(mapOnly.getCardSize()).toBe(7);
+		expect(sensorsOnly.getCardSize()).toBe(5);
+	});
+
+	it("getConfigElement and getStubConfig return expected values", () => {
+		// Import EppGridCard class via customElements registry (avoids importing the class directly)
+		const CardClass = customElements.get("eppgrid-card") as typeof EppGridCard;
+		const editor = CardClass.getConfigElement();
+		expect(editor.tagName.toLowerCase()).toBe("eppgrid-card-editor");
+		const stub = CardClass.getStubConfig();
+		expect(stub).toHaveProperty("device_id", "");
+	});
+
+	it("hass getter returns the assigned hass object", () => {
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "card-getter" });
+		const h = makeHass();
+		el.hass = h.hass as never;
+		expect(el.hass).toBe(h.hass);
+	});
+
+	it("shows offline banner when data.available is false", async () => {
+		const h = makeHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "card-offline" });
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		h.emit({ available: false });
+		await el.updateComplete;
+		expect(el.shadowRoot!.querySelector(".offline")).toBeTruthy();
+	});
+
+	it("passes envKeys to epp-live-sidebar when sensors.environmental is configured", async () => {
+		const el = await mount(
+			{
+				type: "custom:eppgrid-card",
+				device_id: "card-envkeys",
+				show_map: false,
+				sensors: { environmental: { temperature: true, co2: false } },
+			},
+			makeHass(),
+			CALIBRATED,
+		);
+		const sidebar = el.shadowRoot!.querySelector("epp-live-sidebar") as any;
+		expect(sidebar).toBeTruthy();
+		// envKeys should only include the true entries
+		expect(sidebar.envKeys).toEqual(["temperature"]);
+	});
+});
