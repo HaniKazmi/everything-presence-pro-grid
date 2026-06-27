@@ -174,6 +174,35 @@ Parses Target Position, Zone State, and sensor entity updates into structured ev
 
 ## 3. Commands
 
+### Overview Card Commands
+
+These two commands power the `custom:eppgrid-card` dashboard card. Unlike all other eppgrid commands they are **not** `@require_admin` — the card is designed for shared dashboards viewed by non-admin household users. They are read-only and cannot mutate device config.
+
+#### `eppgrid/overview/list_devices`
+
+Returns a minimal device list for the card editor's device picker. Only devices with a HA registry `device_id` are returned (the card stores the `device_id` and the subscribe command resolves it to a MAC server-side).
+
+**Request:** `{ "type": "eppgrid/overview/list_devices" }`
+
+**Response:** `[{ "device_id": str, "mac": str, "name": str }, ...]`
+
+#### `eppgrid/overview/subscribe`
+
+Streams read-only overview data for one device. The command owns the session lifecycle — it opens a refcounted aioesphomeapi session (shared with any concurrent panel or OTA sessions on the same device) and releases it on unsubscribe.
+
+**Request:** `{ "type": "eppgrid/overview/subscribe", "device_id": str }`
+
+**Events (in order):**
+
+1. `{ "snapshot": <stored device config dict> }` — sent immediately on subscribe (even when the device is offline) so the card can draw the room layout from stored data.
+2. One of:
+   - `{ "targets": [...], "sensors": {...}, "zones": {...} }` — live data frames, same shape as the `subscribe_grid_targets` payload, streamed at the same rates (display_interval / zone_state_interval) while the session is open.
+   - `{ "available": false }` — sent when the device session can't be opened (device offline or unknown) and no further frames follow.
+
+Errors: `device_not_found` when the `device_id` doesn't match a known device.
+
+---
+
 ### `list_devices`
 
 Returns discovered EPP devices.

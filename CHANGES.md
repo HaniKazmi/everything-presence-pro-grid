@@ -4,6 +4,17 @@ User-facing changes to Everything Presence Pro Grid. For full release assets
 and firmware downloads, see the
 [GitHub releases page](https://github.com/clintongormley/everything-presence-pro-grid/releases).
 
+## v1.3.0
+
+### New features
+
+- **Overview dashboard card.** Add a live map and/or sensor panel for any
+  Everything Presence Pro Grid device directly to a Home Assistant dashboard.
+  The card is configured through the visual editor — pick the device, choose
+  whether to show the map, the sensors, or both, and control which sensor
+  groups and map layers appear. Non-admin household users can view dashboards
+  that include this card without needing admin access.
+
 ## v1.2.3 — 2026-06-24
 
 ### Fixes

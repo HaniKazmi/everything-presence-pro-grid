@@ -107,6 +107,7 @@ nav:
       - LED and relay: user-guide/settings/led-relay.md
       - Logging: user-guide/settings/logging.md
     - Device groups: user-guide/device-groups.md
+    - Overview card: user-guide/overview-card.md
     - Automations: user-guide/automations.md
     - Firmware upgrades: user-guide/firmware-upgrades.md
     - Troubleshooting: user-guide/troubleshooting.md
