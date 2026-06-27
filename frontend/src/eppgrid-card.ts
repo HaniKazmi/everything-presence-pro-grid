@@ -204,7 +204,7 @@ export class EppGridCard extends LitElement {
 			: null;
 
 		return html`
-			<ha-card .header=${cfg.title ?? nothing}>
+			<ha-card .header=${cfg.title}>
 				${
 					this._data.available === false
 						? html`<div class="offline">${this._localize("card.offline")}</div>`
