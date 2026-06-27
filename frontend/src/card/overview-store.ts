@@ -20,7 +20,6 @@ export interface OverviewState {
 type Listener = (state: OverviewState) => void;
 
 interface Entry {
-	refcount: number;
 	state: OverviewState;
 	listeners: Set<Listener>;
 	unsubWs: (() => void) | null;
@@ -118,7 +117,6 @@ export function subscribeOverview(
 	let entry = registry.get(deviceId);
 	if (!entry) {
 		entry = {
-			refcount: 0,
 			// available starts true so the card doesn't flash "offline" before
 			// the first frame (or an available:false event) arrives.
 			state: { snapshot: null, data: null, available: true, connected: false },
@@ -139,7 +137,6 @@ export function subscribeOverview(
 		openWs(hass as { connection: any }, deviceId, entry);
 	}
 
-	entry.refcount += 1;
 	entry.listeners.add(listener);
 	listener(entry.state); // replay cached state to the new subscriber
 
@@ -147,8 +144,7 @@ export function subscribeOverview(
 		const e = registry.get(deviceId);
 		if (!e) return;
 		e.listeners.delete(listener);
-		e.refcount -= 1;
-		if (e.refcount <= 0) {
+		if (e.listeners.size === 0) {
 			closeWs(e);
 			registry.delete(deviceId);
 		}

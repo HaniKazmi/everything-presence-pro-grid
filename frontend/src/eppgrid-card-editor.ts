@@ -1,7 +1,7 @@
 import { html, LitElement, nothing } from "lit";
 import { state } from "lit/decorators.js";
 import { applyCardDefaults, type EppGridCardConfig } from "./eppgrid-card.js";
-import { setupLocalize } from "./localize.js";
+import { defaultLocalize, type LocalizeFn, setupLocalize } from "./localize.js";
 
 interface DeviceOption {
 	device_id: string;
@@ -79,6 +79,7 @@ export class EppGridCardEditor extends LitElement {
 		locale?: { language?: string };
 	};
 	private _config?: EppGridCardConfig;
+	private _localize: LocalizeFn = defaultLocalize;
 	@state() private _devices: DeviceOption[] = [];
 
 	setConfig(config: EppGridCardConfig): void {
@@ -90,6 +91,7 @@ export class EppGridCardEditor extends LitElement {
 		locale?: { language?: string };
 	}) {
 		this.__hass = hass;
+		this._localize = setupLocalize(hass);
 		this._loadDevices();
 		this.requestUpdate();
 	}
@@ -135,9 +137,8 @@ export class EppGridCardEditor extends LitElement {
 	}
 
 	_computeLabel = (schema: { name: string }): string => {
-		const l = setupLocalize(this.__hass as Parameters<typeof setupLocalize>[0]);
 		const key = `card.editor.${schema.name}`;
-		const s = l(key);
+		const s = this._localize(key);
 		return s === key ? schema.name : s;
 	};
 

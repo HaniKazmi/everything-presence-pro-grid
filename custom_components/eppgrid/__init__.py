@@ -172,6 +172,22 @@ async def async_apply_panel_visibility(hass: HomeAssistant, visible: bool) -> No
         async_remove_panel(hass, DOMAIN, warn_if_unknown=False)
 
 
+async def _ensure_static_hash_path(hass: HomeAssistant, js_filename: str) -> str:
+    """Hash a frontend bundle, register its content-hashed static path once per process, and return the served URL."""
+    js_path = os.path.join(FRONTEND_DIR, js_filename)
+    try:
+        js_hash = await hass.async_add_executor_job(_hash_file, js_path)
+    except OSError:
+        js_hash = "0"
+    registered: set[str] = hass.data.setdefault(_STATIC_HASH_PATHS_KEY, set())
+    if js_hash not in registered:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(url_path=f"/{DOMAIN}_static/{js_hash}", path=FRONTEND_DIR, cache_headers=True)]
+        )
+        registered.add(js_hash)
+    return f"/{DOMAIN}_static/{js_hash}/{js_filename}"
+
+
 async def _register_frontend_resources(hass: HomeAssistant) -> str:
     """Register a content-hashed static path for the bundle and return its URL.
 
@@ -193,30 +209,13 @@ async def _register_frontend_resources(hass: HomeAssistant) -> str:
     base `/eppgrid_static` mapping is registered, so the hashed prefixes can't
     collide with it in the aiohttp router.
     """
-    js_path = os.path.join(FRONTEND_DIR, "eppgrid-panel.js")
-    try:
-        js_hash = await hass.async_add_executor_job(_hash_file, js_path)
-    except OSError:
-        js_hash = "0"
+    module_url = await _ensure_static_hash_path(hass, "eppgrid-panel.js")
 
     # Stash the current hash so the eppgrid/frontend_version WS command can hand
     # it back to an open panel, which reloads itself when its own hash differs.
-    hass.data[CURRENT_BUNDLE_HASH_KEY] = js_hash
+    hass.data[CURRENT_BUNDLE_HASH_KEY] = module_url.split("/")[2]
 
-    registered: set[str] = hass.data.setdefault(_STATIC_HASH_PATHS_KEY, set())
-    if js_hash not in registered:
-        await hass.http.async_register_static_paths(
-            [
-                StaticPathConfig(
-                    url_path=f"/{DOMAIN}_static/{js_hash}",
-                    path=FRONTEND_DIR,
-                    cache_headers=True,
-                )
-            ]
-        )
-        registered.add(js_hash)
-
-    return f"/{DOMAIN}_static/{js_hash}/eppgrid-panel.js"
+    return module_url
 
 
 async def _register_card_resource(hass: HomeAssistant) -> None:
@@ -228,26 +227,7 @@ async def _register_card_resource(hass: HomeAssistant) -> None:
     loaded during Lovelace init (post-swap). YAML-mode dashboards have no
     mutable resource store, so fall back to add_extra_js_url there.
     """
-    card_path = os.path.join(FRONTEND_DIR, CARD_JS)
-    try:
-        card_hash = await hass.async_add_executor_job(_hash_file, card_path)
-    except OSError:
-        card_hash = "0"
-
-    registered: set[str] = hass.data.setdefault(_STATIC_HASH_PATHS_KEY, set())
-    if card_hash not in registered:
-        await hass.http.async_register_static_paths(
-            [
-                StaticPathConfig(
-                    url_path=f"/{DOMAIN}_static/{card_hash}",
-                    path=FRONTEND_DIR,
-                    cache_headers=True,
-                )
-            ]
-        )
-        registered.add(card_hash)
-
-    card_url = f"/{DOMAIN}_static/{card_hash}/{CARD_JS}"
+    card_url = await _ensure_static_hash_path(hass, CARD_JS)
 
     lovelace = hass.data.get("lovelace")
     resources = getattr(lovelace, "resources", None)

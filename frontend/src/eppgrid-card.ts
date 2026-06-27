@@ -52,6 +52,10 @@ type ResolvedCardConfig = Omit<EppGridCardConfig, "sensors"> & {
 export function applyCardDefaults(
 	config: Partial<EppGridCardConfig>,
 ): ResolvedCardConfig {
+	const fromSrc = <K extends string>(
+		src: Partial<Record<K, boolean>> | undefined,
+		key: K,
+	): boolean => (src ? src[key] === true : true);
 	const sensors = config.sensors ?? {};
 	const envSrc = sensors.environmental;
 	const presSrc = sensors.presence;
@@ -67,19 +71,19 @@ export function applyCardDefaults(
 		sensors: {
 			presence: {
 				// presence absent entirely → all on; presence present → only keys explicitly true
-				occupancy: presSrc ? presSrc.occupancy === true : true,
-				static_presence: presSrc ? presSrc.static_presence === true : true,
-				motion_presence: presSrc ? presSrc.motion_presence === true : true,
-				target_presence: presSrc ? presSrc.target_presence === true : true,
-				mmwave: presSrc ? presSrc.mmwave === true : true,
+				occupancy: fromSrc(presSrc, "occupancy"),
+				static_presence: fromSrc(presSrc, "static_presence"),
+				motion_presence: fromSrc(presSrc, "motion_presence"),
+				target_presence: fromSrc(presSrc, "target_presence"),
+				mmwave: fromSrc(presSrc, "mmwave"),
 			},
 			zones: sensors.zones !== false,
 			environmental: {
 				// env absent entirely → all on; env present → only keys explicitly true
-				temperature: envSrc ? envSrc.temperature === true : true,
-				humidity: envSrc ? envSrc.humidity === true : true,
-				illuminance: envSrc ? envSrc.illuminance === true : true,
-				co2: envSrc ? envSrc.co2 === true : true,
+				temperature: fromSrc(envSrc, "temperature"),
+				humidity: fromSrc(envSrc, "humidity"),
+				illuminance: fromSrc(envSrc, "illuminance"),
+				co2: fromSrc(envSrc, "co2"),
 			},
 		},
 	};
@@ -163,8 +167,25 @@ export class EppGridCard extends LitElement {
 	private _subConn: unknown = null;
 	private _subDevice: string | null = null;
 
+	private _resolved?: ResolvedCardConfig;
+	private _presenceKeys: PresenceKey[] | null = null;
+	private _envKeys: EnvKey[] | null = null;
+	private _parsedSnapshot: ReturnType<typeof parseConfig> | null = null;
+	private _lastSnapshot: unknown = undefined;
+
 	setConfig(config: EppGridCardConfig): void {
 		this._config = config;
+		this._resolved = applyCardDefaults(config);
+		const rawPres = config?.sensors?.presence;
+		this._presenceKeys = rawPres
+			? (Object.keys(rawPres).filter(
+					(k) => rawPres[k as PresenceKey],
+				) as PresenceKey[])
+			: null;
+		const rawEnv = config?.sensors?.environmental;
+		this._envKeys = rawEnv
+			? (Object.keys(rawEnv).filter((k) => rawEnv[k as EnvKey]) as EnvKey[])
+			: null;
 		this._maybeResubscribe();
 	}
 
@@ -209,13 +230,17 @@ export class EppGridCard extends LitElement {
 		this._subConn = hass.connection;
 		this._subDevice = deviceId;
 		this._unsub = subscribeOverview(hass, deviceId, (s) => {
+			if (s.snapshot !== this._lastSnapshot) {
+				this._lastSnapshot = s.snapshot;
+				this._parsedSnapshot = s.snapshot ? parseConfig(s.snapshot) : null;
+			}
 			this._data = s;
 			this.requestUpdate();
 		});
 	}
 
 	getCardSize(): number {
-		const cfg = applyCardDefaults(this._config ?? {});
+		const cfg = this._resolved ?? applyCardDefaults(this._config ?? {});
 		const showMap = cfg.show_map;
 		const showSensors = cfg.show_sensors;
 		let size = 1;
@@ -225,7 +250,7 @@ export class EppGridCard extends LitElement {
 	}
 
 	getGridOptions(): { columns: number; rows: string; min_columns: number } {
-		const cfg = applyCardDefaults(this._config ?? {});
+		const cfg = this._resolved ?? applyCardDefaults(this._config ?? {});
 		const showMap = cfg.show_map;
 		const showSensors = cfg.show_sensors;
 		if (showMap && showSensors)
@@ -243,8 +268,8 @@ export class EppGridCard extends LitElement {
 	}
 
 	render() {
-		if (!this._config) return nothing;
-		const cfg = applyCardDefaults(this._config);
+		if (!this._config || !this._resolved) return nothing;
+		const cfg = this._resolved;
 		if (!cfg.device_id) {
 			return html`<ha-card .header=${cfg.title}><div class="placeholder">${this._localize("card.no_device")}</div></ha-card>`;
 		}
@@ -253,9 +278,6 @@ export class EppGridCard extends LitElement {
 		}
 		const both = cfg.show_map && cfg.show_sensors;
 		const layout = both ? cfg.layout : "single";
-		const parsed = this._data.snapshot
-			? parseConfig(this._data.snapshot)
-			: null;
 
 		return html`
 			<ha-card .header=${cfg.title}>
@@ -266,18 +288,16 @@ export class EppGridCard extends LitElement {
 				}
 				<div class="content">
 					<div class="overview overview--${layout}">
-						${cfg.show_map ? html`<div class="map">${this._renderMap(cfg, parsed)}</div>` : nothing}
-						${cfg.show_sensors ? html`<div class="sensors">${this._renderSensors(cfg, parsed)}</div>` : nothing}
+						${cfg.show_map ? html`<div class="map">${this._renderMap(cfg)}</div>` : nothing}
+						${cfg.show_sensors ? html`<div class="sensors">${this._renderSensors(cfg)}</div>` : nothing}
 					</div>
 				</div>
 			</ha-card>
 		`;
 	}
 
-	private _renderMap(
-		cfg: ResolvedCardConfig,
-		parsed: ReturnType<typeof parseConfig> | null,
-	) {
+	private _renderMap(cfg: ResolvedCardConfig) {
+		const parsed = this._parsedSnapshot;
 		if (!parsed || parsed.calibration.perspective == null) {
 			return html`<div class="placeholder">${this._localize("card.uncalibrated")}</div>`;
 		}
@@ -304,28 +324,10 @@ export class EppGridCard extends LitElement {
 		`;
 	}
 
-	private _renderSensors(
-		cfg: ResolvedCardConfig,
-		parsed: ReturnType<typeof parseConfig> | null,
-	) {
+	private _renderSensors(cfg: ResolvedCardConfig) {
+		const parsed = this._parsedSnapshot;
 		const data = this._data.data;
 		const s = cfg.sensors;
-		// If the raw config had environmental absent, pass null (show all).
-		// If present, derive envKeys from the defaulted env keys that are true.
-		const rawEnv = this._config?.sensors?.environmental;
-		const envKeys = rawEnv
-			? (Object.keys(s.environmental).filter(
-					(k) => s.environmental[k as EnvKey],
-				) as EnvKey[])
-			: null;
-		// If the raw config had presence absent, pass null (show all).
-		// If present, derive presenceKeys from the defaulted presence keys that are true.
-		const rawPres = this._config?.sensors?.presence;
-		const presenceKeys = rawPres
-			? (Object.keys(s.presence).filter(
-					(k) => s.presence[k as PresenceKey],
-				) as PresenceKey[])
-			: null;
 		return html`
 			<epp-live-sidebar
 				.sensorState=${data?.sensors ?? EMPTY_SENSORS}
@@ -333,9 +335,9 @@ export class EppGridCard extends LitElement {
 				.zoneConfigs=${parsed?.zoneConfigs ?? []}
 				.hasPerspective=${parsed?.calibration.perspective != null}
 				.localize=${this._localize}
-				.presenceKeys=${presenceKeys}
+				.presenceKeys=${this._presenceKeys}
 				.showZones=${s.zones}
-				.envKeys=${envKeys}
+				.envKeys=${this._envKeys}
 				.interactive=${false}
 			></epp-live-sidebar>
 		`;
