@@ -4,7 +4,7 @@ User-facing changes to Everything Presence Pro Grid. For full release assets
 and firmware downloads, see the
 [GitHub releases page](https://github.com/clintongormley/everything-presence-pro-grid/releases).
 
-## v1.3.0
+## v1.3.0 — 2026-06-28
 
 ### New features
 
