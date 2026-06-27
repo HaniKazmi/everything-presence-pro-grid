@@ -41,8 +41,11 @@ def websocket_overview_list_devices(
     device_id and needs it to resolve a mac server-side on subscribe.
     """
     devices = [
-        {"device_id": dev.device_id, "name": dev.name} for dev in manager.devices.values() if dev.device_id is not None
+        {"device_id": dev.device_id, "name": dev.name}
+        for mac, dev in manager.devices.items()
+        if dev.device_id is not None
     ]
+    devices.sort(key=lambda d: (d["name"].casefold(), d["device_id"]))
     connection.send_result(msg["id"], devices)
 
 

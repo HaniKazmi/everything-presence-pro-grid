@@ -342,6 +342,40 @@ describe("eppgrid-card rendering", () => {
 	});
 });
 
+describe("eppgrid-card _maybeResubscribe teardown", () => {
+	it("tears down the subscription when device_id is cleared to empty string", async () => {
+		// Use a unique device_id so the module-global OverviewStore registry
+		// doesn't collide with other tests.
+		const unsub = vi.fn();
+		const subscribeMessage = vi.fn(async (_cb: unknown) => unsub);
+		const hass = {
+			connection: { subscribeMessage },
+			locale: { language: "en" },
+		};
+
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-unsub-clear",
+		});
+		el.hass = hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		// Allow subscribeMessage promise to resolve so the store stores the unsub.
+		await Promise.resolve();
+
+		// Verify we subscribed exactly once.
+		expect(subscribeMessage).toHaveBeenCalledTimes(1);
+
+		// Reconfigure with an empty device_id — this should tear down the subscription.
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "" });
+		await el.updateComplete;
+
+		// The prior subscription must have been unsubscribed.
+		expect(unsub).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe("eppgrid-card loading vs uncalibrated", () => {
 	it("shows loading placeholder when no snapshot has arrived yet", async () => {
 		// Mount WITHOUT emitting a snapshot event — _data.snapshot stays null

@@ -6592,6 +6592,32 @@ class TestOverviewListDevices:
         assert sent[0] == 7
         assert sent[1] == [{"device_id": "dev1", "name": "Living Room"}]
 
+    async def test_devices_sorted_by_name_case_insensitive(self, hass, config_entry):
+        """Devices are returned sorted by name (case-insensitive), device_id as tiebreak."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import websocket_overview_list_devices
+
+        mock_dm = await setup_integration(hass, config_entry)
+        # Insert Zebra first, Alpha second — insertion order is wrong order
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:01": ManagedDevice(mac="AA:BB:CC:DD:EE:01", name="Zebra Room"),
+            "AA:BB:CC:DD:EE:02": ManagedDevice(mac="AA:BB:CC:DD:EE:02", name="Alpha Room"),
+        }
+        mock_dm.devices["AA:BB:CC:DD:EE:01"].device_id = "dev-zebra"
+        mock_dm.devices["AA:BB:CC:DD:EE:02"].device_id = "dev-alpha"
+
+        connection = MagicMock()
+        msg = {"id": 9, "type": "eppgrid/overview/list_devices"}
+        websocket_overview_list_devices(hass, connection, msg)
+
+        connection.send_result.assert_called_once()
+        sent = connection.send_result.call_args.args
+        assert sent[0] == 9
+        assert sent[1] == [
+            {"device_id": "dev-alpha", "name": "Alpha Room"},
+            {"device_id": "dev-zebra", "name": "Zebra Room"},
+        ]
+
     async def test_not_loaded_when_manager_absent(self, hass):
         """Short-circuits with not_ready when the integration is unloaded."""
         from custom_components.eppgrid.websocket_api import websocket_overview_list_devices

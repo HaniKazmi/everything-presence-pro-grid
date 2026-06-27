@@ -219,7 +219,13 @@ export class EppGridCard extends LitElement {
 	private _maybeResubscribe(): void {
 		const hass = this.__hass;
 		const deviceId = this._config?.device_id;
-		if (!hass || !deviceId) return;
+		if (!hass || !deviceId) {
+			this._unsub?.();
+			this._unsub = null;
+			this._subConn = null;
+			this._subDevice = null;
+			return;
+		}
 		if (
 			this._unsub &&
 			this._subConn === hass.connection &&
