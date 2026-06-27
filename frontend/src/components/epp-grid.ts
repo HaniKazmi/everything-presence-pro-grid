@@ -79,6 +79,8 @@ export class EppGrid extends LitElement {
 	@property({ type: Number }) maxRangeMm = MAX_RANGE;
 	/** Maximum pixel size for the grid (both call sites currently pass 480) */
 	@property({ type: Number }) maxGridPx = 480;
+	/** When false, painted overlay stripes (entry/interference/suppress) are hidden. */
+	@property({ type: Boolean }) showOverlays = true;
 	/**
 	 * Mobile-only: cap the grid height to half the viewport so the controls
 	 * panel below it always has room. Desktop leaves this false → no height cap.
@@ -516,7 +518,7 @@ export class EppGrid extends LitElement {
 					}
 				}
 				const overlayMarker =
-					inRange && cellIsInside(cellVal)
+					this.showOverlays && inRange && cellIsInside(cellVal)
 						? (OVERLAY_STRIPE_CSS[cellOverlay(cellVal)] ?? "")
 						: "";
 				// Paint handlers only exist in the editor AND on paintable cells —
