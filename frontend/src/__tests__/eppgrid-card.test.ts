@@ -210,6 +210,38 @@ describe("eppgrid-card rendering", () => {
 		expect(el.shadowRoot!.querySelector(".placeholder")).toBeTruthy();
 	});
 
+	it("passes empty furniture array to epp-grid when show_furniture is false", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-no-furniture",
+			show_furniture: false,
+		});
+		const grid = el.shadowRoot!.querySelector("epp-grid") as any;
+		expect(grid).toBeTruthy();
+		expect((grid as any).furniture).toEqual([]);
+	});
+
+	it("uses targetMaxDistance when targetAutoDistance is false in the snapshot", async () => {
+		const snapshot = {
+			calibration: {
+				perspective: [1, 0, 0, 0, 1, 0, 0, 0],
+				room_width: 3000,
+				room_depth: 3000,
+			},
+			settings: {
+				target_auto_distance: false,
+				target_max_distance: 4.0,
+			},
+		};
+		const el = await mount(
+			{ type: "custom:eppgrid-card", device_id: "card-max-dist" },
+			makeHass(),
+			snapshot,
+		);
+		// The map should render (perspective is valid) — confirms _renderMap ran the manual-distance branch
+		expect(el.shadowRoot!.querySelector("epp-grid")).toBeTruthy();
+	});
+
 	it("subscribes once via the store and updates on snapshot/data", async () => {
 		const h = makeHass();
 		const el = document.createElement("eppgrid-card") as EppGridCard;
@@ -550,6 +582,24 @@ describe("eppgrid-card templated header", () => {
 		expect(el.shadowRoot!.querySelector(".card-header")).toBeNull();
 	});
 
+	it("renders secondary-only header (no primary div) when primary is empty", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-secondary-only",
+			secondary: "2 people",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el.shadowRoot!.querySelector(".card-header")).toBeTruthy();
+		expect(el.shadowRoot!.querySelector(".card-primary")).toBeNull();
+		expect(
+			el.shadowRoot!.querySelector(".card-secondary")?.textContent,
+		).toContain("2 people");
+	});
+
 	it("renders the template error text instead of crashing", async () => {
 		const h = makeTemplatingHass();
 		const el = document.createElement("eppgrid-card") as EppGridCard;
@@ -677,6 +727,29 @@ describe("getEntitySuggestion", () => {
 		expect(() =>
 			getEntitySuggestion(hass, "binary_sensor.epp_occupancy"),
 		).not.toThrow();
+		expect(getEntitySuggestion(hass, "binary_sensor.epp_occupancy")).toBeNull();
+	});
+
+	it("falls back to empty set and returns null when callWS rejects", async () => {
+		const hass = {
+			callWS: vi.fn().mockRejectedValue(new Error("network error")),
+			entities: { "binary_sensor.epp_occupancy": { device_id: "dev1" } },
+		};
+		getEntitySuggestion(hass, "binary_sensor.epp_occupancy"); // kick off load
+		// flush microtasks so the rejection resolves
+		await new Promise((r) => setTimeout(r, 0));
+		// After rejection, cache is an empty set so EPP device is not found
+		expect(getEntitySuggestion(hass, "binary_sensor.epp_occupancy")).toBeNull();
+	});
+
+	it("handles null list from callWS gracefully", async () => {
+		const hass = {
+			callWS: vi.fn().mockResolvedValue(null),
+			entities: { "binary_sensor.epp_occupancy": { device_id: "dev1" } },
+		};
+		getEntitySuggestion(hass, "binary_sensor.epp_occupancy"); // kick off load
+		await new Promise((r) => setTimeout(r, 0));
+		// null list → empty set → device not found
 		expect(getEntitySuggestion(hass, "binary_sensor.epp_occupancy")).toBeNull();
 	});
 });

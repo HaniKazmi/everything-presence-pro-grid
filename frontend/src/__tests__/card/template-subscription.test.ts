@@ -104,6 +104,34 @@ describe("subscribeRenderTemplate", () => {
 		await Promise.resolve();
 		expect(cb).toHaveBeenLastCalledWith({ text: "", error: "boom" });
 	});
+
+	it("reports a string error when the rejection is not an Error instance", async () => {
+		const subscribeMessage = vi.fn(() => Promise.reject("string-error"));
+		const cb = vi.fn();
+		subscribeRenderTemplate(
+			{ connection: { subscribeMessage } },
+			{ template: "{{1}}" },
+			cb,
+		);
+		await Promise.resolve();
+		expect(cb).toHaveBeenLastCalledWith({ text: "", error: "string-error" });
+	});
+
+	it("delivers empty text when result is null", () => {
+		const h = makeHass();
+		const cb = vi.fn();
+		subscribeRenderTemplate(h.hass, { template: "{{ x }}" }, cb);
+		h.emit({ result: null });
+		expect(cb).toHaveBeenLastCalledWith({ text: "", error: null });
+	});
+
+	it("delivers empty text when msg is null", () => {
+		const h = makeHass();
+		const cb = vi.fn();
+		subscribeRenderTemplate(h.hass, { template: "{{ x }}" }, cb);
+		h.emit(null);
+		expect(cb).toHaveBeenLastCalledWith({ text: "", error: null });
+	});
 });
 
 describe("TemplateField", () => {
@@ -119,6 +147,14 @@ describe("TemplateField", () => {
 		const h = makeHass();
 		const f = new TemplateField(vi.fn());
 		f.update(h.hass, "", {});
+		expect(f.text).toBe("");
+		expect(h.subscribeMessage).not.toHaveBeenCalled();
+	});
+
+	it("clears text when template is undefined, no subscription", () => {
+		const h = makeHass();
+		const f = new TemplateField(vi.fn());
+		f.update(h.hass, undefined as unknown as string, {});
 		expect(f.text).toBe("");
 		expect(h.subscribeMessage).not.toHaveBeenCalled();
 	});
