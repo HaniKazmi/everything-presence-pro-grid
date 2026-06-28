@@ -501,7 +501,7 @@
 		"load_configuration": "No se pudo restaurar la configuración. Puede que esté en un formato antiguo — vuelve a guardarla e inténtalo de nuevo."
 	},
 	"language_request": {
-		"message": "Everything Presence Pro Grid todavía no está disponible en {language}.",
+		"message": "El idioma de tu Home Assistant es {language}, pero Everything Presence Pro Grid aún no está traducido a ese idioma.",
 		"action": "Solicitar una traducción",
 		"dismiss": "Descartar"
 	},
