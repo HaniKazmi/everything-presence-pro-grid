@@ -500,6 +500,11 @@
 		"save_configuration": "Saving the configuration backup failed. Try again.",
 		"load_configuration": "Restoring the configuration failed. It may be in an old format — re-save it and try again."
 	},
+	"language_request": {
+		"message": "Everything Presence Pro Grid isn't available in {language} yet.",
+		"action": "Request a translation",
+		"dismiss": "Dismiss"
+	},
 	"card": {
 		"offline": "Device offline",
 		"loading": "Loading…",
