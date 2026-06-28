@@ -120,3 +120,53 @@ export function setupLocalize(hass?: {
 
 	return localize;
 }
+
+export interface LanguageSupport {
+	/** True when the catalogue can serve this user (exact locale or its base). */
+	available: boolean;
+	/** Full requested locale, e.g. "pt-BR" (region preserved). */
+	code: string;
+	/** Base language, e.g. "pt". */
+	baseCode: string;
+}
+
+/**
+ * Whether the frontend ships a translation for the user's HA language. Mirrors
+ * the exact-then-base resolution in `setupLocalize`, so a shipped base (`es`)
+ * covers its region variants (`es-MX`). Identity is the FULL requested locale
+ * so region-specific catalogues (`pt-BR`) and requests stay distinct. When the
+ * language can't be determined, returns available:true (nothing to nudge).
+ */
+export function getLanguageSupport(hass?: {
+	locale?: { language?: string };
+	language?: string;
+}): LanguageSupport {
+	const code = hass?.locale?.language ?? hass?.language ?? "";
+	if (!code) return { available: true, code: "", baseCode: "" };
+	const baseCode = code.split("-")[0];
+	const available = Boolean(LANGUAGES[code]) || Boolean(LANGUAGES[baseCode]);
+	return { available, code, baseCode };
+}
+
+/**
+ * The language's own name, region-qualified ("português (Brasil)"), via
+ * Intl.DisplayNames. Falls back to the English name, then the raw code.
+ */
+export function languageDisplayName(code: string): string {
+	if (!code) return code;
+	try {
+		const native = new Intl.DisplayNames([code], { type: "language" }).of(code);
+		if (native) return native;
+	} catch {
+		/* old runtime / invalid code — fall through */
+	}
+	try {
+		const english = new Intl.DisplayNames(["en"], { type: "language" }).of(
+			code,
+		);
+		if (english) return english;
+	} catch {
+		/* fall through to raw code */
+	}
+	return code;
+}
