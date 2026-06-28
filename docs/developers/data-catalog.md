@@ -46,44 +46,45 @@ Frontend (eppgrid-panel.ts — orchestrator)
 
 ## 1. ESPHome Entities
 
-All entities are created by ESPHome firmware with `disabled_by_default` where appropriate. The integration manages enable/disable/rename.
+All entities are created by ESPHome firmware with `disabled_by_default` where
+appropriate. The integration manages enable/disable/rename.
 
 ### Enabled by Default
 
-| Entity | Type | Source |
-|--------|------|--------|
-| Occupancy | binary_sensor | zone engine processed (active/pending = on, inactive = off) |
-| Zone Engine Version | text_sensor | firmware version string |
-| Config Protocol | sensor | config protocol version integer (e.g. `1`) |
-| Current Connections | sensor | current API client count (diagnostic, accuracy_decimals=0) |
-| Heap Free | sensor | current free heap bytes (diagnostic, 60s update via `debug` platform) |
-| Heap Largest Block | sensor | largest free contiguous block — TLS handshake limiter (diagnostic) |
-| Heap Min Free | sensor | all-time low-water mark via `heap_caps_get_minimum_free_size` (diagnostic) |
-| Loop Time | sensor | ESPHome main loop time in ms (diagnostic) |
+| Entity              | Type          | Source                                                                     |
+| ------------------- | ------------- | -------------------------------------------------------------------------- |
+| Occupancy           | binary_sensor | zone engine processed (active/pending = on, inactive = off)                |
+| Zone Engine Version | text_sensor   | firmware version string                                                    |
+| Config Protocol     | sensor        | config protocol version integer (e.g. `1`)                                 |
+| Current Connections | sensor        | current API client count (diagnostic, accuracy_decimals=0)                 |
+| Heap Free           | sensor        | current free heap bytes (diagnostic, 60s update via `debug` platform)      |
+| Heap Largest Block  | sensor        | largest free contiguous block — TLS handshake limiter (diagnostic)         |
+| Heap Min Free       | sensor        | all-time low-water mark via `heap_caps_get_minimum_free_size` (diagnostic) |
+| Loop Time           | sensor        | ESPHome main loop time in ms (diagnostic)                                  |
 
 ### Disabled by Default
 
-| Entity | Type | Source |
-|--------|------|--------|
-| Temperature | sensor | SHTC3 + calibration offset |
-| Humidity | sensor | SHTC3 + calibration offset |
-| Illuminance | sensor | BH1750 + calibration offset |
-| Motion Presence | binary_sensor | zone engine processed (active/pending = on, inactive = off) |
-| Static Presence | binary_sensor | zone engine processed (active/pending = on, inactive = off) |
-| Target Presence | binary_sensor | zone engine device-level tracking |
-| Tracking Presence | binary_sensor | LD2450 any-target-detected |
-| mmWave Presence | binary_sensor | static presence OR any zone OCCUPIED — ignores PIR motion, off when only zones are PENDING_CLEAR and static is INACTIVE |
-| Zone 0-7 Presence | binary_sensor | zone engine per-zone state |
-| Target 1-3 Position | text_sensor | "x,y,status" post-transform |
-| Raw Target 1-3 | text_sensor | "x,y" pre-transform (sensor-space) |
-| Zone State | text_sensor | JSON with zone engine tick results |
-| Target 1-3 X | sensor (mm) | per-target X position post-transform |
-| Target 1-3 Y | sensor (mm) | per-target Y position post-transform |
-| Target 1-3 Signal | sensor | per-target signal strength |
-| Target 1-3 Active | binary_sensor | per-target active flag |
-| Target 1-3 Zone | sensor | zone index the target currently occupies |
-| Zone 0-7 Target Count | sensor | number of active targets in each zone |
-| Target Count | sensor | total number of active targets |
+| Entity                | Type          | Source                                                                                                                  |
+| --------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Temperature           | sensor        | SHTC3 + calibration offset                                                                                              |
+| Humidity              | sensor        | SHTC3 + calibration offset                                                                                              |
+| Illuminance           | sensor        | BH1750 + calibration offset                                                                                             |
+| Motion Presence       | binary_sensor | zone engine processed (active/pending = on, inactive = off)                                                             |
+| Static Presence       | binary_sensor | zone engine processed (active/pending = on, inactive = off)                                                             |
+| Target Presence       | binary_sensor | zone engine device-level tracking                                                                                       |
+| Tracking Presence     | binary_sensor | LD2450 any-target-detected                                                                                              |
+| mmWave Presence       | binary_sensor | static presence OR any zone OCCUPIED — ignores PIR motion, off when only zones are PENDING_CLEAR and static is INACTIVE |
+| Zone 0-7 Presence     | binary_sensor | zone engine per-zone state                                                                                              |
+| Target 1-3 Position   | text_sensor   | "x,y,status" post-transform                                                                                             |
+| Raw Target 1-3        | text_sensor   | "x,y" pre-transform (sensor-space)                                                                                      |
+| Zone State            | text_sensor   | JSON with zone engine tick results                                                                                      |
+| Target 1-3 X          | sensor (mm)   | per-target X position post-transform                                                                                    |
+| Target 1-3 Y          | sensor (mm)   | per-target Y position post-transform                                                                                    |
+| Target 1-3 Signal     | sensor        | per-target signal strength                                                                                              |
+| Target 1-3 Active     | binary_sensor | per-target active flag                                                                                                  |
+| Target 1-3 Zone       | sensor        | zone index the target currently occupies                                                                                |
+| Zone 0-7 Target Count | sensor        | number of active targets in each zone                                                                                   |
+| Target Count          | sensor        | total number of active targets                                                                                          |
 
 ## 2. Live Streaming
 
@@ -91,15 +92,22 @@ Two websocket subscriptions, both using the same device session connection.
 
 ### `subscribe_device_list` — fleet view
 
-Broadcasts the live device list to the panel's home view. Initial fetch is delivered immediately on subscribe; subsequent events fire when the device manager adds, removes, renames, or updates availability/firmware status of any managed device.
+Broadcasts the live device list to the panel's home view. Initial fetch is
+delivered immediately on subscribe; subsequent events fire when the device
+manager adds, removes, renames, or updates availability/firmware status of any
+managed device.
 
 **Request:** `{ "type": "eppgrid/subscribe_device_list" }`
 
-**Event payload:** the same shape as the `list_devices` response; subscribers replay it through their reducer to keep the device list current.
+**Event payload:** the same shape as the `list_devices` response; subscribers
+replay it through their reducer to keep the device list current.
 
 ### `subscribe_flashable_devices` — flasher view
 
-Broadcasts the live flashable-devices list (every ESPHome device matching the Everything Presence Pro hardware signature, regardless of which firmware it currently runs). Initial fetch is delivered on subscribe; subsequent events fire on add / remove / availability change / firmware-version flip after OTA.
+Broadcasts the live flashable-devices list (every ESPHome device matching the
+Everything Presence Pro hardware signature, regardless of which firmware it
+currently runs). Initial fetch is delivered on subscribe; subsequent events fire
+on add / remove / availability change / firmware-version flip after OTA.
 
 **Request:** `{ "type": "eppgrid/subscribe_flashable_devices" }`
 
@@ -107,7 +115,15 @@ Broadcasts the live flashable-devices list (every ESPHome device matching the Ev
 
 ### `subscribe_device` — session lifecycle
 
-Opens the aioesphomeapi connection. Sessions are refcounted per device: every successful open (`subscribe_device` or `subscribe_ota_progress`, from any client) takes one reference via `DeviceManager.async_open_session`, every unsubscribe releases one via `DeviceManager.release_session`, and the connection only closes when the last reference is released — two panel clients on the same device share one connection and the first unsubscribe doesn't tear down the second client's streams. Force-close paths (device offline transition, device removal, host change, config-entry unload) bypass the count and reset it; stale releases against a force-closed connection are identity-checked no-ops.
+Opens the aioesphomeapi connection. Sessions are refcounted per device: every
+successful open (`subscribe_device` or `subscribe_ota_progress`, from any
+client) takes one reference via `DeviceManager.async_open_session`, every
+unsubscribe releases one via `DeviceManager.release_session`, and the connection
+only closes when the last reference is released — two panel clients on the same
+device share one connection and the first unsubscribe doesn't tear down the
+second client's streams. Force-close paths (device offline transition, device
+removal, host change, config-entry unload) bypass the count and reset it; stale
+releases against a force-closed connection are identity-checked no-ops.
 
 **Request:** `{ "type": "eppgrid/subscribe_device", "mac": str }`
 
@@ -118,6 +134,7 @@ Parses Raw Target text sensor updates into structured events.
 **Request:** `{ "type": "eppgrid/subscribe_raw_targets", "mac": str }`
 
 **Event payload:**
+
 ```json
 {
     "targets": [
@@ -130,11 +147,13 @@ Parses Raw Target text sensor updates into structured events.
 
 ### `subscribe_grid_targets` — live overview & zone editor
 
-Parses Target Position, Zone State, and sensor entity updates into structured events.
+Parses Target Position, Zone State, and sensor entity updates into structured
+events.
 
 **Request:** `{ "type": "eppgrid/subscribe_grid_targets", "mac": str }`
 
 **Event payload:**
+
 ```json
 {
     "targets": [
@@ -166,21 +185,34 @@ Parses Target Position, Zone State, and sensor entity updates into structured ev
 ```
 
 **Data rates:**
-- Target entity sensors (X, Y, signal, active, zone) + target_count: at entity_target_interval (user-configured Hz), only published when the corresponding entity toggle is enabled
-- Zone entity sensors (presence, target_count): at entity_zone_interval (user-configured Hz), only published when the corresponding entity toggle is enabled
-- Display stream (raw + grid text sensors): at display_interval (200ms default), only published when at least one frontend session is subscribed
-- Zone state JSON: at zone_state_interval (1000ms default), only published when at least one frontend session is subscribed
-- System outputs (device tracking, presence binary sensors, relay): fixed 1000ms regardless of frontend subscription
+
+- Target entity sensors (X, Y, signal, active, zone) + target_count: at
+    entity_target_interval (user-configured Hz), only published when the
+    corresponding entity toggle is enabled
+- Zone entity sensors (presence, target_count): at entity_zone_interval
+    (user-configured Hz), only published when the corresponding entity toggle is
+    enabled
+- Display stream (raw + grid text sensors): at display_interval (200ms default),
+    only published when at least one frontend session is subscribed
+- Zone state JSON: at zone_state_interval (1000ms default), only published when
+    at least one frontend session is subscribed
+- System outputs (device tracking, presence binary sensors, relay): fixed 1000ms
+    regardless of frontend subscription
 
 ## 3. Commands
 
 ### Overview Card Commands
 
-These two commands power the `custom:eppgrid-card` dashboard card. Unlike all other eppgrid commands they are **not** `@require_admin` — the card is designed for shared dashboards viewed by non-admin household users. They are read-only and cannot mutate device config.
+These two commands power the `custom:eppgrid-card` dashboard card. Unlike all
+other eppgrid commands they are **not** `@require_admin` — the card is designed
+for shared dashboards viewed by non-admin household users. They are read-only
+and cannot mutate device config.
 
 #### `eppgrid/overview/list_devices`
 
-Returns a minimal device list for the card editor's device picker. Only devices with a HA registry `device_id` are returned (the card stores the `device_id` and the subscribe command resolves it to a MAC server-side).
+Returns a minimal device list for the card editor's device picker. Only devices
+with a HA registry `device_id` are returned (the card stores the `device_id` and
+the subscribe command resolves it to a MAC server-side).
 
 **Request:** `{ "type": "eppgrid/overview/list_devices" }`
 
@@ -188,27 +220,36 @@ Returns a minimal device list for the card editor's device picker. Only devices 
 
 #### `eppgrid/overview/subscribe`
 
-Streams read-only overview data for one device. The command owns the session lifecycle — it opens a refcounted aioesphomeapi session (shared with any concurrent panel or OTA sessions on the same device) and releases it on unsubscribe.
+Streams read-only overview data for one device. The command owns the session
+lifecycle — it opens a refcounted aioesphomeapi session (shared with any
+concurrent panel or OTA sessions on the same device) and releases it on
+unsubscribe.
 
 **Request:** `{ "type": "eppgrid/overview/subscribe", "device_id": str }`
 
 **Events (in order):**
 
-1. `{ "snapshot": <stored device config dict> }` — sent immediately on subscribe (even when the device is offline) so the card can draw the room layout from stored data.
-2. One of:
-   - `{ "targets": [...], "sensors": {...}, "zones": {...} }` — live data frames, same shape as the `subscribe_grid_targets` payload, streamed at the same rates (display_interval / zone_state_interval) while the session is open.
-   - `{ "available": false }` — sent when the device session can't be opened (device offline or unknown) and no further frames follow.
+1. `{ "snapshot": <stored device config dict> }` — sent immediately on subscribe
+    (even when the device is offline) so the card can draw the room layout from
+    stored data.
+1. One of:
+    - `{ "targets": [...], "sensors": {...}, "zones": {...} }` — live data
+        frames, same shape as the `subscribe_grid_targets` payload, streamed at
+        the same rates (display_interval / zone_state_interval) while the session
+        is open.
+    - `{ "available": false }` — sent when the device session can't be opened
+        (device offline or unknown) and no further frames follow.
 
 Errors: `device_not_found` when the `device_id` doesn't match a known device.
 
----
+______________________________________________________________________
 
 ### `list_devices`
 
 Returns discovered EPP devices.
 
-**Request:** `{ "type": "eppgrid/list_devices" }`
-**Response:**
+**Request:** `{ "type": "eppgrid/list_devices" }` **Response:**
+
 ```json
 {
     "devices": [
@@ -233,13 +274,24 @@ Returns discovered EPP devices.
 }
 ```
 
-`name` is the stored config name when present; otherwise it comes from the HA device-registry entry (`name_by_user` if set, otherwise `name`), and if there is no registry entry it falls back to the discovered/cached device name. Renames in HA or ESPHome are reflected on the next call.
+`name` is the stored config name when present; otherwise it comes from the HA
+device-registry entry (`name_by_user` if set, otherwise `name`), and if there is
+no registry entry it falls back to the discovered/cached device name. Renames in
+HA or ESPHome are reflected on the next call.
 
 `area` is the assigned HA area name, or `null` if the device is not in an area.
 
-`firmware_status` is `"compatible"`, `"firmware_behind"`, or `"firmware_ahead"` — comparing the device's `Firmware Version` text sensor to the integration's `FIRMWARE_VERSION` using semver.
+`firmware_status` is `"compatible"`, `"firmware_behind"`, or `"firmware_ahead"`
+— comparing the device's `Firmware Version` text sensor to the integration's
+`FIRMWARE_VERSION` using semver.
 
-The build flag fields (`bluetooth_enabled`, `co2_enabled`, `ethernet_enabled`, `board_revision`, `sensor_variant`, `firmware_channel`, `model`) are optional — they are only present after the device has connected and build flags have been fetched via the `get_build_flags` API action. Build flags are merged without overriding the base fields above (`mac`, `name`, `host`, `available`, `configured`, `area`, `firmware_status`, `current_connection_count`) — flag data comes from the device and must not rewrite identity fields.
+The build flag fields (`bluetooth_enabled`, `co2_enabled`, `ethernet_enabled`,
+`board_revision`, `sensor_variant`, `firmware_channel`, `model`) are optional —
+they are only present after the device has connected and build flags have been
+fetched via the `get_build_flags` API action. Build flags are merged without
+overriding the base fields above (`mac`, `name`, `host`, `available`,
+`configured`, `area`, `firmware_status`, `current_connection_count`) — flag data
+comes from the device and must not rewrite identity fields.
 
 ### `frontend_version`
 
@@ -250,73 +302,138 @@ compares it against this value; if they differ — i.e. an upgrade swapped the
 bundle while the tab stayed open — it reloads the page so the new version is
 picked up automatically. Admin only. See `frontend/src/lib/version-check.ts`.
 
-**Request:** `{ "type": "eppgrid/frontend_version" }`
-**Response:** `{ "hash": str | null }` — `null` until the bundle has been hashed
-(e.g. before the panel is first registered). On a bundle read error the hash is
-the string `"0"` (the same sentinel `_register_frontend_resources` puts in the
-static-path URL); the panel treats `"0"` as "unhashable — never reload to it".
+**Request:** `{ "type": "eppgrid/frontend_version" }` **Response:**
+`{ "hash": str | null }` — `null` until the bundle has been hashed (e.g. before
+the panel is first registered). On a bundle read error the hash is the string
+`"0"` (the same sentinel `_register_frontend_resources` puts in the static-path
+URL); the panel treats `"0"` as "unhashable — never reload to it".
 
 ### `get_config`
 
 Returns stored config for a device.
 
-**Request:** `{ "type": "eppgrid/get_config", "mac": str }`
-**Response:** `{ "config": {...} }` — calibration, room_layout, env_calibration, etc.
+**Request:** `{ "type": "eppgrid/get_config", "mac": str }` **Response:**
+`{ "config": {...} }` — calibration, room_layout, env_calibration, etc.
 
 ### `eppgrid/configure_device`
 
-Sets `name_by_user` / `area_id` on the device's HA registry entry (when provided). When `name` is set and `recreate_entity_ids` is true, the device's entity IDs are regenerated from the new name's slug. Admin only.
+Sets `name_by_user` / `area_id` on the device's HA registry entry (when
+provided). When `name` is set and `recreate_entity_ids` is true, the device's
+entity IDs are regenerated from the new name's slug. Admin only.
 
-**Request:** `{ "type": "eppgrid/configure_device", "mac": str, "name"?: str, "area_id"?: str, "recreate_entity_ids"?: bool }`
+**Request:**
+`{ "type": "eppgrid/configure_device", "mac": str, "name"?: str, "area_id"?: str, "recreate_entity_ids"?: bool }`
 
 ### `update_firmware`
 
-Triggers OTA firmware update on a device via the `set_update_manifest` API action. Derives the firmware variant (`wifi-ble-co2` or `ethernet-ble-co2`) from build flags and constructs the manifest URL from `FIRMWARE_VERSION` using GitHub Pages (`https://clintongormley.github.io/everything-presence-pro-grid/fw/v{VERSION}/{variant}.json`). Uses a temporary connection (not the persistent session).
+Triggers OTA firmware update on a device via the `set_update_manifest` API
+action. Derives the firmware variant (`wifi-ble-co2` or `ethernet-ble-co2`) from
+build flags and constructs the manifest URL from `FIRMWARE_VERSION` using GitHub
+Pages
+(`https://clintongormley.github.io/everything-presence-pro-grid/fw/v{VERSION}/{variant}.json`).
+Uses a temporary connection (not the persistent session).
 
 **Request:** `{ "type": "eppgrid/update_firmware", "mac": str }`
 
 ### `subscribe_ota_progress`
 
-Subscribes to OTA firmware update progress for a device. Takes one refcounted session reference via `async_open_session` (shared with `subscribe_device` — see the session-lifecycle section). Subscribes to ESPHome `UpdateState` entity changes and device log messages to forward progress, success, and error events to the frontend. Uses a shared `done` flag so only one terminal event (success or error) is sent.
+Subscribes to OTA firmware update progress for a device. Takes one refcounted
+session reference via `async_open_session` (shared with `subscribe_device` — see
+the session-lifecycle section). Subscribes to ESPHome `UpdateState` entity
+changes and device log messages to forward progress, success, and error events
+to the frontend. Uses a shared `done` flag so only one terminal event (success
+or error) is sent.
 
-N concurrent OTA watchers on the same device share ONE device log subscription and ONE `epp_set_log_level` bump (tracked in the `OtaWatcherState` dataclass on the `DeviceConnection`); the bump is reverted to the stored level — and the log subscription dropped — only when the last watcher unsubscribes, and skipped entirely when that release also closes the session.
+N concurrent OTA watchers on the same device share ONE device log subscription
+and ONE `epp_set_log_level` bump (tracked in the `OtaWatcherState` dataclass on
+the `DeviceConnection`); the bump is reverted to the stored level — and the log
+subscription dropped — only when the last watcher unsubscribes, and skipped
+entirely when that release also closes the session.
 
-When the device session can't be opened (device offline/unknown, or the connection raced to close), the command returns the standard no-session error: code `no_session`, translation key `no_active_session`.
+When the device session can't be opened (device offline/unknown, or the
+connection raced to close), the command returns the standard no-session error:
+code `no_session`, translation key `no_active_session`.
 
 **Request:** `{ "type": "eppgrid/subscribe_ota_progress", "mac": str }`
 
 **Events:**
-- `{ "state": "updating", "progress": float|null }` — download progress (0-100 or null for indeterminate)
-- `{ "state": "success", "version": str }` — update complete, versions match
-- `{ "state": "error", "message": str, "error_key": str }` — update failed (log error, version mismatch, or timeout). `error_key` is a frontend translation key (`flasher.errors.*`) — the frontend renders errors exclusively through it. Log-derived failures use `flasher.errors.ota_device_error`, whose translation interpolates the cleaned device text via the `{message}` placeholder. Download/connect failures (`Code: -1`, `ESP_ERR_HTTP_CONNECT`, `ESP_ERR_NO_MEM` — the device out of contiguous heap for the TLS handshake) instead use `flasher.errors.ota_low_memory`, which explains the likely cause and the reboot-and-retry remedy.
 
-The handler also monitors device log messages for `http_request.ota` and `http_request.update` errors, forwarding the actual error message immediately. Unsubscribe releases the session reference; the manager closes the connection when no other subscriber holds one.
+- `{ "state": "updating", "progress": float|null }` — download progress (0-100
+    or null for indeterminate)
+- `{ "state": "success", "version": str }` — update complete, versions match
+- `{ "state": "error", "message": str, "error_key": str }` — update failed (log
+    error, version mismatch, or timeout). `error_key` is a frontend translation
+    key (`flasher.errors.*`) — the frontend renders errors exclusively through
+    it. Log-derived failures use `flasher.errors.ota_device_error`, whose
+    translation interpolates the cleaned device text via the `{message}`
+    placeholder. Download/connect failures (`Code: -1`, `ESP_ERR_HTTP_CONNECT`,
+    `ESP_ERR_NO_MEM` — the device out of contiguous heap for the TLS handshake)
+    instead use `flasher.errors.ota_low_memory`, which explains the likely cause
+    and the reboot-and-retry remedy.
+
+The handler also monitors device log messages for `http_request.ota` and
+`http_request.update` errors, forwarding the actual error message immediately.
+Unsubscribe releases the session reference; the manager closes the connection
+when no other subscriber holds one.
 
 ### Firmware Version Guard
 
-All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`, `set_settings`) check `firmware_status` before executing. On mismatch, they return an error with code `"firmware_behind"`, `"firmware_ahead"`, or `"unavailable"`.
+All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`,
+`set_settings`) check `firmware_status` before executing. On mismatch, they
+return an error with code `"firmware_behind"`, `"firmware_ahead"`, or
+`"unavailable"`.
 
-In parallel, `device_manager._sync_firmware_repair_issue` raises an HA Repairs framework issue (`firmware_behind_{mac}` or `firmware_ahead_{mac}`) for any discovered device whose version doesn't match `FIRMWARE_VERSION`, and clears it once the versions come back in line. Hooks fire from `async_discover` (initial discovery) and `_on_device_available` (post-OTA reconnect), so users see the mismatch in HA Settings → Repairs without having to open the panel. Translations live under `issues.firmware_behind` / `issues.firmware_ahead` in `strings.json`.
+In parallel, `device_manager._sync_firmware_repair_issue` raises an HA Repairs
+framework issue (`firmware_behind_{mac}` or `firmware_ahead_{mac}`) for any
+discovered device whose version doesn't match `FIRMWARE_VERSION`, and clears it
+once the versions come back in line. Hooks fire from `async_discover` (initial
+discovery) and `_on_device_available` (post-OTA reconnect), so users see the
+mismatch in HA Settings → Repairs without having to open the panel. Translations
+live under `issues.firmware_behind` / `issues.firmware_ahead` in `strings.json`.
 
-`firmware_behind` issues are `is_fixable=True` and resolve via `repairs.FirmwareUpdateRepairFlow` — Submit in the Repairs UI walks the user through a confirm step and triggers an OTA via `repairs._trigger_ota` (the same `set_update_manifest` API action the panel's Update Firmware button uses). `firmware_ahead` stays unfixable: the resolution is to update the integration via HACS, which the Repairs framework can't drive.
+`firmware_behind` issues are `is_fixable=True` and resolve via
+`repairs.FirmwareUpdateRepairFlow` — Submit in the Repairs UI walks the user
+through a confirm step and triggers an OTA via `repairs._trigger_ota` (the same
+`set_update_manifest` API action the panel's Update Firmware button uses).
+`firmware_ahead` stays unfixable: the resolution is to update the integration
+via HACS, which the Repairs framework can't drive.
 
-Because the integration is now the source of truth for firmware-update detection, the device-side auto-poll on `update.http_request` is set to `update_interval: never` in the variant YAMLs. The OTA button and the panel's `set_update_manifest` action still drive the same component for explicit checks/installs.
+Because the integration is now the source of truth for firmware-update
+detection, the device-side auto-poll on `update.http_request` is set to
+`update_interval: never` in the variant YAMLs. The OTA button and the panel's
+`set_update_manifest` action still drive the same component for explicit
+checks/installs.
 
 ### `set_setup`
 
-Saves perspective calibration. Clears room layout. Pushes to device. Sets `settings.zone_presence` to `true` on calibration (`room_width > 0`) or `false` on delete (`room_width = 0`), then calls `async_update_zone_entities` to enable/disable zone entities accordingly.
+Saves perspective calibration. Clears room layout. Pushes to device. Sets
+`settings.zone_presence` to `true` on calibration (`room_width > 0`) or `false`
+on delete (`room_width = 0`), then calls `async_update_zone_entities` to
+enable/disable zone entities accordingly.
 
-**Request:** `{ "type": "eppgrid/set_setup", "mac": str, "perspective": float[8], "room_width": float, "room_depth": float }`
+**Request:**
+`{ "type": "eppgrid/set_setup", "mac": str, "perspective": float[8], "room_width": float, "room_depth": float }`
 
 ### `set_room_layout`
 
-Saves grid, zones, furniture. Pushes config to device. Updates zone entity enable/disable/rename via `async_update_zone_entities`. Zone presence entities are named `"Zone {name}"` (e.g. `"Zone Armchair"`), target count entities `"Zone {name} Target Count"`. Zone 0 uses `"Zone Rest of Room"` / `"Zone Rest of Room Target Count"`.
+Saves grid, zones, furniture. Pushes config to device. Updates zone entity
+enable/disable/rename via `async_update_zone_entities`. Zone presence entities
+are named `"Zone {name}"` (e.g. `"Zone Armchair"`), target count entities
+`"Zone {name} Target Count"`. Zone 0 uses `"Zone Rest of Room"` /
+`"Zone Rest of Room Target Count"`.
 
-**Request:** `{ "type": "eppgrid/set_room_layout", "mac": str, "grid_bytes": int[400], "zone_slots": ZoneSlot[8], "furniture": FurnitureItem[] }`
+**Request:**
+`{ "type": "eppgrid/set_room_layout", "mac": str, "grid_bytes": int[400], "zone_slots": ZoneSlot[8], "furniture": FurnitureItem[] }`
 
-`grid_bytes` must contain exactly `GRID_COLS * GRID_ROWS` (400) entries — firmware rejects partial grids, so the schema does too. Each `furniture` item is validated against the shape the frontend serializes (`type`/`icon`/`label` bounded strings, **required** finite `x`/`y`/`width`/`height` geometry, optional finite `rotation`, `lockAspect` bool, optional bounded `id`; unknown keys rejected) and the list's serialized JSON is capped at 64 KiB.
+`grid_bytes` must contain exactly `GRID_COLS * GRID_ROWS` (400) entries —
+firmware rejects partial grids, so the schema does too. Each `furniture` item is
+validated against the shape the frontend serializes (`type`/`icon`/`label`
+bounded strings, **required** finite `x`/`y`/`width`/`height` geometry, optional
+finite `rotation`, `lockAspect` bool, optional bounded `id`; unknown keys
+rejected) and the list's serialized JSON is capped at 64 KiB.
 
-`zone_slots` is a fixed-length-8 array. Slot 0 is zone 0 (always present, no name/color); slots 1-7 are named zones or `null` when unused.
+`zone_slots` is a fixed-length-8 array. Slot 0 is zone 0 (always present, no
+name/color); slots 1-7 are named zones or `null` when unused.
 
 ```
 ZoneSlot[0] = Zone0Config {
@@ -335,129 +452,215 @@ ZoneConfig = Zone0Config & {
 }
 ```
 
-The timing types are load-bearing, not stylistic: the websocket validator (`_validate_slot_timing`) normalises `trigger`/`renew` to **int** and `timeout`/`handoff_timeout` to **float** before storage. The firmware's ArduinoJson extraction is type-strict — a float-typed `"trigger": 7.0` in the pushed JSON would silently fall back to the default (5) on older parsers — so storage and pushes must keep trigger/renew as JSON integers. The firmware parser (`epp_zone_config_parser.h`) additionally tolerates float-typed timing as defense-in-depth, rounding half-up to match the validator.
+The timing types are load-bearing, not stylistic: the websocket validator
+(`_validate_slot_timing`) normalises `trigger`/`renew` to **int** and
+`timeout`/`handoff_timeout` to **float** before storage. The firmware's
+ArduinoJson extraction is type-strict — a float-typed `"trigger": 7.0` in the
+pushed JSON would silently fall back to the default (5) on older parsers — so
+storage and pushes must keep trigger/renew as JSON integers. The firmware parser
+(`epp_zone_config_parser.h`) additionally tolerates float-typed timing as
+defense-in-depth, rounding half-up to match the validator.
 
-Non-custom types (`default` / `bed` / `seating` / `transit`) carry only `type` (plus `name` / `color` on named slots) in storage and on the websocket. Their timing is resolved from `ZONE_TYPE_DEFAULTS` — defined in `frontend/src/lib/zone-defaults.ts` and mirrored in `custom_components/eppgrid/device_manager/_helpers.py`. The backend expands non-custom slots with those defaults just before pushing to firmware. **Firmware is type-agnostic** — it only sees expanded timing fields and never knows the type names. Adding/renaming a type or tweaking defaults therefore requires only a frontend + backend code change; HA restart triggers a re-push that propagates new values to the device. Upgrading the defaults = bump both tables; `test_zone_type_defaults_match_frontend` fails if they drift. Layouts saved before this change — with legacy type values — still load: the backend maps `"rest"`→`bed` timing (600 s timeout) and `"thoroughfare"`→`transit` timing (3 s) via `_LEGACY_ZONE_TYPE_MAP` in `_helpers.py` (the stored `type` string itself is left untouched); `"normal"` and anything else unrecognised falls through to the Default timing row. NOTE: the frontend's display-side normalization in `frontend/src/lib/config-serialization.ts` still shows all legacy types as Default — aligning it with the backend mapping is a tracked frontend task.
+Non-custom types (`default` / `bed` / `seating` / `transit`) carry only `type`
+(plus `name` / `color` on named slots) in storage and on the websocket. Their
+timing is resolved from `ZONE_TYPE_DEFAULTS` — defined in
+`frontend/src/lib/zone-defaults.ts` and mirrored in
+`custom_components/eppgrid/device_manager/_helpers.py`. The backend expands
+non-custom slots with those defaults just before pushing to firmware. **Firmware
+is type-agnostic** — it only sees expanded timing fields and never knows the
+type names. Adding/renaming a type or tweaking defaults therefore requires only
+a frontend + backend code change; HA restart triggers a re-push that propagates
+new values to the device. Upgrading the defaults = bump both tables;
+`test_zone_type_defaults_match_frontend` fails if they drift. Layouts saved
+before this change — with legacy type values — still load: the backend maps
+`"rest"`→`bed` timing (600 s timeout) and `"thoroughfare"`→`transit` timing (3
+s) via `_LEGACY_ZONE_TYPE_MAP` in `_helpers.py` (the stored `type` string itself
+is left untouched); `"normal"` and anything else unrecognised falls through to
+the Default timing row. NOTE: the frontend's display-side normalization in
+`frontend/src/lib/config-serialization.ts` still shows all legacy types as
+Default — aligning it with the backend mapping is a tracked frontend task.
 
-Wire-protocol-wise this is a 0.94.0-or-newer contract. Earlier firmware (0.93.x) received zone 0 as top-level `room_type`/`room_trigger`/`room_renew`/`room_timeout`/`room_handoff_timeout` fields; those were removed before public release. Any further wire-format change must keep the existing fields readable or ship a migration — the public-release contract is what users have running.
+Wire-protocol-wise this is a 0.94.0-or-newer contract. Earlier firmware (0.93.x)
+received zone 0 as top-level
+`room_type`/`room_trigger`/`room_renew`/`room_timeout`/`room_handoff_timeout`
+fields; those were removed before public release. Any further wire-format change
+must keep the existing fields readable or ship a migration — the public-release
+contract is what users have running.
 
-Each cell in `grid_bytes` is a uint8 with bit layout: bit 0 = room (inside/outside), bits 1-3 = zone (0-7), bits 4-5 = 4-state overlay enum (`0` none, `1` entry/exit, `2` interference, `3` suppress), bits 6-7 unused. Pinned by `CELL_ROOM_BIT` / `CELL_ZONE_MASK` / `CELL_OVERLAY_MASK` in `frontend/src/lib/grid.ts` and the matching constants in `firmware/lib/epp_zone_engine/include/epp_grid.h`.
+Each cell in `grid_bytes` is a uint8 with bit layout: bit 0 = room
+(inside/outside), bits 1-3 = zone (0-7), bits 4-5 = 4-state overlay enum (`0`
+none, `1` entry/exit, `2` interference, `3` suppress), bits 6-7 unused. Pinned
+by `CELL_ROOM_BIT` / `CELL_ZONE_MASK` / `CELL_OVERLAY_MASK` in
+`frontend/src/lib/grid.ts` and the matching constants in
+`firmware/lib/epp_zone_engine/include/epp_grid.h`.
 
 ### `set_entity_enabled`
 
-Enables/disables an ESPHome entity. Scoped to the requested device: the `entity_id` must belong to `mac`'s HA device, otherwise the command returns `entity_not_on_device` (or `entity_not_found` for unknown entity ids).
+Enables/disables an ESPHome entity. Scoped to the requested device: the
+`entity_id` must belong to `mac`'s HA device, otherwise the command returns
+`entity_not_on_device` (or `entity_not_found` for unknown entity ids).
 
-**Request:** `{ "type": "eppgrid/set_entity_enabled", "mac": str, "entity_id": str, "enabled": bool }`
+**Request:**
+`{ "type": "eppgrid/set_entity_enabled", "mac": str, "entity_id": str, "enabled": bool }`
 
 ### `set_settings`
 
-Saves all device settings (offsets, timeouts, distances, thresholds, LED, relay, entities, log levels) in one call. Pushes full config to device. Auto-enables/disables relay switch entity based on `relay_trigger_mode`. When `entities` is provided and modifies `disabled_by`, sets `_entity_update_macs` guard to suppress the redundant reconnect push caused by the ESPHome config entry reload. When `entities.zone_presence` is provided, persists to `settings.zone_presence` and calls `async_update_zone_entities` (if enabling) for layout-aware zone naming.
+Saves all device settings (offsets, timeouts, distances, thresholds, LED, relay,
+entities, log levels) in one call. Pushes full config to device.
+Auto-enables/disables relay switch entity based on `relay_trigger_mode`. When
+`entities` is provided and modifies `disabled_by`, sets `_entity_update_macs`
+guard to suppress the redundant reconnect push caused by the ESPHome config
+entry reload. When `entities.zone_presence` is provided, persists to
+`settings.zone_presence` and calls `async_update_zone_entities` (if enabling)
+for layout-aware zone naming.
 
-**Request:** `{ "type": "eppgrid/set_settings", "mac": str, "temperature_offset": float, ..., "led_mode": str, "led_brightness": float, "led_presence_color": str, "static_led_enabled": bool, "relay_trigger_mode": str, "relay_contact_mode": str, "entities": { ... }, "log_levels": { ... } }`
+**Request:**
+`{ "type": "eppgrid/set_settings", "mac": str, "temperature_offset": float, ..., "led_mode": str, "led_brightness": float, "led_presence_color": str, "static_led_enabled": bool, "relay_trigger_mode": str, "relay_contact_mode": str, "entities": { ... }, "log_levels": { ... } }`
 
 **LED settings:**
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `led_mode` | string | `"Manual Control"` | One of: Manual Control, Occupancy, Environmental, Environmental + Occupancy |
-| `led_brightness` | float | `1.0` | RGB LED brightness multiplier (0.1–1.0) |
-| `led_presence_color` | string | `"#CC33FF"` | Hex RGB color for occupancy indication |
-| `static_led_enabled` | bool | `true` | Enable/disable SEN0609 indicator LED |
+| Key                  | Type   | Default            | Description                                                                 |
+| -------------------- | ------ | ------------------ | --------------------------------------------------------------------------- |
+| `led_mode`           | string | `"Manual Control"` | One of: Manual Control, Occupancy, Environmental, Environmental + Occupancy |
+| `led_brightness`     | float  | `1.0`              | RGB LED brightness multiplier (0.1–1.0)                                     |
+| `led_presence_color` | string | `"#CC33FF"`        | Hex RGB color for occupancy indication                                      |
+| `static_led_enabled` | bool   | `true`             | Enable/disable SEN0609 indicator LED                                        |
 
 **Relay settings:**
 
-| Key | Type | Default | Description |
-|-----|------|---------|-------------|
-| `relay_trigger_mode` | string | `"disabled"` | One of: disabled, motion, presence, occupancy |
-| `relay_contact_mode` | string | `"no"` | One of: no (Normally Open), nc (Normally Closed) |
+| Key                  | Type   | Default      | Description                                      |
+| -------------------- | ------ | ------------ | ------------------------------------------------ |
+| `relay_trigger_mode` | string | `"disabled"` | One of: disabled, motion, presence, occupancy    |
+| `relay_contact_mode` | string | `"no"`       | One of: no (Normally Open), nc (Normally Closed) |
 
 **Update rate settings (optional):**
 
-| Key | Type | Valid values | Description |
-|-----|------|-------------|-------------|
-| `target_update_rate_ms` | int | 200, 500, 1000, 2000 | Target entity sensor publish rate (stored in `settings.target_update_rate_ms`) |
-| `zone_update_rate_ms` | int | 200, 500, 1000, 2000 | Zone entity sensor publish rate (stored in `settings.zone_update_rate_ms`) |
+| Key                     | Type | Valid values         | Description                                                                    |
+| ----------------------- | ---- | -------------------- | ------------------------------------------------------------------------------ |
+| `target_update_rate_ms` | int  | 200, 500, 1000, 2000 | Target entity sensor publish rate (stored in `settings.target_update_rate_ms`) |
+| `zone_update_rate_ms`   | int  | 200, 500, 1000, 2000 | Zone entity sensor publish rate (stored in `settings.zone_update_rate_ms`)     |
 
 **Sensor-assisted clear settings:**
 
-| Key | Type | Default | Valid values | Description |
-|-----|------|---------|-------------|-------------|
-| `assisted_clear_enabled` | bool | `true` | — | Enables sensor-assisted clear: pending zones are force-cleared once both presence sensors are inactive and no zone is occupied. Pushed to firmware via `epp_set_assisted_clear`. |
-| `assisted_clear_timeout` | float (s) | `5` | 0–600 | Grace delay the room must stay empty before pending zones are cleared; `0` = immediate. Pushed to firmware via `epp_set_assisted_clear`. |
+| Key                      | Type      | Default | Valid values | Description                                                                                                                                                                      |
+| ------------------------ | --------- | ------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `assisted_clear_enabled` | bool      | `true`  | —            | Enables sensor-assisted clear: pending zones are force-cleared once both presence sensors are inactive and no zone is occupied. Pushed to firmware via `epp_set_assisted_clear`. |
+| `assisted_clear_timeout` | float (s) | `5`     | 0–600        | Grace delay the room must stay empty before pending zones are cleared; `0` = immediate. Pushed to firmware via `epp_set_assisted_clear`.                                         |
 
-Both keys thread through the settings pipeline exactly like `stuck_target_timeout` (member of `_SETTINGS_KEYS`, `vol.Required` in the schema). New installs get the 5 s default; pre-existing installs are migrated to `0` (immediate) by the v2→v3 store migration — see [Configuration Storage](#5-configuration-storage).
+Both keys thread through the settings pipeline exactly like
+`stuck_target_timeout` (member of `_SETTINGS_KEYS`, `vol.Required` in the
+schema). New installs get the 5 s default; pre-existing installs are migrated to
+`0` (immediate) by the v2→v3 store migration — see
+[Configuration Storage](#5-configuration-storage).
 
 **Entity toggle keys (within `entities` dict) — additions:**
 
-| Key | Description |
-|-----|-------------|
-| `target_active` | Enable/disable Target 1-3 Active binary sensors |
-| `target_signal` | Enable/disable Target 1-3 Signal sensors |
-| `target_zone` | Enable/disable Target 1-3 Zone sensors |
-| `zone_target_count` | Enable/disable Zone 0-7 Target Count sensors |
+| Key                 | Description                                     |
+| ------------------- | ----------------------------------------------- |
+| `target_active`     | Enable/disable Target 1-3 Active binary sensors |
+| `target_signal`     | Enable/disable Target 1-3 Signal sensors        |
+| `target_zone`       | Enable/disable Target 1-3 Zone sensors          |
+| `zone_target_count` | Enable/disable Zone 0-7 Target Count sensors    |
 
-**Firmware push:** LED mode/brightness/color pushed via `epp_set_led` action (mode, brightness, presence_red/green/blue as 0.0–1.0 floats). SEN0609 LED toggle passed through existing `epp_set_static_presence` action's `led_enabled` parameter. Relay settings pushed via `epp_set_relay` action (trigger_mode, contact_mode).
+**Firmware push:** LED mode/brightness/color pushed via `epp_set_led` action
+(mode, brightness, presence_red/green/blue as 0.0–1.0 floats). SEN0609 LED
+toggle passed through existing `epp_set_static_presence` action's `led_enabled`
+parameter. Relay settings pushed via `epp_set_relay` action (trigger_mode,
+contact_mode).
 
 ### `set_distance_override`
 
-Pushes tracking + static presence ranges to firmware via session without persisting. Used by the editor to temporarily widen ranges on entry (so the sensor sees the full area) and revert on cancel.
+Pushes tracking + static presence ranges to firmware via session without
+persisting. Used by the editor to temporarily widen ranges on entry (so the
+sensor sees the full area) and revert on cancel.
 
-**Request:** `{ "type": "eppgrid/set_distance_override", "mac": str, "target_max_distance": float, "static_min_distance": float, "static_max_distance": float }`
+**Request:**
+`{ "type": "eppgrid/set_distance_override", "mac": str, "target_max_distance": float, "static_min_distance": float, "static_max_distance": float }`
 
 ### Pipeline intervals (firmware push)
 
-Pipeline intervals are derived by `_compute_pipeline` from the device's stored `settings` (entity flags + `target_update_rate_ms` / `zone_update_rate_ms`) and live subscriber counts, then pushed to the firmware via the `epp_set_pipeline` ESPHome service. Backend-internal — not a WS command surface.
+Pipeline intervals are derived by `_compute_pipeline` from the device's stored
+`settings` (entity flags + `target_update_rate_ms` / `zone_update_rate_ms`) and
+live subscriber counts, then pushed to the firmware via the `epp_set_pipeline`
+ESPHome service. Backend-internal — not a WS command surface.
 
-| Field | Source |
-|-------|--------|
+| Field                    | Source                                                                     |
+| ------------------------ | -------------------------------------------------------------------------- |
 | `entity_target_interval` | `settings.target_update_rate_ms` if any target entity is enabled, else `0` |
-| `entity_zone_interval` | `settings.zone_update_rate_ms` if any zone entity is enabled, else `0` |
-| `display_interval` | `200` when a frontend raw or grid subscription is open, else `0` |
-| `zone_state_interval` | `1000` when a frontend grid subscription is open, else `0` |
+| `entity_zone_interval`   | `settings.zone_update_rate_ms` if any zone entity is enabled, else `0`     |
+| `display_interval`       | `200` when a frontend raw or grid subscription is open, else `0`           |
+| `zone_state_interval`    | `1000` when a frontend grid subscription is open, else `0`                 |
 
-The subscriber counts that gate `display_interval` / `zone_state_interval` are held on the `DeviceManager` keyed by MAC (`_target_subs`), incremented/decremented by the `subscribe_raw_targets` / `subscribe_grid_targets` handlers via `note_target_subscribe` / `note_target_unsubscribe`. They deliberately do **not** live on the `DeviceConnection`: a device flap tears the connection down and reopens a fresh one whose own counters would reset to zero, so a pipeline recomputed from those would tell the device "no subscribers" and silence target/zone emission while clients are still subscribed — the v1.1.0 "target disappears in the editor" freeze. Keyed by MAC the counts survive connection replacement, the decrement floors at zero (a stray unsubscribe whose increment landed on a since-replaced connection can't drive it negative), and `async_open_session` re-pushes the pipeline on reopen so emission resumes without a page refresh.
+The subscriber counts that gate `display_interval` / `zone_state_interval` are
+held on the `DeviceManager` keyed by MAC (`_target_subs`),
+incremented/decremented by the `subscribe_raw_targets` /
+`subscribe_grid_targets` handlers via `note_target_subscribe` /
+`note_target_unsubscribe`. They deliberately do **not** live on the
+`DeviceConnection`: a device flap tears the connection down and reopens a fresh
+one whose own counters would reset to zero, so a pipeline recomputed from those
+would tell the device "no subscribers" and silence target/zone emission while
+clients are still subscribed — the v1.1.0 "target disappears in the editor"
+freeze. Keyed by MAC the counts survive connection replacement, the decrement
+floors at zero (a stray unsubscribe whose increment landed on a since-replaced
+connection can't drive it negative), and `async_open_session` re-pushes the
+pipeline on reopen so emission resumes without a page refresh.
 
-The firmware rolling-median window is fixed at 1000ms (10 frames at the LD2450's nominal 10Hz). Signal is `min(frame_count, 9)` over that window, so it stays bounded on sensor over-delivery and matches the comparison space the frontend uses.
+The firmware rolling-median window is fixed at 1000ms (10 frames at the LD2450's
+nominal 10Hz). Signal is `min(frame_count, 9)` over that window, so it stays
+bounded on sensor over-delivery and matches the comparison space the frontend
+uses.
 
 ### `dismiss_target`
 
-Marks a single target slot as dismissed at a given grid cell so the firmware's ghost-suppression logic can ignore that target when it next appears in that cell. Used by the panel's "Mark as ghost" UI.
+Marks a single target slot as dismissed at a given grid cell so the firmware's
+ghost-suppression logic can ignore that target when it next appears in that
+cell. Used by the panel's "Mark as ghost" UI.
 
-**Request:** `{ "type": "eppgrid/dismiss_target", "mac": str, "target_index": 0..2, "cell_index": -1..GRID_CELL_COUNT-1 }`
+**Request:**
+`{ "type": "eppgrid/dismiss_target", "mac": str, "target_index": 0..2, "cell_index": -1..GRID_CELL_COUNT-1 }`
 
 `cell_index = -1` means "any cell" (clears the dismiss flag for that target).
 
-Errors: `device_not_found` for an unknown MAC (standard `_require_known_device` check), `no_session` / `no_active_session` when no live session exists (including known-but-offline devices), `dismiss_failed` when the firmware service call fails.
+Errors: `device_not_found` for an unknown MAC (standard `_require_known_device`
+check), `no_session` / `no_active_session` when no live session exists
+(including known-but-offline devices), `dismiss_failed` when the firmware
+service call fails.
 
 ### `set_show_room_calibration_tutorial`
 
-Per-device toggle for the calibration-tutorial overlay shown above the wizard. Persisted alongside the rest of the device's settings.
+Per-device toggle for the calibration-tutorial overlay shown above the wizard.
+Persisted alongside the rest of the device's settings.
 
-**Request:** `{ "type": "eppgrid/set_show_room_calibration_tutorial", "mac": str, "enabled": bool }`
+**Request:**
+`{ "type": "eppgrid/set_show_room_calibration_tutorial", "mac": str, "enabled": bool }`
 
 ### Saved-Configuration Commands
 
-| Command | Description |
-|---------|------------|
-| `list_configurations` | List saved configurations (grid + zones + sparse settings) |
-| `save_configuration` | Save the current configuration under a name |
-| `delete_configuration` | Delete a saved configuration |
+| Command                | Description                                                |
+| ---------------------- | ---------------------------------------------------------- |
+| `list_configurations`  | List saved configurations (grid + zones + sparse settings) |
+| `save_configuration`   | Save the current configuration under a name                |
+| `delete_configuration` | Delete a saved configuration                               |
 
-`save_configuration` caps each blob's serialized JSON at 256 KiB (measured as UTF-8 bytes, matching what HA storage writes) and the store at 50 named configurations — saving a new name beyond that returns `too_many_configurations`; overwriting an existing name is always allowed.
+`save_configuration` caps each blob's serialized JSON at 256 KiB (measured as
+UTF-8 bytes, matching what HA storage writes) and the store at 50 named
+configurations — saving a new name beyond that returns
+`too_many_configurations`; overwriting an existing name is always allowed.
 
-Restoring a configuration is a frontend-side operation: the configuration
-dialog applies the saved `grid_bytes`/`zone_slots`/`settings` into panel
-state and then calls `set_room_layout` and `set_settings` through the usual
-path. There is no server-side `apply_configuration` command.
+Restoring a configuration is a frontend-side operation: the configuration dialog
+applies the saved `grid_bytes`/`zone_slots`/`settings` into panel state and then
+calls `set_room_layout` and `set_settings` through the usual path. There is no
+server-side `apply_configuration` command.
 
 ### Flasher Commands
 
 #### `list_flashable_devices`
 
-Returns all ESPHome devices matching EPP manufacturer/model, regardless of whether they run original or Everything Presence Pro Grid firmware.
+Returns all ESPHome devices matching EPP manufacturer/model, regardless of
+whether they run original or Everything Presence Pro Grid firmware.
 
-**Request:** `{ "type": "eppgrid/list_flashable_devices" }`
-**Response:**
+**Request:** `{ "type": "eppgrid/list_flashable_devices" }` **Response:**
+
 ```json
 {
     "devices": [
@@ -475,17 +678,28 @@ Returns all ESPHome devices matching EPP manufacturer/model, regardless of wheth
 }
 ```
 
-`firmware_type` is `"original"` (no `firmware_version` entity) or `"eppgrid"` (has `firmware_version` entity). `update_available` is `true` when the device runs Everything Presence Pro Grid firmware and a newer version is available. `firmware_version` is the current firmware version string. `firmware_status` is `"compatible"`, `"firmware_behind"`, `"firmware_ahead"`, `"unknown"`, or `"unavailable"`.
+`firmware_type` is `"original"` (no `firmware_version` entity) or `"eppgrid"`
+(has `firmware_version` entity). `update_available` is `true` when the device
+runs Everything Presence Pro Grid firmware and a newer version is available.
+`firmware_version` is the current firmware version string. `firmware_status` is
+`"compatible"`, `"firmware_behind"`, `"firmware_ahead"`, `"unknown"`, or
+`"unavailable"`.
 
 #### `delete_esphome_device`
 
-Removes an ESPHome config entry (used to clean up after flashing). Scoped to EPP hardware: the entry must be an ESPHome entry (`only_esphome_can_be_deleted` otherwise) AND own at least one device-registry entry carrying the EPP manufacturer/model signature — otherwise the command returns `not_epp_device`. Entries with no registered devices yet are rejected (fail-closed).
+Removes an ESPHome config entry (used to clean up after flashing). Scoped to EPP
+hardware: the entry must be an ESPHome entry (`only_esphome_can_be_deleted`
+otherwise) AND own at least one device-registry entry carrying the EPP
+manufacturer/model signature — otherwise the command returns `not_epp_device`.
+Entries with no registered devices yet are rejected (fail-closed).
 
-**Request:** `{ "type": "eppgrid/delete_esphome_device", "config_entry_id": str }`
+**Request:**
+`{ "type": "eppgrid/delete_esphome_device", "config_entry_id": str }`
 
 #### `add_esphome_device`
 
-Triggers the ESPHome config flow for a given host (used to add a freshly-flashed device).
+Triggers the ESPHome config flow for a given host (used to add a freshly-flashed
+device).
 
 **Request:** `{ "type": "eppgrid/add_esphome_device", "host": str }`
 
@@ -493,27 +707,29 @@ Triggers the ESPHome config flow for a given host (used to add a freshly-flashed
 
 All device-group commands are admin-only (`@websocket_api.require_admin`) and
 handled in `websocket_api/_device_groups.py`. Inputs are validated at the
-boundary (name 1-128 chars; 1-8 uppercase MACs matching the standard
-`AA:BB:...` format; ≤16 zone groups, ≤16 members each). Failures return
-`invalid_input`; an unknown `group_id` returns `not_found`; a not-yet-loaded
-manager returns `device_groups_unavailable`.
+boundary (name 1-128 chars; 1-8 uppercase MACs matching the standard `AA:BB:...`
+format; ≤16 zone groups, ≤16 members each). Failures return `invalid_input`; an
+unknown `group_id` returns `not_found`; a not-yet-loaded manager returns
+`device_groups_unavailable`.
 
 > **Wire-param note:** create/update/delete take **`group_id`**, not `id` — HA
 > reserves top-level `id` for the message envelope.
 
 #### `list_device_groups`
 
-**Request:** `{ "type": "eppgrid/list_device_groups" }`
-**Response:** `{ "device_groups": [<group>, ...] }`
+**Request:** `{ "type": "eppgrid/list_device_groups" }` **Response:**
+`{ "device_groups": [<group>, ...] }`
 
 #### `create_device_group`
 
-**Request:** `{ "type": "eppgrid/create_device_group", "name": str, "sources": [MAC, ...], "area_id"?: str | null }`
+**Request:**
+`{ "type": "eppgrid/create_device_group", "name": str, "sources": [MAC, ...], "area_id"?: str | null }`
 **Response:** `{ "device_group": <group> }`
 
 #### `update_device_group`
 
-**Request:** `{ "type": "eppgrid/update_device_group", "group_id": str, "name": str, "sources": [MAC, ...], "area_id": str | null, "zone_groups": [<zone_group>, ...] }`
+**Request:**
+`{ "type": "eppgrid/update_device_group", "group_id": str, "name": str, "sources": [MAC, ...], "area_id": str | null, "zone_groups": [<zone_group>, ...] }`
 **Response:** `{ "device_group": <group> }`
 
 #### `delete_device_group`
@@ -527,8 +743,8 @@ Also removes the group's HA device-registry entry and its exposed entities.
 
 Streams the full group list on subscribe and again on any create/update/delete.
 
-**Request:** `{ "type": "eppgrid/subscribe_device_groups" }`
-**Event:** `{ "device_groups": [<group>, ...] }`
+**Request:** `{ "type": "eppgrid/subscribe_device_groups" }` **Event:**
+`{ "device_groups": [<group>, ...] }`
 
 The serialized `<group>` shape (see `_serialize_group`) augments the stored
 definition with resolved, read-time fields — each source carries its display
@@ -589,46 +805,54 @@ Publishing (5 independent output timers):
 
 ### Zone State JSON (firmware `ev` field)
 
-Firmware v1.2.0+ emits structured detection-log events in the zone state JSON text sensor as `"ev": [...]`. The integration passes this array through as `events` in the `subscribe_grid_targets` payload. The panel renders it as a human-readable event timeline.
+Firmware v1.2.0+ emits structured detection-log events in the zone state JSON
+text sensor as `"ev": [...]`. The integration passes this array through as
+`events` in the `subscribe_grid_targets` payload. The panel renders it as a
+human-readable event timeline.
 
-For older firmware (pre-1.2.0) that still publishes a `"debug_log"` string field, the panel falls back to parsing and enriching that snapshot for readability (e.g. replacing zone IDs with zone names) via `enrichDebugLog`. `debug_log` is no longer present in current firmware.
+For older firmware (pre-1.2.0) that still publishes a `"debug_log"` string
+field, the panel falls back to parsing and enriching that snapshot for
+readability (e.g. replacing zone IDs with zone names) via `enrichDebugLog`.
+`debug_log` is no longer present in current firmware.
 
 #### Detection-Log Event Codes
 
-| Code | Meaning |
-| --- | --- |
-| `sa` / `sp` / `sc` | static presence active / pending / cleared |
-| `ma` / `mp` / `mc` | motion presence active / pending / cleared |
-| `zo:Z` / `zp:Z` | zone Z occupied / clearing |
-| `zc:Z:r` | zone Z cleared, reason `r` (see legend below) |
-| `oo` / `of` | room occupancy on / off |
-| `wo` / `wf` | mmWave on / off |
-| `fc:Z` | zone Z sensor-assisted force-clear |
-| `td:T:secs` | target T auto-dismissed (stuck for secs seconds) |
-| `te:T:Z` | target T entered zone Z |
-| `tl:T` | target T left the room |
-| `tm:T:Za:Zb` | target T moved from zone Za to Zb |
-| `xd:n` | n events dropped (firmware queue / JSON-budget overflow) |
+| Code               | Meaning                                                  |
+| ------------------ | -------------------------------------------------------- |
+| `sa` / `sp` / `sc` | static presence active / pending / cleared               |
+| `ma` / `mp` / `mc` | motion presence active / pending / cleared               |
+| `zo:Z` / `zp:Z`    | zone Z occupied / clearing                               |
+| `zc:Z:r`           | zone Z cleared, reason `r` (see legend below)            |
+| `oo` / `of`        | room occupancy on / off                                  |
+| `wo` / `wf`        | mmWave on / off                                          |
+| `fc:Z`             | zone Z sensor-assisted force-clear                       |
+| `td:T:secs`        | target T auto-dismissed (stuck for secs seconds)         |
+| `te:T:Z`           | target T entered zone Z                                  |
+| `tl:T`             | target T left the room                                   |
+| `tm:T:Za:Zb`       | target T moved from zone Za to Zb                        |
+| `xd:n`             | n events dropped (firmware queue / JSON-budget overflow) |
 
 Zone-clear reason `r` (the `zc:Z:r` suffix):
 
-| `r` | reason |
-| --- | --- |
-| `t` | timeout — the zone's normal clear timeout elapsed |
-| `h` | handoff — the last confirmed target moved to another zone |
+| `r` | reason                                                                       |
+| --- | ---------------------------------------------------------------------------- |
+| `t` | timeout — the zone's normal clear timeout elapsed                            |
+| `h` | handoff — the last confirmed target moved to another zone                    |
 | `o` | overlay exit — the last confirmed target vanished from an entry-overlay cell |
-| `f` | force — sensor-assisted force-clear (both presence sensors idle) |
+| `f` | force — sensor-assisted force-clear (both presence sensors idle)             |
 
 A `zc:Z` with no `:r` suffix (forward/back-compat) renders as a plain "cleared".
 
 #### Firmware DEBUG Log Lines (not detection-log events)
 
-The following lines appear only in the firmware DEBUG log. They are **not** structured detection-log events — no new `EventType` was added and they are never included in the `ev` array or the `subscribe_grid_targets` payload.
+The following lines appear only in the firmware DEBUG log. They are **not**
+structured detection-log events — no new `EventType` was added and they are
+never included in the `ev` array or the `subscribe_grid_targets` payload.
 
-| Log line | Meaning |
-| --- | --- |
-| `T<i> parked -> T<j>` | Step 0 pending-target relocation: the PENDING target held in slot `i` was moved to free slot `j` because slot `i` was reused by a far new entrant. Entrance-gated (the new entrant must arrive via an entry overlay); falls back to distance-only when no entry overlay is configured anywhere on the grid. |
-| `T<i> pending dropped: no free slot` | Step 0 fallback when all slots are active: no free slot was available to park the held PENDING target, so it is dropped and its zone's pending bit is stripped (clean clobber). |
+| Log line                             | Meaning                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `T<i> parked -> T<j>`                | Step 0 pending-target relocation: the PENDING target held in slot `i` was moved to free slot `j` because slot `i` was reused by a far new entrant. Entrance-gated (the new entrant must arrive via an entry overlay); falls back to distance-only when no entry overlay is configured anywhere on the grid. |
+| `T<i> pending dropped: no free slot` | Step 0 fallback when all slots are active: no free slot was available to park the held PENDING target, so it is dropped and its zone's pending bit is stripped (clean clobber).                                                                                                                             |
 
 ## 5. Configuration Storage
 
@@ -651,8 +875,8 @@ The following lines appear only in the firmware DEBUG log. They are **not** stru
 `room_layout.zone_slots` is a fixed-length-8 array using the same `ZoneSlot`
 shape as the `set_room_layout` wire payload: slot 0 holds zone 0 (always
 present), slots 1-7 hold named zones or `null`. This is the 0.94.0-or-newer
-storage format; layouts written by 0.93.x (with top-level `room_*` fields)
-are not migrated and must be re-applied once after upgrade.
+storage format; layouts written by 0.93.x (with top-level `room_*` fields) are
+not migrated and must be re-applied once after upgrade.
 
 Saved configurations are stored separately in `EPPGridStore.configurations`
 using a matching shape:
@@ -670,24 +894,25 @@ using a matching shape:
 }
 ```
 
-All config is pushed to the device on save and on reconnect. The push
-prefers the existing frontend session connection when one is active
-(avoids the ESP32 concurrent connection limit); otherwise it creates a
-temporary connection (e.g., on-boot push when no frontend is open).
+All config is pushed to the device on save and on reconnect. The push prefers
+the existing frontend session connection when one is active (avoids the ESP32
+concurrent connection limit); otherwise it creates a temporary connection (e.g.,
+on-boot push when no frontend is open).
 
 **Store migrations** are handled by `_MigratingStore._async_migrate_func`
 (`STORAGE_VERSION` is currently **4**):
 
 - **v1 → v2** — adds the `device_groups` list (see below).
 - **v2 → v3** — stamps `assisted_clear_timeout: 0` into the `settings` of every
-  pre-existing device and saved configuration so upgraded installs keep clearing
-  pending zones immediately, matching the old hard-coded behaviour. New installs
-  (no stored settings to migrate) fall through to the 5 s frontend default.
-  `assisted_clear_enabled` needs no stamping — absent means default `true`.
+    pre-existing device and saved configuration so upgraded installs keep
+    clearing pending zones immediately, matching the old hard-coded behaviour.
+    New installs (no stored settings to migrate) fall through to the 5 s
+    frontend default. `assisted_clear_enabled` needs no stamping — absent means
+    default `true`.
 - **v3 → v4** — seeds `excluded_presence: []`, `excluded_zones: []`, and
-  `excluded_zone_groups: []` on every existing device group, and removes any
-  `zone_groups` member with `zone_index: 0` (legacy Rest-of-room merge —
-  replaced by the implicit combined Rest of room).
+    `excluded_zone_groups: []` on every existing device group, and removes any
+    `zone_groups` member with `zone_index: 0` (legacy Rest-of-room merge —
+    replaced by the implicit combined Rest of room).
 
 **Device groups** are persisted separately in `EPPGridStore.device_groups`
 (added by the v1→v2 store migration; current format is **v4**) as a list of
@@ -727,38 +952,44 @@ definitions:
 ]
 ```
 
-`zone_groups` members use zone index **1–7** only (named zones). Zone 0
-(Rest of room) is handled as the **implicit combined Rest of room**: a synthetic
-zone group with the reserved id `rest_of_room` that is never stored in
-`zone_groups`. It is synthesised by `derive_exposed_entities` from every
-source's zone-0 entity and exposes one binary sensor per group with unique_id
-`eppgrid_device_group_{group_id}_zone_group_rest_of_room`. To suppress it,
-add `"rest_of_room"` to `excluded_zone_groups`.
+`zone_groups` members use zone index **1–7** only (named zones). Zone 0 (Rest of
+room) is handled as the **implicit combined Rest of room**: a synthetic zone
+group with the reserved id `rest_of_room` that is never stored in `zone_groups`.
+It is synthesised by `derive_exposed_entities` from every source's zone-0 entity
+and exposes one binary sensor per group with unique_id
+`eppgrid_device_group_{group_id}_zone_group_rest_of_room`. To suppress it, add
+`"rest_of_room"` to `excluded_zone_groups`.
 
-The **v3→v4 storage migration** seeds `excluded_presence`, `excluded_zones`,
-and `excluded_zone_groups` to `[]` on every existing group, and rewrites any
-legacy `zone_groups` member with `zone_index: 0` (old-style Rest-of-room
-merge) by removing it (the combined Rest of room replaces it implicitly).
+The **v3→v4 storage migration** seeds `excluded_presence`, `excluded_zones`, and
+`excluded_zone_groups` to `[]` on every existing group, and rewrites any legacy
+`zone_groups` member with `zone_index: 0` (old-style Rest-of-room merge) by
+removing it (the combined Rest of room replaces it implicitly).
 
-Only the *definition* is stored. The exposed entity list (`exposed_entities`)
-is derived at read time by `device_groups/_projection.py` and is never
-persisted. Live presence/zone state is held in the per-group runtime
-`Aggregator`, not in the store. See architecture.md → *Device Groups* for the
-aggregation and entity-creation flow.
+Only the *definition* is stored. The exposed entity list (`exposed_entities`) is
+derived at read time by `device_groups/_projection.py` and is never persisted.
+Live presence/zone state is held in the per-group runtime `Aggregator`, not in
+the store. See architecture.md → *Device Groups* for the aggregation and
+entity-creation flow.
 
 ## 6. Diagnostics
 
-The integration implements the HA diagnostics platform (`diagnostics.py`). Users can download a JSON dump from Settings > Devices & Services > Everything Presence Pro Grid.
+The integration implements the HA diagnostics platform (`diagnostics.py`). Users
+can download a JSON dump from Settings > Devices & Services > Everything
+Presence Pro Grid.
 
 **Contents:**
 
-| Key | Description |
-|-----|-------------|
-| `integration_version` | Version from `async_get_loaded_integration(hass, DOMAIN).version` |
-| `firmware_version` | `FIRMWARE_VERSION` constant |
-| `devices` | Output of `manager.list_devices()` — all managed devices with build flags |
-| `stored_configs` | Raw `EPPGridStore.devices` — per-device calibration, room layout, settings |
-| `configurations` | Raw `EPPGridStore.configurations` — saved configurations |
-| `entity_states` | Per-device dict of `{entity_id: state_value}` for all HA entities (including disabled) |
+| Key                   | Description                                                                            |
+| --------------------- | -------------------------------------------------------------------------------------- |
+| `integration_version` | Version from `async_get_loaded_integration(hass, DOMAIN).version`                      |
+| `firmware_version`    | `FIRMWARE_VERSION` constant                                                            |
+| `devices`             | Output of `manager.list_devices()` — all managed devices with build flags              |
+| `stored_configs`      | Raw `EPPGridStore.devices` — per-device calibration, room layout, settings             |
+| `configurations`      | Raw `EPPGridStore.configurations` — saved configurations                               |
+| `entity_states`       | Per-device dict of `{entity_id: state_value}` for all HA entities (including disabled) |
 
-Redaction: `mac` / `host` fields are redacted via `async_redact_data`; MAC-keyed dicts (`stored_configs`, `entity_states`) are re-keyed to stable `device_N` indices; and entity_ids inside `entity_states` have their device-name prefix replaced by the same `device_N` index — default ESPHome device names embed the MAC's last hex digits, which would otherwise leak through the entity_id keys.
+Redaction: `mac` / `host` fields are redacted via `async_redact_data`; MAC-keyed
+dicts (`stored_configs`, `entity_states`) are re-keyed to stable `device_N`
+indices; and entity_ids inside `entity_states` have their device-name prefix
+replaced by the same `device_N` index — default ESPHome device names embed the
+MAC's last hex digits, which would otherwise leak through the entity_id keys.
