@@ -28,16 +28,19 @@ export const CELL_BG_BEYOND_MAX_RANGE =
  * Get the CSS color for a grid cell.
  *
  * - Outside cells: secondary background color
- * - Zone 0 (room default): card background color
+ * - Zone 0 (room default / rest-of-room): `roomColor`
  * - Zone 1-7: the zone's configured color
  *
  * @param cellValue The cell byte value from the grid
  * @param zoneConfigs Array of zone configurations
+ * @param roomColor Fill for unpainted rest-of-room (zone 0) cells; defaults to
+ *   the theme card background. Painted zones and outside cells ignore it.
  * @returns CSS color string
  */
 export function getCellColor(
 	cellValue: number,
 	zoneConfigs: (ZoneConfig | null)[],
+	roomColor: string = CELL_COLOR_ROOM,
 ): string {
 	if (!cellIsInside(cellValue)) return CELL_COLOR_OUTSIDE;
 
@@ -46,7 +49,7 @@ export function getCellColor(
 		const config = zoneConfigs[zone - 1];
 		if (config) return config.color;
 	}
-	return CELL_COLOR_ROOM;
+	return roomColor;
 }
 
 // Canonical overlay-stripe colors: theme error-color for interference and

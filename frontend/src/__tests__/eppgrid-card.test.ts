@@ -3,8 +3,9 @@ import "../eppgrid-card.js";
 import {
 	__resetEntitySuggestionCache,
 	applyCardDefaults,
-	type EppGridCard,
+	EppGridCard,
 	getEntitySuggestion,
+	rgbCss,
 } from "../eppgrid-card.js";
 
 // A calibrated snapshot so the map renders (parseConfig needs a perspective).
@@ -50,6 +51,26 @@ async function mount(
 
 afterEach(() => document.body.replaceChildren());
 
+describe("rgbCss", () => {
+	it("formats a valid [r,g,b] triple as a CSS rgb() string", () => {
+		expect(rgbCss([10, 20, 30])).toBe("rgb(10, 20, 30)");
+	});
+
+	it("returns undefined when unset", () => {
+		expect(rgbCss(undefined)).toBeUndefined();
+	});
+
+	it("returns undefined for a malformed triple (graceful fallback)", () => {
+		// Hand-written YAML can supply a bad value the TS type doesn't enforce.
+		expect(
+			rgbCss([10, 20] as unknown as [number, number, number]),
+		).toBeUndefined();
+		expect(
+			rgbCss(["a", 2, 3] as unknown as [number, number, number]),
+		).toBeUndefined();
+	});
+});
+
 describe("applyCardDefaults", () => {
 	it("returns all defaults when no config is provided", () => {
 		const result = applyCardDefaults({});
@@ -57,7 +78,9 @@ describe("applyCardDefaults", () => {
 		expect(result.device_id).toBe("");
 		expect(result.show_map).toBe(true);
 		expect(result.show_sensors).toBe(true);
-		expect(result.layout).toBe("horizontal");
+		expect(result.layout).toBe("vertical");
+		expect(result.show_grid).toBe(true);
+		expect(result.room_color).toBeUndefined();
 		expect(result.show_furniture).toBe(true);
 		expect(result.show_overlays).toBe(true);
 		// presence absent → all five true
@@ -76,6 +99,16 @@ describe("applyCardDefaults", () => {
 	it("preserves show_map: false", () => {
 		const result = applyCardDefaults({ show_map: false });
 		expect(result.show_map).toBe(false);
+	});
+
+	it("preserves show_grid: false", () => {
+		const result = applyCardDefaults({ show_grid: false });
+		expect(result.show_grid).toBe(false);
+	});
+
+	it("passes room_color through", () => {
+		const result = applyCardDefaults({ room_color: [10, 20, 30] });
+		expect(result.room_color).toEqual([10, 20, 30]);
 	});
 
 	it("returns all env keys true when sensors.environmental is absent", () => {
@@ -313,6 +346,103 @@ describe("eppgrid-card rendering", () => {
 		// map adds 6, sensors-only adds 4 to the base of 1
 		expect(mapOnly.getCardSize()).toBe(7);
 		expect(sensorsOnly.getCardSize()).toBe(5);
+	});
+
+	it("keeps the full grid by default (epp-grid not plain)", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-grid-default",
+		});
+		const grid = el.shadowRoot!.querySelector("epp-grid") as unknown as {
+			plain: boolean;
+		};
+		expect(grid).toBeTruthy();
+		expect(grid.plain).toBe(false);
+	});
+
+	it("renders the clean map (epp-grid plain) when show_grid is false", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-grid-off",
+			show_grid: false,
+		});
+		const grid = el.shadowRoot!.querySelector("epp-grid") as unknown as {
+			plain: boolean;
+		};
+		expect(grid).toBeTruthy();
+		expect(grid.plain).toBe(true);
+	});
+
+	it("tells epp-grid to fill the available width", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-fill",
+		});
+		const grid = el.shadowRoot!.querySelector("epp-grid") as unknown as {
+			fill: boolean;
+		};
+		expect(grid.fill).toBe(true);
+	});
+
+	it("passes room_color to epp-grid as a CSS rgb() string", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-room-color",
+			room_color: [10, 20, 30],
+		});
+		const grid = el.shadowRoot!.querySelector("epp-grid") as unknown as {
+			roomColor?: string;
+		};
+		expect(grid.roomColor).toBe("rgb(10, 20, 30)");
+	});
+
+	it("leaves epp-grid roomColor undefined when room_color is unset", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-no-room-color",
+		});
+		const grid = el.shadowRoot!.querySelector("epp-grid") as unknown as {
+			roomColor?: string;
+		};
+		expect(grid.roomColor).toBeUndefined();
+	});
+
+	it("stacks map over sensors by default (vertical layout)", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-default-vertical",
+		});
+		const overview = el.shadowRoot!.querySelector(".overview");
+		expect(overview?.classList.contains("overview--vertical")).toBe(true);
+		expect(overview?.classList.contains("overview--horizontal")).toBe(false);
+	});
+
+	it("hides the per-row info (?) tips in the compact card", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-no-tips",
+		});
+		const sidebar = el.shadowRoot!.querySelector("epp-live-sidebar") as {
+			showInfoTips: boolean;
+		} | null;
+		expect(sidebar).toBeTruthy();
+		expect(sidebar!.showInfoTips).toBe(false);
+	});
+
+	it("stretches the stacked map to a definite width in the narrow fallback", () => {
+		// Regression: the @container(max-width:500px) fallback flips the horizontal
+		// layout to a column. Without resetting align-items (the row layout sets
+		// flex-start), the stacked map keeps no definite width, so the aspect-locked
+		// epp-grid sizes off its height path and overflows / collapses instead of
+		// fitting the card. The fallback must stretch children to the card width.
+		const css = (
+			EppGridCard as unknown as { styles: { cssText?: string }[] }
+		).styles
+			.map((s) => s.cssText ?? "")
+			.join("\n");
+		const q = css.slice(css.indexOf("@container"));
+		expect(q).toMatch(/flex-direction:\s*column/);
+		expect(q).toMatch(/align-items:\s*stretch/);
 	});
 
 	it("getConfigElement and getStubConfig return expected values", () => {

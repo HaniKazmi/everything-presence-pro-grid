@@ -179,6 +179,20 @@ describe("eppgrid-card-editor", () => {
 		});
 	});
 
+	it("buildSchema has a show_grid boolean toggle", () => {
+		const schema = buildSchema([]) as any[];
+		const entry = schema.find((s) => s.name === "show_grid");
+		expect(entry).toBeTruthy();
+		expect(entry.selector).toEqual({ boolean: {} });
+	});
+
+	it("buildSchema has a room_color color picker", () => {
+		const schema = buildSchema([]) as any[];
+		const entry = schema.find((s) => s.name === "room_color");
+		expect(entry).toBeTruthy();
+		expect(entry.selector).toEqual({ color_rgb: {} });
+	});
+
 	it("buildSchema has presence as a nested expandable with five boolean keys", () => {
 		const schema = buildSchema([]) as any[];
 		const sensorsEntry = schema.find((s: any) => s.name === "sensors");
