@@ -447,6 +447,155 @@ describe("eppgrid-card loading vs uncalibrated", () => {
 	});
 });
 
+// Routes subscriptions by message type so the overview stream and one or more
+// render_template subscriptions can be driven independently in one test.
+function makeTemplatingHass() {
+	const subs: {
+		params: any;
+		cb: (msg: unknown) => void;
+		unsub: ReturnType<typeof vi.fn>;
+	}[] = [];
+	const subscribeMessage = vi.fn(
+		async (cb: (msg: unknown) => void, params: any) => {
+			const entry = { params, cb, unsub: vi.fn() };
+			subs.push(entry);
+			return entry.unsub;
+		},
+	);
+	return {
+		hass: { connection: { subscribeMessage }, locale: { language: "en" } },
+		subscribeMessage,
+		subs,
+		emitTo: (type: string, msg: unknown) =>
+			subs
+				.filter((s) => s.params.type === type)
+				.at(-1)
+				?.cb(msg),
+	};
+}
+
+describe("eppgrid-card templated header", () => {
+	it("renders a static primary as the heading without a render_template subscription", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-static-primary",
+			primary: "Lounge",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("Lounge");
+		expect(h.subs.some((s) => s.params.type === "render_template")).toBe(false);
+	});
+
+	it("renders a templated primary and updates on new values", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-tpl-primary",
+			primary: "{{ states('sensor.x') }}",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		h.emitTo("render_template", { result: "21.5°C" });
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("21.5°C");
+		h.emitTo("render_template", { result: "22.0°C" });
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("22.0°C");
+	});
+
+	it("renders secondary below primary", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-secondary",
+			primary: "Lounge",
+			secondary: "2 people",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("Lounge");
+		expect(
+			el.shadowRoot!.querySelector(".card-secondary")?.textContent,
+		).toContain("2 people");
+	});
+
+	it("renders no header block when primary and secondary are empty", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-no-header",
+		});
+		expect(el.shadowRoot!.querySelector(".card-header")).toBeNull();
+	});
+
+	it("renders the template error text instead of crashing", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-tpl-err",
+			primary: "{{ nope() }}",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		h.emitTo("render_template", { error: "UndefinedError: nope" });
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("UndefinedError");
+	});
+
+	it("shows the header block above the no-device placeholder", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "",
+			primary: "Lounge",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("Lounge");
+		expect(el.shadowRoot!.querySelector(".placeholder")).toBeTruthy();
+	});
+
+	it("disposes template subscriptions on disconnect", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-tpl-dispose",
+			primary: "{{ states('sensor.x') }}",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		await Promise.resolve();
+		const tpl = h.subs.find((s) => s.params.type === "render_template")!;
+		el.remove();
+		expect(tpl.unsub).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe("getEntitySuggestion", () => {
 	beforeEach(() => __resetEntitySuggestionCache());
 
