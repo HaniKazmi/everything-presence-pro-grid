@@ -8,12 +8,15 @@ and firmware downloads, see the
 
 ### New features
 
-- **Overview dashboard card.** Add a live map and/or sensor panel for any
+- **Overview dashboard card (beta).** Add a live map and/or sensor panel for any
   Everything Presence Pro Grid device directly to a Home Assistant dashboard.
   The card is configured through the visual editor — pick the device, choose
   whether to show the map, the sensors, or both, and control which sensor
-  groups and map layers appear. Non-admin household users can view dashboards
-  that include this card without needing admin access.
+  groups and map layers appear. The card heading (Primary and Secondary text)
+  supports Jinja templates, so it can show live values from any entity.
+  Non-admin household users can view dashboards that include this card without
+  needing admin access. Feature requested by @tuckerdude
+  ([#295](https://github.com/clintongormley/everything-presence-pro-grid/issues/295)).
 
 ## v1.2.3 — 2026-06-24
 

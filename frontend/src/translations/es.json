@@ -508,7 +508,8 @@
 		"nothing_to_show": "Activa el mapa o los sensores para mostrar esta tarjeta.",
 		"editor": {
 			"device_id": "Dispositivo",
-			"title": "Título",
+			"primary": "Información principal",
+			"secondary": "Información secundaria",
 			"layout": "Disposición",
 			"show_map": "Mostrar mapa",
 			"show_sensors": "Mostrar sensores",

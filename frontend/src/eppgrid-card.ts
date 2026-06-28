@@ -6,6 +6,7 @@ import {
 	type OverviewState,
 	subscribeOverview,
 } from "./card/overview-store.js";
+import { TemplateField } from "./card/template-subscription.js";
 import type { SensorState } from "./components/epp-live-sidebar.js";
 import { parseConfig } from "./lib/config-serialization.js";
 import { MAX_RANGE } from "./lib/grid.js";
@@ -23,7 +24,8 @@ type PresenceKey =
 export interface EppGridCardConfig {
 	type: string;
 	device_id: string;
-	title?: string;
+	primary?: string;
+	secondary?: string;
 	show_map?: boolean;
 	show_sensors?: boolean;
 	layout?: "horizontal" | "vertical";
@@ -42,6 +44,8 @@ type ResolvedCardConfig = Omit<EppGridCardConfig, "sensors"> & {
 	layout: "horizontal" | "vertical";
 	show_furniture: boolean;
 	show_overlays: boolean;
+	primary: string;
+	secondary: string;
 	sensors: {
 		presence: Record<PresenceKey, boolean>;
 		zones: boolean;
@@ -62,7 +66,8 @@ export function applyCardDefaults(
 	return {
 		type: config.type ?? "custom:eppgrid-card",
 		device_id: config.device_id ?? "",
-		title: config.title,
+		primary: config.primary ?? "",
+		secondary: config.secondary ?? "",
 		show_map: config.show_map !== false,
 		show_sensors: config.show_sensors !== false,
 		layout: config.layout ?? "horizontal",
@@ -110,6 +115,19 @@ export class EppGridCard extends LitElement {
 				display: block;
 				container-type: inline-size;
 				--epp-card-sensors-width: 240px;
+			}
+			.card-header {
+				padding: var(--epp-space-3) var(--epp-space-3) 0;
+			}
+			.card-primary {
+				font-size: var(--epp-font-lg);
+				font-weight: var(--epp-weight-semibold);
+				color: var(--epp-text);
+			}
+			.card-secondary {
+				font-size: var(--epp-font-sm);
+				color: var(--epp-text-muted);
+				margin-top: var(--epp-space-1);
 			}
 			.overview {
 				display: flex;
@@ -174,6 +192,9 @@ export class EppGridCard extends LitElement {
 	private _parsedSnapshot: ReturnType<typeof parseConfig> | null = null;
 	private _lastSnapshot: unknown = undefined;
 
+	private _primaryField = new TemplateField(() => this.requestUpdate());
+	private _secondaryField = new TemplateField(() => this.requestUpdate());
+
 	setConfig(config: EppGridCardConfig): void {
 		this._config = config;
 		this._resolved = applyCardDefaults(config);
@@ -188,12 +209,14 @@ export class EppGridCard extends LitElement {
 			? (Object.keys(rawEnv).filter((k) => rawEnv[k as EnvKey]) as EnvKey[])
 			: null;
 		this._maybeResubscribe();
+		this._updateTemplates();
 	}
 
 	set hass(hass: { connection: unknown; locale?: { language?: string } }) {
 		this.__hass = hass;
 		this._localize = setupLocalize(hass);
 		this._maybeResubscribe();
+		this._updateTemplates();
 		this.requestUpdate();
 	}
 
@@ -214,6 +237,8 @@ export class EppGridCard extends LitElement {
 		this._unsub = null;
 		this._subConn = null;
 		this._subDevice = null;
+		this._primaryField.dispose();
+		this._secondaryField.dispose();
 	}
 
 	private _maybeResubscribe(): void {
@@ -244,6 +269,13 @@ export class EppGridCard extends LitElement {
 			this._data = s;
 			this.requestUpdate();
 		});
+	}
+
+	private _updateTemplates(): void {
+		if (!this._resolved) return;
+		const vars = { config: this._config };
+		this._primaryField.update(this.__hass, this._resolved.primary, vars);
+		this._secondaryField.update(this.__hass, this._resolved.secondary, vars);
 	}
 
 	getCardSize(): number {
@@ -277,17 +309,27 @@ export class EppGridCard extends LitElement {
 	render() {
 		if (!this._config || !this._resolved) return nothing;
 		const cfg = this._resolved;
+		const primary = this._primaryField.text;
+		const secondary = this._secondaryField.text;
+		const header =
+			primary || secondary
+				? html`<div class="card-header">
+						${primary ? html`<div class="card-primary">${primary}</div>` : nothing}
+						${secondary ? html`<div class="card-secondary">${secondary}</div>` : nothing}
+					</div>`
+				: nothing;
 		if (!cfg.device_id) {
-			return html`<ha-card .header=${cfg.title}><div class="placeholder">${this._localize("card.no_device")}</div></ha-card>`;
+			return html`<ha-card>${header}<div class="placeholder">${this._localize("card.no_device")}</div></ha-card>`;
 		}
 		if (!cfg.show_map && !cfg.show_sensors) {
-			return html`<ha-card .header=${cfg.title}><div class="placeholder">${this._localize("card.nothing_to_show")}</div></ha-card>`;
+			return html`<ha-card>${header}<div class="placeholder">${this._localize("card.nothing_to_show")}</div></ha-card>`;
 		}
 		const both = cfg.show_map && cfg.show_sensors;
 		const layout = both ? cfg.layout : "single";
 
 		return html`
-			<ha-card .header=${cfg.title}>
+			<ha-card>
+				${header}
 				${
 					this._data.available === false
 						? html`<div class="offline">${this._localize("card.offline")}</div>`
@@ -420,7 +462,7 @@ w.customCards = w.customCards || [];
 if (!w.customCards.some((c) => c.type === "eppgrid-card")) {
 	w.customCards.push({
 		type: "eppgrid-card",
-		name: "Everything Presence Pro Grid",
+		name: "Everything Presence Pro Grid (Beta)",
 		description:
 			"Live overview map and sensors for an Everything Presence Pro Grid device.",
 		preview: true,

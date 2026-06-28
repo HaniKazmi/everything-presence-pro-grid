@@ -120,6 +120,18 @@ describe("applyCardDefaults", () => {
 		const result = applyCardDefaults({ device_id: "my-device" });
 		expect(result.device_id).toBe("my-device");
 	});
+
+	it("defaults primary and secondary to empty strings", () => {
+		const result = applyCardDefaults({});
+		expect(result.primary).toBe("");
+		expect(result.secondary).toBe("");
+	});
+
+	it("preserves primary and secondary", () => {
+		const result = applyCardDefaults({ primary: "{{ x }}", secondary: "sub" });
+		expect(result.primary).toBe("{{ x }}");
+		expect(result.secondary).toBe("sub");
+	});
 });
 
 describe("eppgrid-card setConfig", () => {
@@ -158,6 +170,13 @@ describe("eppgrid-card setConfig", () => {
 		expect(entry).toBeTruthy();
 		expect(entry.name).toContain("Everything Presence Pro Grid");
 	});
+
+	it("labels the card as Beta in the picker", () => {
+		const entry = (window as any).customCards?.find(
+			(c: any) => c.type === "eppgrid-card",
+		);
+		expect(entry.name).toContain("(Beta)");
+	});
 });
 
 describe("eppgrid-card rendering", () => {
@@ -189,6 +208,41 @@ describe("eppgrid-card rendering", () => {
 		);
 		expect(el.shadowRoot!.querySelector("epp-grid")).toBeNull();
 		expect(el.shadowRoot!.querySelector(".placeholder")).toBeTruthy();
+	});
+
+	it("passes empty furniture array to epp-grid when show_furniture is false", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-no-furniture",
+			show_furniture: false,
+		});
+		const grid = el.shadowRoot!.querySelector("epp-grid") as any;
+		expect(grid).toBeTruthy();
+		expect((grid as any).furniture).toEqual([]);
+	});
+
+	it("uses targetMaxDistance when targetAutoDistance is false in the snapshot", async () => {
+		const snapshot = {
+			calibration: {
+				perspective: [1, 0, 0, 0, 1, 0, 0, 0],
+				room_width: 3000,
+				room_depth: 3000,
+			},
+			settings: {
+				target_auto_distance: false,
+				target_max_distance: 4.0,
+			},
+		};
+		const el = await mount(
+			{ type: "custom:eppgrid-card", device_id: "card-max-dist" },
+			makeHass(),
+			snapshot,
+		);
+		// The map should render (perspective is valid) — confirms _renderMap ran the manual-distance branch
+		const grid = el.shadowRoot!.querySelector("epp-grid") as any;
+		expect(grid).toBeTruthy();
+		// Verify that maxRangeMm was computed as Math.round(4.0 * 1000) = 4000
+		expect(grid.maxRangeMm).toBe(4000);
 	});
 
 	it("subscribes once via the store and updates on snapshot/data", async () => {
@@ -435,6 +489,192 @@ describe("eppgrid-card loading vs uncalibrated", () => {
 	});
 });
 
+// Routes subscriptions by message type so the overview stream and one or more
+// render_template subscriptions can be driven independently in one test.
+function makeTemplatingHass() {
+	const subs: {
+		params: any;
+		cb: (msg: unknown) => void;
+		unsub: ReturnType<typeof vi.fn>;
+	}[] = [];
+	const subscribeMessage = vi.fn(
+		async (cb: (msg: unknown) => void, params: any) => {
+			const entry = { params, cb, unsub: vi.fn() };
+			subs.push(entry);
+			return entry.unsub;
+		},
+	);
+	return {
+		hass: { connection: { subscribeMessage }, locale: { language: "en" } },
+		subscribeMessage,
+		subs,
+		emitTo: (type: string, msg: unknown) =>
+			subs
+				.filter((s) => s.params.type === type)
+				.at(-1)
+				?.cb(msg),
+	};
+}
+
+describe("eppgrid-card templated header", () => {
+	it("renders a static primary as the heading without a render_template subscription", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-static-primary",
+			primary: "Lounge",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("Lounge");
+		expect(h.subs.some((s) => s.params.type === "render_template")).toBe(false);
+	});
+
+	it("renders a templated primary and updates on new values", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-tpl-primary",
+			primary: "{{ states('sensor.x') }}",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		h.emitTo("render_template", { result: "21.5°C" });
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("21.5°C");
+		h.emitTo("render_template", { result: "22.0°C" });
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("22.0°C");
+	});
+
+	it("renders secondary below primary", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-secondary",
+			primary: "Lounge",
+			secondary: "2 people",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("Lounge");
+		expect(
+			el.shadowRoot!.querySelector(".card-secondary")?.textContent,
+		).toContain("2 people");
+	});
+
+	it("renders no header block when primary and secondary are empty", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-no-header",
+		});
+		expect(el.shadowRoot!.querySelector(".card-header")).toBeNull();
+	});
+
+	it("renders secondary-only header (no primary div) when primary is empty", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-secondary-only",
+			secondary: "2 people",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el.shadowRoot!.querySelector(".card-header")).toBeTruthy();
+		expect(el.shadowRoot!.querySelector(".card-primary")).toBeNull();
+		expect(
+			el.shadowRoot!.querySelector(".card-secondary")?.textContent,
+		).toContain("2 people");
+	});
+
+	it("renders the template error text instead of crashing", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-tpl-err",
+			primary: "{{ nope() }}",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		h.emitTo("render_template", { error: "UndefinedError: nope" });
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("UndefinedError");
+	});
+
+	it("shows the header block above the no-device placeholder", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "",
+			primary: "Lounge",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("Lounge");
+		expect(el.shadowRoot!.querySelector(".placeholder")).toBeTruthy();
+	});
+
+	it("shows the header block above the nothing-to-show placeholder", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-nts",
+			primary: "Lounge",
+			show_map: false,
+			show_sensors: false,
+		} as never);
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("Lounge");
+		expect(el.shadowRoot!.querySelector(".placeholder")).toBeTruthy();
+	});
+
+	it("disposes template subscriptions on disconnect", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-tpl-dispose",
+			primary: "{{ states('sensor.x') }}",
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		await Promise.resolve();
+		const tpl = h.subs.find((s) => s.params.type === "render_template")!;
+		el.remove();
+		expect(tpl.unsub).toHaveBeenCalledTimes(1);
+	});
+});
+
 describe("getEntitySuggestion", () => {
 	beforeEach(() => __resetEntitySuggestionCache());
 
@@ -490,6 +730,29 @@ describe("getEntitySuggestion", () => {
 		expect(() =>
 			getEntitySuggestion(hass, "binary_sensor.epp_occupancy"),
 		).not.toThrow();
+		expect(getEntitySuggestion(hass, "binary_sensor.epp_occupancy")).toBeNull();
+	});
+
+	it("falls back to empty set and returns null when callWS rejects", async () => {
+		const hass = {
+			callWS: vi.fn().mockRejectedValue(new Error("network error")),
+			entities: { "binary_sensor.epp_occupancy": { device_id: "dev1" } },
+		};
+		getEntitySuggestion(hass, "binary_sensor.epp_occupancy"); // kick off load
+		// flush microtasks so the rejection resolves
+		await new Promise((r) => setTimeout(r, 0));
+		// After rejection, cache is an empty set so EPP device is not found
+		expect(getEntitySuggestion(hass, "binary_sensor.epp_occupancy")).toBeNull();
+	});
+
+	it("handles null list from callWS gracefully", async () => {
+		const hass = {
+			callWS: vi.fn().mockResolvedValue(null),
+			entities: { "binary_sensor.epp_occupancy": { device_id: "dev1" } },
+		};
+		getEntitySuggestion(hass, "binary_sensor.epp_occupancy"); // kick off load
+		await new Promise((r) => setTimeout(r, 0));
+		// null list → empty set → device not found
 		expect(getEntitySuggestion(hass, "binary_sensor.epp_occupancy")).toBeNull();
 	});
 });

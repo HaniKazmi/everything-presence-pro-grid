@@ -35,11 +35,11 @@ describe("eppgrid-card-editor", () => {
 		el._valueChanged({
 			stopPropagation: stop,
 			detail: {
-				value: { type: "custom:eppgrid-card", device_id: "d1", title: "X" },
+				value: { type: "custom:eppgrid-card", device_id: "d1", primary: "X" },
 			},
 		} as any);
 		expect(stop).toHaveBeenCalled();
-		expect(got).toHaveBeenCalledWith(expect.objectContaining({ title: "X" }));
+		expect(got).toHaveBeenCalledWith(expect.objectContaining({ primary: "X" }));
 	});
 
 	it("re-enables a part when the user turns both off", () => {
@@ -163,6 +163,20 @@ describe("eppgrid-card-editor", () => {
 		} as any;
 		const result = (el as any)._computeLabel({ name: "unknown_field_xyz" });
 		expect(result).toBe("unknown_field_xyz");
+	});
+
+	it("buildSchema has primary and secondary template selectors and no title", () => {
+		const schema = buildSchema([]) as any[];
+		const names = schema.map((s) => s.name);
+		expect(names).toContain("primary");
+		expect(names).toContain("secondary");
+		expect(names).not.toContain("title");
+		expect(schema.find((s) => s.name === "primary").selector).toEqual({
+			template: {},
+		});
+		expect(schema.find((s) => s.name === "secondary").selector).toEqual({
+			template: {},
+		});
 	});
 
 	it("buildSchema has presence as a nested expandable with five boolean keys", () => {

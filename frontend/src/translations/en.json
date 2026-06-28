@@ -508,7 +508,8 @@
 		"nothing_to_show": "Enable the map or sensors to show this card.",
 		"editor": {
 			"device_id": "Device",
-			"title": "Title",
+			"primary": "Primary information",
+			"secondary": "Secondary information",
 			"layout": "Layout",
 			"show_map": "Show map",
 			"show_sensors": "Show sensors",
