@@ -120,3 +120,33 @@ jobs:
         with:
           name: cpp-coverage-report
           path: firmware/lib/epp_zone_engine/build/coverage-html/
+
+  docs:
+    runs-on: ubuntu-latest
+    name: Docs
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history so the git-revision-date-localized plugin can read each
+          # page's last-modified commit. A shallow clone makes it fall back with a
+          # warning, which `mkdocs build --strict` would turn into a failure.
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          # Cache the pip downloads (mkdocs-material + plugins are sizeable),
+          # keyed on requirements-docs.txt — mirrors the frontend job's npm cache.
+          cache: 'pip'
+          cache-dependency-path: requirements-docs.txt
+      - name: Install docs dependencies
+        run: pip install -r requirements-docs.txt
+      - name: Check markdown formatting
+        # mdformat with wrap=80 (from .mdformat.toml) + the gfm/mkdocs plugins
+        # (pinned in requirements-docs.txt). Scope to every tracked markdown file
+        # under docs/ plus README.md — untracked notes (docs/superpowers/) never
+        # reach CI, so a plain `mdformat docs/` would never see them anyway.
+        # `|| true` keeps a zero-match grep from tripping pipefail; `xargs -r`
+        # then simply no-ops when there's nothing to check.
+        run: git ls-files -- docs README.md | { grep '\.md$' || true; } | xargs -r mdformat --check
+      - name: Build docs (strict — fails on broken links/nav)
+        run: mkdocs build --strict
