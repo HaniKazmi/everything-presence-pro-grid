@@ -2,6 +2,10 @@
 
 The Everything Presence Pro Grid overview card lets you add a live sensor view directly to any Home Assistant dashboard. It shows the calibrated grid map and/or the sidebar sensor readings for one device, and updates in real time. Any household user — not just admins — can see a dashboard that includes this card.
 
+!!! note "Beta"
+    The overview card is a new, beta feature. Its options and layout may change
+    in a future release.
+
 ## What the card shows
 
 - **Map** — the top-down room grid with your zones, overlays, and furniture in place, and live target markers as the sensor tracks movement. The grid is read-only; editing zones and overlays is done through the panel.
@@ -23,7 +27,8 @@ On Home Assistant 2026.6 and newer, the card is offered as a suggestion in the c
 | Option | Default | Description |
 | --- | --- | --- |
 | **Device** | *(required)* | Which Everything Presence Pro Grid device to display. |
-| **Title** | *(empty)* | Optional card header. |
+| **Primary** | *(empty)* | Heading text shown above the map/sensors. Supports [Jinja templates](https://www.home-assistant.io/docs/configuration/templating/) — e.g. `{{ states('sensor.lounge_temperature') }}°C`. Plain text is shown as-is. |
+| **Secondary** | *(empty)* | Smaller subtitle shown below the Primary line. Also supports Jinja templates. |
 | **Show map** | on | Show the live grid map. |
 | **Show sensors** | on | Show the sensor and zone sidebar. |
 | **Layout** | Horizontal | When both map and sensors are shown: `Horizontal` places the sensors alongside the map; `Vertical` stacks them. On narrow screens the card switches to vertical regardless of this setting. |
@@ -44,6 +49,22 @@ Expand **Sensors** in the editor to control which sensor groups appear in the si
 | --- | --- | --- |
 | **Show furniture** | on | Overlay furniture icons on the grid. |
 | **Show overlays** | on | Show Entry/Exit, Interference, and Suppress cell markings. |
+
+### Templated text
+
+The **Primary** and **Secondary** fields are rendered with Home Assistant's
+Jinja template engine, so they can show live values from any entity:
+
+```yaml
+type: custom:eppgrid-card
+device_id: <your-device-id>
+primary: "Lounge · {{ states('sensor.lounge_temperature') }}°C"
+secondary: "{{ states('sensor.lounge_targets') }} present"
+```
+
+Templates render in the viewing user's context and update live, so this works on
+shared dashboards for non-admin users. The configured card is available to
+templates as `config` (e.g. `config.device_id`).
 
 ## Two cards per device
 
