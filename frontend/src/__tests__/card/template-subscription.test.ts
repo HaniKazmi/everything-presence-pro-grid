@@ -216,6 +216,18 @@ describe("TemplateField", () => {
 		expect(h.unsub).toHaveBeenCalledTimes(1);
 	});
 
+	it("re-subscribes when only the variables change", async () => {
+		const h = makeHass();
+		const f = new TemplateField(vi.fn());
+		f.update(h.hass, "{{ config.device_id }}", { config: { device_id: "a" } });
+		await Promise.resolve();
+		// Same template + connection, but the variables differ (card repointed
+		// at another device) — must re-subscribe so the new value renders.
+		f.update(h.hass, "{{ config.device_id }}", { config: { device_id: "b" } });
+		expect(h.subscribeMessage).toHaveBeenCalledTimes(2);
+		expect(h.unsub).toHaveBeenCalledTimes(1);
+	});
+
 	it("tears down the subscription when switching to static text", async () => {
 		const h = makeHass();
 		const f = new TemplateField(vi.fn());

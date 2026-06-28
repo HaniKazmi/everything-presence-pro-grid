@@ -75,9 +75,10 @@ export function subscribeRenderTemplate(
 
 /**
  * Controller for one templated text field. `update()` is idempotent: it only
- * re-subscribes when the template string or connection changes, renders static
- * strings directly (no WebSocket), and reports rendered text via `text` +
- * the `onChange` callback. `dispose()` releases the subscription.
+ * re-subscribes when the template string, its variables, or the connection
+ * changes, renders static strings directly (no WebSocket), and reports
+ * rendered text via `text` + the `onChange` callback. `dispose()` releases the
+ * subscription.
  */
 export class TemplateField {
 	text = "";
@@ -85,6 +86,7 @@ export class TemplateField {
 	private _unsub: (() => void) | null = null;
 	private _tpl: string | null = null;
 	private _conn: unknown = null;
+	private _varsKey: string | null = null;
 
 	constructor(onChange: () => void) {
 		this._onChange = onChange;
@@ -110,12 +112,24 @@ export class TemplateField {
 			this._teardown();
 			return;
 		}
-		if (this._unsub && this._tpl === tpl && this._conn === hass.connection) {
+		// Re-subscribe when the template, connection, OR variables change. The
+		// template string can stay identical while its variables differ (e.g.
+		// `{{ config.device_id }}` after the card is repointed at another
+		// device); without the vars check the old subscription would keep
+		// rendering stale values.
+		const varsKey = JSON.stringify(variables ?? {});
+		if (
+			this._unsub &&
+			this._tpl === tpl &&
+			this._conn === hass.connection &&
+			this._varsKey === varsKey
+		) {
 			return;
 		}
 		this._teardown();
 		this._tpl = tpl;
 		this._conn = hass.connection;
+		this._varsKey = varsKey;
 		this._unsub = subscribeRenderTemplate(
 			hass as { connection: SubscribableConnection },
 			{ template: tpl, variables },
@@ -132,6 +146,7 @@ export class TemplateField {
 		this._unsub = null;
 		this._tpl = null;
 		this._conn = null;
+		this._varsKey = null;
 	}
 
 	private _set(text: string): void {
