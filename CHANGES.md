@@ -4,6 +4,19 @@ User-facing changes to Everything Presence Pro Grid. For full release assets
 and firmware downloads, see the
 [GitHub releases page](https://github.com/clintongormley/everything-presence-pro-grid/releases).
 
+## v1.4.0 — 2026-06-28
+
+### Improvements
+
+- **Overview card: a cleaner map and colour options (beta).** The dashboard
+  overview card now has two new display controls in its visual editor:
+  - **Show grid** — turn off the gridlines, zone colours and occupancy glow for
+    a clean, plain map that still shows live targets and furniture.
+  - **Rest-of-room colour** — set the colour of the unpainted area of the room.
+
+  The card also fills the full width of its dashboard column and lays out
+  correctly on narrow screens.
+
 ## v1.3.0 — 2026-06-28
 
 ### New features
