@@ -239,7 +239,10 @@ describe("eppgrid-card rendering", () => {
 			snapshot,
 		);
 		// The map should render (perspective is valid) — confirms _renderMap ran the manual-distance branch
-		expect(el.shadowRoot!.querySelector("epp-grid")).toBeTruthy();
+		const grid = el.shadowRoot!.querySelector("epp-grid") as any;
+		expect(grid).toBeTruthy();
+		// Verify that maxRangeMm was computed as Math.round(4.0 * 1000) = 4000
+		expect(grid.maxRangeMm).toBe(4000);
 	});
 
 	it("subscribes once via the store and updates on snapshot/data", async () => {
