@@ -81,6 +81,8 @@ export class EppGrid extends LitElement {
 	@property({ type: Number }) maxGridPx = 480;
 	/** When false, painted overlay stripes (entry/interference/suppress) are hidden. */
 	@property({ type: Boolean }) showOverlays = true;
+	/** When false, the dimensions + furthest-point caption below the grid is hidden. */
+	@property({ type: Boolean }) showDimensions = true;
 	/**
 	 * Mobile-only: cap the grid height to half the viewport so the controls
 	 * panel below it always has room. Desktop leaves this false → no height cap.
@@ -382,7 +384,7 @@ export class EppGrid extends LitElement {
 				${this._renderFurnitureOverlay(cellPx, minCol, minRow, visCols, visRows)}
 				${this._renderTargetDots(minCol, maxCol, minRow, maxRow, visCols, visRows)}
 			</div>
-			${this._renderGridDimensions(scan.metrics)}
+			${this.showDimensions ? this._renderGridDimensions(scan.metrics) : nothing}
 		`;
 	}
 
