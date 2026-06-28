@@ -38,7 +38,10 @@ describe("buildTranslationRequestUrl", () => {
 
 describe("epp-language-banner", () => {
 	beforeEach(() => localStorage.clear());
-	afterEach(() => localStorage.clear());
+	afterEach(() => {
+		localStorage.clear();
+		document.body.innerHTML = "";
+	});
 
 	it("renders nothing for a shipped language", async () => {
 		const el = await fixture("es");

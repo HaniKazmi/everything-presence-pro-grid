@@ -97,17 +97,14 @@ export class EppLanguageBanner extends LitElement {
 				<epp-icon-button
 					icon="mdi:close"
 					.label=${this.localize("language_request.dismiss")}
-					@click=${this._dismiss}
+					@click=${(e: Event) => this._dismiss(e, support.code)}
 				></epp-icon-button>
 			</div>
 		`;
 	}
 
-	private _dismiss(e: Event) {
+	private _dismiss(e: Event, code: string) {
 		e.stopPropagation();
-		const { code } = getLanguageSupport(
-			this.hass as { locale?: { language?: string }; language?: string },
-		);
 		persistDismissedLangRequest(code);
 		this._dismissedCode = code;
 	}
