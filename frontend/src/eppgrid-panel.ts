@@ -8,6 +8,7 @@ import "./components/epp-flasher-view.js";
 import "./components/epp-furniture-sidebar.js";
 import "./components/epp-grid.js";
 import "./components/epp-kebab-menu.js";
+import "./components/epp-language-banner.js";
 import "./components/epp-live-sidebar.js";
 import type { KebabEntry } from "./components/epp-kebab-menu.js";
 import type { ZoneStateSummary } from "./components/epp-live-sidebar.js";
@@ -2134,6 +2135,11 @@ export class EPPGridPanel extends LitElement {
       overflow: auto;
     }
 
+    .tab-layout > .lang-banner {
+      flex: 0 0 auto;
+      overflow: visible;
+    }
+
     .tab-bar {
       display: flex;
       border-bottom: 1px solid var(--divider-color, #e0e0e0);
@@ -2646,7 +2652,11 @@ export class EPPGridPanel extends LitElement {
 					? this._renderEditor()
 					: this._renderLiveOverview();
 
-		return html`<div class="tab-layout">${this._renderTabBar()}${this._renderControllerErrorBanner()}${content}</div>`;
+		return html`<div class="tab-layout">${this._renderTabBar()}<epp-language-banner
+				class="lang-banner"
+				.hass=${this.hass}
+				.localize=${this._localize}
+			></epp-language-banner>${this._renderControllerErrorBanner()}${content}</div>`;
 	}
 
 	/**

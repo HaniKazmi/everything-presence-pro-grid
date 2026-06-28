@@ -88,7 +88,7 @@ everything-presence-pro-grid/
 │   │   │   ├── index.ts             # Card bundle entry — registers card + editor elements
 │   │   │   └── overview-store.ts    # Module-level ref-counted store (one WS sub per device)
 │   │   ├── panel-mount-guard.ts     # Re-mount guard for HA frontend rebuilds
-│   │   ├── localize.ts              # IntlMessageFormat translation factory
+│   │   ├── localize.ts              # IntlMessageFormat translation factory + language-availability detection
 │   │   ├── translations/            # en.json, es.json (nested string keys)
 │   │   ├── types.ts                 # Shared type definitions
 │   │   ├── constants.ts             # SVG data, catalog, labels, thresholds
@@ -110,7 +110,8 @@ everything-presence-pro-grid/
 │   │   │   ├── epp-overlay-sidebar.ts    # Entry/interference/suppress paint controls
 │   │   │   ├── epp-furniture-sidebar.ts  # Furniture catalog
 │   │   │   ├── epp-furniture-overlay.ts  # Furniture drag/resize/rotate
-│   │   │   └── epp-info-tip.ts           # Shared (?) help tooltip
+│   │   │   ├── epp-info-tip.ts           # Shared (?) help tooltip
+│   │   │   └── epp-language-banner.ts    # "Request a translation" nudge for unshipped HA languages
 │   │   └── lib/
 │   │       ├── zone-engine.ts            # Pure-function zone state machine (firmware mirror)
 │   │       ├── perspective.ts            # Homography math
