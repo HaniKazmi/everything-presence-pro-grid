@@ -170,6 +170,13 @@ describe("eppgrid-card setConfig", () => {
 		expect(entry).toBeTruthy();
 		expect(entry.name).toContain("Everything Presence Pro Grid");
 	});
+
+	it("labels the card as Beta in the picker", () => {
+		const entry = (window as any).customCards?.find(
+			(c: any) => c.type === "eppgrid-card",
+		);
+		expect(entry.name).toContain("(Beta)");
+	});
 });
 
 describe("eppgrid-card rendering", () => {

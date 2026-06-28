@@ -462,7 +462,7 @@ w.customCards = w.customCards || [];
 if (!w.customCards.some((c) => c.type === "eppgrid-card")) {
 	w.customCards.push({
 		type: "eppgrid-card",
-		name: "Everything Presence Pro Grid",
+		name: "Everything Presence Pro Grid (Beta)",
 		description:
 			"Live overview map and sensors for an Everything Presence Pro Grid device.",
 		preview: true,
