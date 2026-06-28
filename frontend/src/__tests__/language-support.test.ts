@@ -65,6 +65,21 @@ describe("languageDisplayName", () => {
 		spy.mockRestore();
 	});
 
+	it("falls back to the English name when the native DisplayNames throws", () => {
+		let callCount = 0;
+		const spy = vi.spyOn(Intl, "DisplayNames").mockImplementation(function (
+			this: unknown,
+		) {
+			callCount++;
+			if (callCount === 1) {
+				throw new Error("unsupported");
+			}
+			return { of: () => "French" } as unknown as Intl.DisplayNames;
+		});
+		expect(languageDisplayName("fr")).toBe("French");
+		spy.mockRestore();
+	});
+
 	it("returns an empty string unchanged", () => {
 		expect(languageDisplayName("")).toBe("");
 	});
