@@ -120,6 +120,18 @@ describe("applyCardDefaults", () => {
 		const result = applyCardDefaults({ device_id: "my-device" });
 		expect(result.device_id).toBe("my-device");
 	});
+
+	it("defaults primary and secondary to empty strings", () => {
+		const result = applyCardDefaults({});
+		expect(result.primary).toBe("");
+		expect(result.secondary).toBe("");
+	});
+
+	it("preserves primary and secondary", () => {
+		const result = applyCardDefaults({ primary: "{{ x }}", secondary: "sub" });
+		expect(result.primary).toBe("{{ x }}");
+		expect(result.secondary).toBe("sub");
+	});
 });
 
 describe("eppgrid-card setConfig", () => {

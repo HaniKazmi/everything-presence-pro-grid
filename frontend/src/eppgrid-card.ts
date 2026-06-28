@@ -23,7 +23,8 @@ type PresenceKey =
 export interface EppGridCardConfig {
 	type: string;
 	device_id: string;
-	title?: string;
+	primary?: string;
+	secondary?: string;
 	show_map?: boolean;
 	show_sensors?: boolean;
 	layout?: "horizontal" | "vertical";
@@ -42,6 +43,8 @@ type ResolvedCardConfig = Omit<EppGridCardConfig, "sensors"> & {
 	layout: "horizontal" | "vertical";
 	show_furniture: boolean;
 	show_overlays: boolean;
+	primary: string;
+	secondary: string;
 	sensors: {
 		presence: Record<PresenceKey, boolean>;
 		zones: boolean;
@@ -62,7 +65,8 @@ export function applyCardDefaults(
 	return {
 		type: config.type ?? "custom:eppgrid-card",
 		device_id: config.device_id ?? "",
-		title: config.title,
+		primary: config.primary ?? "",
+		secondary: config.secondary ?? "",
 		show_map: config.show_map !== false,
 		show_sensors: config.show_sensors !== false,
 		layout: config.layout ?? "horizontal",
