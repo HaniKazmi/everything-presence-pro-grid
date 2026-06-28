@@ -118,6 +118,18 @@ describe("epp-grid render", () => {
 		document.body.removeChild(el);
 	});
 
+	it("renders no grid-dimensions when showDimensions is false", async () => {
+		// Calibrated grid (metrics available) but the caption is suppressed.
+		const el = createGrid({ showDimensions: false });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const dims = el.shadowRoot!.querySelector(".grid-dimensions");
+		expect(dims).toBeNull();
+
+		document.body.removeChild(el);
+	});
+
 	it("renders no grid-dimensions when no room", async () => {
 		const el = createGrid({ grid: new Uint8Array(GRID_CELL_COUNT) });
 		document.body.appendChild(el);

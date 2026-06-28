@@ -81,6 +81,8 @@ export class EppGrid extends LitElement {
 	@property({ type: Number }) maxGridPx = 480;
 	/** When false, painted overlay stripes (entry/interference/suppress) are hidden. */
 	@property({ type: Boolean }) showOverlays = true;
+	/** When false, the dimensions + furthest-point caption below the grid is hidden. */
+	@property({ type: Boolean }) showDimensions = true;
 	/**
 	 * Mobile-only: cap the grid height to half the viewport so the controls
 	 * panel below it always has room. Desktop leaves this false → no height cap.
@@ -382,7 +384,7 @@ export class EppGrid extends LitElement {
 				${this._renderFurnitureOverlay(cellPx, minCol, minRow, visCols, visRows)}
 				${this._renderTargetDots(minCol, maxCol, minRow, maxRow, visCols, visRows)}
 			</div>
-			${this._renderGridDimensions(scan.metrics)}
+			${this.showDimensions ? this._renderGridDimensions(scan.metrics) : nothing}
 		`;
 	}
 
@@ -419,6 +421,7 @@ export class EppGrid extends LitElement {
 		perspective: number[] | null;
 		roomWidth: number;
 		maxRangeMm: number;
+		showDimensions: boolean;
 		status: CellRangeStatus[];
 		bounds: { minCol: number; maxCol: number; minRow: number; maxRow: number };
 		metrics: { widthM: number; depthM: number; furthestM: number } | null;
@@ -435,7 +438,8 @@ export class EppGrid extends LitElement {
 			// to it directly when the fov is degenerate (computeSensorFov → null).
 			c.perspective === this.perspective &&
 			c.roomWidth === this.roomWidth &&
-			c.maxRangeMm === this.maxRangeMm
+			c.maxRangeMm === this.maxRangeMm &&
+			c.showDimensions === this.showDimensions
 		) {
 			return c;
 		}
@@ -457,6 +461,7 @@ export class EppGrid extends LitElement {
 			perspective: this.perspective,
 			roomWidth: this.roomWidth,
 			maxRangeMm: this.maxRangeMm,
+			showDimensions: this.showDimensions,
 			status,
 			bounds: getVisibleRoomBounds(
 				this.grid,
@@ -464,13 +469,17 @@ export class EppGrid extends LitElement {
 				this.roomWidth,
 				this.maxRangeMm,
 			),
-			metrics: getGridRoomMetrics(
-				this.grid,
-				this.roomWidth,
-				this.perspective,
-				fov,
-				this.maxRangeMm,
-			),
+			// Only the dimensions caption consumes metrics; skip the extra grid
+			// scan when it's hidden (e.g. the overview card).
+			metrics: this.showDimensions
+				? getGridRoomMetrics(
+						this.grid,
+						this.roomWidth,
+						this.perspective,
+						fov,
+						this.maxRangeMm,
+					)
+				: null,
 		};
 		return this._scanCache;
 	}

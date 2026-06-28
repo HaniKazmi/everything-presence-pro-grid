@@ -372,6 +372,7 @@ export class EppGridCard extends LitElement {
 				.maxRangeMm=${maxRange}
 				.maxGridPx=${480}
 				.showOverlays=${cfg.show_overlays}
+				.showDimensions=${false}
 			></epp-grid>
 		`;
 	}

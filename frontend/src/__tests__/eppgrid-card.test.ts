@@ -190,6 +190,19 @@ describe("eppgrid-card rendering", () => {
 		expect(el.shadowRoot!.querySelector("epp-live-sidebar")).toBeNull();
 	});
 
+	it("hides the map dimensions caption (showDimensions=false on epp-grid)", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-no-dims",
+			show_sensors: false,
+		});
+		const grid = el.shadowRoot!.querySelector("epp-grid") as unknown as {
+			showDimensions: boolean;
+		};
+		expect(grid).toBeTruthy();
+		expect(grid.showDimensions).toBe(false);
+	});
+
 	it("renders only the sensors when show_map is false", async () => {
 		const el = await mount({
 			type: "custom:eppgrid-card",
