@@ -59,6 +59,7 @@ export function subscribeRenderTemplate(
 				unsub = u;
 			},
 			(e: unknown) => {
+				if (closed) return;
 				const message = e instanceof Error ? e.message : String(e);
 				cb({ text: "", error: message });
 			},

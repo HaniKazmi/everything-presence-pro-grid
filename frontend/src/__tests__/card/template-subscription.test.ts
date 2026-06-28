@@ -105,6 +105,26 @@ describe("subscribeRenderTemplate", () => {
 		expect(cb).toHaveBeenLastCalledWith({ text: "", error: "boom" });
 	});
 
+	it("does not call cb when off() is called before rejection resolves", async () => {
+		let reject!: (e: unknown) => void;
+		const subscribeMessage = vi.fn(
+			() =>
+				new Promise<() => void>((_, r) => {
+					reject = r;
+				}),
+		);
+		const cb = vi.fn();
+		const off = subscribeRenderTemplate(
+			{ connection: { subscribeMessage } },
+			{ template: "{{1}}" },
+			cb,
+		);
+		off();
+		reject(new Error("boom"));
+		await Promise.resolve();
+		expect(cb).not.toHaveBeenCalled();
+	});
+
 	it("reports a string error when the rejection is not an Error instance", async () => {
 		const subscribeMessage = vi.fn(() => Promise.reject("string-error"));
 		const cb = vi.fn();
