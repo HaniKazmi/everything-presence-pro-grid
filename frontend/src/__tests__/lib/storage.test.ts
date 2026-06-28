@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	persistDismissedLangRequest,
 	persistSelectedMac,
+	readDismissedLangRequest,
 	readStoredMac,
+	STORAGE_KEY_LANG_REQUEST_DISMISSED,
 	STORAGE_KEY_SELECTED_MAC,
 } from "../../lib/storage.js";
 
@@ -48,6 +51,44 @@ describe("lib/storage", () => {
 			expect(() => persistSelectedMac("aa:bb:cc")).not.toThrow();
 			spy.mockRestore();
 		});
+	});
+
+	afterEach(() => {
+		localStorage.clear();
+	});
+});
+
+describe("lib/storage — language-request dismissal", () => {
+	beforeEach(() => {
+		localStorage.clear();
+	});
+
+	it("returns null when nothing is stored", () => {
+		expect(readDismissedLangRequest()).toBeNull();
+	});
+
+	it("round-trips the dismissed locale code", () => {
+		persistDismissedLangRequest("pt-BR");
+		expect(localStorage.getItem(STORAGE_KEY_LANG_REQUEST_DISMISSED)).toBe(
+			"pt-BR",
+		);
+		expect(readDismissedLangRequest()).toBe("pt-BR");
+	});
+
+	it("returns null when localStorage throws on read", () => {
+		const spy = vi.spyOn(localStorage, "getItem").mockImplementation(() => {
+			throw new Error("blocked");
+		});
+		expect(readDismissedLangRequest()).toBeNull();
+		spy.mockRestore();
+	});
+
+	it("swallows errors when localStorage throws on write", () => {
+		const spy = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+			throw new Error("blocked");
+		});
+		expect(() => persistDismissedLangRequest("fr")).not.toThrow();
+		spy.mockRestore();
 	});
 
 	afterEach(() => {
