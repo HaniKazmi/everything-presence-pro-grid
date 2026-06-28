@@ -234,6 +234,28 @@ describe("epp-live-sidebar element", () => {
 		document.body.removeChild(c);
 	});
 
+	it("omits every info-tip when showInfoTips is false (compact card use)", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.showInfoTips = false;
+		el.hasPerspective = true;
+		el.zoneConfigs = [
+			{ name: "Sofa", color: "#ff0000", cells: [] },
+			...new Array(6).fill(null),
+		];
+		el.zoneState = { occupancy: {}, target_counts: {}, frame_count: 0 };
+		const tpl = el.render();
+		const c = renderTo(tpl);
+
+		// No "?" tips on presence or zone rows…
+		expect(c.querySelectorAll("epp-info-tip").length).toBe(0);
+		// …but the rows themselves are still rendered.
+		expect(
+			c.querySelectorAll(".live-sensor-row").length,
+		).toBeGreaterThanOrEqual(7);
+
+		document.body.removeChild(c);
+	});
+
 	it("shows static as detected when static_state is 'A' (active)", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
 		el.sensorState = {

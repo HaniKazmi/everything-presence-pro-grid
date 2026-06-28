@@ -84,6 +84,26 @@ export class EppGrid extends LitElement {
 	/** When false, the dimensions + furthest-point caption below the grid is hidden. */
 	@property({ type: Boolean }) showDimensions = true;
 	/**
+	 * Clean-map mode (overview card "Show grid" off). Drops the gridlines (gap →
+	 * 0 via the reflected [plain] attribute), zone colouring, occupancy glow and
+	 * overlay stripes — keeping only the in/out-of-range shading, targets and
+	 * furniture. Reflected so the `:host([plain])` CSS can null the gap.
+	 */
+	@property({ type: Boolean, reflect: true }) plain = false;
+	/**
+	 * Optional CSS fill for the unpainted rest-of-room (zone 0) cells; undefined
+	 * keeps the theme card background. Painted zones and outside cells ignore it.
+	 * In plain mode (zones flattened) it colours the whole in-range room.
+	 */
+	@property({ attribute: false }) roomColor?: string;
+	/**
+	 * Fill mode (overview card): let the grid grow to fill its measured width
+	 * instead of stopping at the desktop cell cap, and drop the viewport-height
+	 * bound so the map fills the card's width (growing taller to match) rather
+	 * than leaving whitespace. The panel leaves this false to keep its caps.
+	 */
+	@property({ type: Boolean }) fill = false;
+	/**
 	 * Mobile-only: cap the grid height to half the viewport so the controls
 	 * panel below it always has room. Desktop leaves this false → no height cap.
 	 */
@@ -220,6 +240,14 @@ export class EppGrid extends LitElement {
 			user-select: none;
 		}
 
+		/* Clean-map mode: no gridlines. The 1px gaps + divider background that
+		   draw the graph-paper lines collapse, so cells merge into smooth
+		   in/out-of-range regions; the border stays as the map frame. */
+		:host([plain]) .grid {
+			gap: 0;
+			background: transparent;
+		}
+
 		/* Paint strokes must own the touch gesture — otherwise the browser
 		   claims it for scrolling and fires pointercancel mid-stroke. The
 		   live grid stays scrollable. */
@@ -331,13 +359,26 @@ export class EppGrid extends LitElement {
 		const maxRow = noRoom ? GRID_ROWS - 1 : bounds.maxRow;
 		const visCols = maxCol - minCol + 1;
 		const visRows = maxRow - minRow + 1;
-		// The grid adds a 2px border (×2) + (visCols-1)×1px gaps on top of the
-		// cells; subtract that from the measured width so the grid fits exactly.
-		const gridChromePx = this._availPx > 0 ? 4 + (visCols - 1) : 0;
+		// Plain (clean-map) mode collapses the inter-cell gaps to 0, so only the
+		// 2px border (×2) remains as chrome; otherwise each gap adds 1px.
+		const gapPx = this.plain ? 0 : 1;
+		// The grid adds a 2px border (×2) + (visCols-1)×gap on top of the cells;
+		// subtract that from the measured width so the grid fits exactly.
+		const gridChromePx = this._availPx > 0 ? 4 + (visCols - 1) * gapPx : 0;
 		// Desktop allows a larger grid + bigger cells than the 480/32 mobile-era caps.
 		const isDesktop = !this.capHeightToHalfViewport;
-		const effMaxGridPx = isDesktop ? 960 : this.maxGridPx;
-		const effMaxCellPx = isDesktop ? 48 : 32;
+		// Fill mode (card) lifts the caps once the width is measured so the grid
+		// grows to fill its container; the unmeasured first render keeps the small
+		// cap so it doesn't flash huge before the real width arrives.
+		const uncap = this.fill && this._availPx > 0;
+		// uncap only fires once the width is measured, so the width-fit term in
+		// fitCellPx is finite and Infinity here just means "no separate cap".
+		const effMaxGridPx = uncap
+			? Number.POSITIVE_INFINITY
+			: isDesktop
+				? 960
+				: this.maxGridPx;
+		const effMaxCellPx = uncap ? Number.POSITIVE_INFINITY : isDesktop ? 48 : 32;
 		// Mobile only: cap the grid to a fraction of the viewport height so the
 		// controls panel below it keeps a fair share. 0.45 (not 0.5) because the
 		// tab bar + device dropdown sit above the panel, so 50% of the viewport
@@ -346,14 +387,18 @@ export class EppGrid extends LitElement {
 		// innerHeight defined but no layout, so reading it is safe; the cap is
 		// exercised only behind the capHeightToHalfViewport flag.
 		/* v8 ignore next -- window.innerHeight read has no layout effect under happy-dom */
-		const availHeightPx = this.capHeightToHalfViewport
-			? window.innerHeight * 0.45
-			: this._availHeightPx >= DESKTOP_MIN_HEIGHT_PX
-				? this._availHeightPx
-				: 0;
+		const availHeightPx = this.fill
+			? // Fill mode fills the WIDTH; the card grows taller to match and the
+				// dashboard scrolls, so the viewport-height bound is dropped.
+				0
+			: this.capHeightToHalfViewport
+				? window.innerHeight * 0.45
+				: this._availHeightPx >= DESKTOP_MIN_HEIGHT_PX
+					? this._availHeightPx
+					: 0;
 		// Vertical chrome mirrors the width chrome: 2px border (×2) + (visRows-1)
-		// ×1px gaps. Subtract it so the cells fit the height budget exactly.
-		const gridChromeHpx = availHeightPx > 0 ? 4 + (visRows - 1) : 0;
+		// ×gap. Subtract it so the cells fit the height budget exactly.
+		const gridChromeHpx = availHeightPx > 0 ? 4 + (visRows - 1) * gapPx : 0;
 		const cellPx = fitCellPx(
 			effMaxGridPx,
 			// When measured, clamp to ≥1px so a "measured but tiny" width (chrome
@@ -493,6 +538,14 @@ export class EppGrid extends LitElement {
 		cellPx: number,
 	) {
 		const occupancy = this.occupancy;
+		const plain = this.plain;
+		const showOverlays = this.showOverlays;
+		// Plain mode flattens zones by colouring with empty configs, so every
+		// in-range cell falls back to the room colour while outside cells still
+		// read as outside — getCellColor stays the single source of cell-fill truth.
+		const cellBgConfigs = plain ? [] : this.zoneConfigs;
+		const cellBg = (v: number): string =>
+			getCellColor(v, cellBgConfigs, this.roomColor);
 
 		const cells = [];
 		for (let r = minRow; r <= maxRow; r++) {
@@ -503,20 +556,21 @@ export class EppGrid extends LitElement {
 				const inRange = cellStatus === "in_range";
 				const inside = cellIsInside(cellVal);
 				let bg: string;
-				if (cellStatus === "in_range") {
-					bg = getCellColor(cellVal, this.zoneConfigs);
+				if (inRange) {
+					bg = cellBg(cellVal);
 				} else if (cellStatus === "beyond_max_range" && inside) {
 					// Only inside-room cells get the hatch-on-white "configured out"
 					// decoration; outside-room padding rendered as plain outside so
 					// it doesn't read as an inside-room cell limited by config.
 					bg = CELL_BG_BEYOND_MAX_RANGE;
 				} else if (cellStatus === "beyond_max_range") {
-					bg = getCellColor(cellVal, this.zoneConfigs);
+					bg = cellBg(cellVal);
 				} else {
 					bg = CELL_BG_OUT_OF_RANGE;
 				}
 				let occupancyStyle = "";
-				if (inRange && cellIsInside(cellVal)) {
+				// Plain mode drops the occupancy glow (a detection-zone cue).
+				if (!plain && inRange && inside) {
 					const zoneId = cellZone(cellVal);
 					if (occupancy[zoneId]) {
 						const namedColor =
@@ -527,7 +581,7 @@ export class EppGrid extends LitElement {
 					}
 				}
 				const overlayMarker =
-					this.showOverlays && inRange && cellIsInside(cellVal)
+					!plain && showOverlays && inRange && inside
 						? (OVERLAY_STRIPE_CSS[cellOverlay(cellVal)] ?? "")
 						: "";
 				// Paint handlers only exist in the editor AND on paintable cells —

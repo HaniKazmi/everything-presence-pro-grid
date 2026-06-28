@@ -28,6 +28,9 @@ export interface EppGridCardConfig {
 	secondary?: string;
 	show_map?: boolean;
 	show_sensors?: boolean;
+	show_grid?: boolean;
+	/** Custom fill for the unpainted rest-of-room area, as an [r, g, b] triple. */
+	room_color?: [number, number, number];
 	layout?: "horizontal" | "vertical";
 	sensors?: {
 		presence?: Partial<Record<PresenceKey, boolean>>;
@@ -41,6 +44,8 @@ export interface EppGridCardConfig {
 type ResolvedCardConfig = Omit<EppGridCardConfig, "sensors"> & {
 	show_map: boolean;
 	show_sensors: boolean;
+	show_grid: boolean;
+	room_color?: [number, number, number];
 	layout: "horizontal" | "vertical";
 	show_furniture: boolean;
 	show_overlays: boolean;
@@ -52,6 +57,25 @@ type ResolvedCardConfig = Omit<EppGridCardConfig, "sensors"> & {
 		environmental: Record<EnvKey, boolean>;
 	};
 };
+
+/**
+ * An [r, g, b] config triple → a CSS `rgb()` string, or undefined when unset or
+ * malformed. Hand-written YAML can supply a bad value the TS type doesn't
+ * enforce; a malformed triple degrades to undefined (the default room colour)
+ * rather than emitting invalid CSS like `rgb(10, 20, undefined)`.
+ */
+export function rgbCss(
+	rgb: [number, number, number] | undefined,
+): string | undefined {
+	if (
+		!Array.isArray(rgb) ||
+		rgb.length !== 3 ||
+		rgb.some((n) => !Number.isFinite(n))
+	) {
+		return undefined;
+	}
+	return `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`;
+}
 
 export function applyCardDefaults(
 	config: Partial<EppGridCardConfig>,
@@ -70,7 +94,9 @@ export function applyCardDefaults(
 		secondary: config.secondary ?? "",
 		show_map: config.show_map !== false,
 		show_sensors: config.show_sensors !== false,
-		layout: config.layout ?? "horizontal",
+		show_grid: config.show_grid !== false,
+		room_color: config.room_color,
+		layout: config.layout ?? "vertical",
 		show_furniture: config.show_furniture !== false,
 		show_overlays: config.show_overlays !== false,
 		sensors: {
@@ -162,11 +188,18 @@ export class EppGridCard extends LitElement {
 				padding: 0 var(--epp-space-3) var(--epp-space-2);
 			}
 			@container (max-width: 500px) {
+				/* Stack the two parts. align-items:stretch (overriding the row
+				   layout's flex-start) is essential: it gives the map a definite
+				   full width so the aspect-locked epp-grid fits the card instead of
+				   sizing off its height path and overflowing/collapsing. flex is
+				   reset to content-height so neither part grows along the column. */
 				.overview--horizontal {
 					flex-direction: column;
+					align-items: stretch;
 				}
+				.overview--horizontal .map,
 				.overview--horizontal .sensors {
-					flex: 1 1 auto;
+					flex: 0 0 auto;
 				}
 			}
 		`,
@@ -373,6 +406,9 @@ export class EppGridCard extends LitElement {
 				.maxGridPx=${480}
 				.showOverlays=${cfg.show_overlays}
 				.showDimensions=${false}
+				.plain=${!cfg.show_grid}
+				.roomColor=${rgbCss(cfg.room_color)}
+				.fill=${true}
 			></epp-grid>
 		`;
 	}
@@ -392,6 +428,7 @@ export class EppGridCard extends LitElement {
 				.showZones=${s.zones}
 				.envKeys=${this._envKeys}
 				.interactive=${false}
+				.showInfoTips=${false}
 			></epp-live-sidebar>
 		`;
 	}

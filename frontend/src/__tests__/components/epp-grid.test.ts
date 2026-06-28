@@ -49,6 +49,13 @@ const SAMPLE_FURNITURE: FurnitureItem = {
 	lockAspect: false,
 };
 
+/** Lowercased inline `style` of every rendered `.cell`, for colour assertions. */
+function cellStyles(el: EppGrid): string[] {
+	return Array.from(
+		el.shadowRoot!.querySelectorAll(".cell") as NodeListOf<HTMLElement>,
+	).map((c) => (c.getAttribute("style") ?? "").toLowerCase());
+}
+
 describe("epp-grid element", () => {
 	it("is registered as a custom element", () => {
 		expect(customElements.get("epp-grid")).toBeDefined();
@@ -553,6 +560,198 @@ describe("epp-grid occupancy", () => {
 		expect(css).toContain("z-index: 1");
 		expect(css).toMatch(/box-shadow:[^;]*\b([1-9]\d*)px\b/);
 
+		document.body.removeChild(el);
+	});
+});
+
+describe("epp-grid plain mode (clean card map)", () => {
+	// A grid whose inside cells carry a named zone, an interference overlay, and
+	// occupancy — i.e. every "detection-zone detail" the plain map must drop.
+	function paintedGrid() {
+		const grid = initGridFromRoom(3000, 4000);
+		for (let i = 0; i < grid.length; i++) {
+			if (grid[i] & CELL_ROOM_BIT) {
+				grid[i] = cellSetZone(grid[i], 1);
+				grid[i] = cellSetOverlay(grid[i], CELL_OVERLAY_INTERFERENCE);
+			}
+		}
+		const zoneConfigs = new Array(7).fill(null);
+		zoneConfigs[0] = { name: "Zone 1", color: ZONE_COLORS[0], type: "default" };
+		return { grid, zoneConfigs };
+	}
+
+	it("reflects the plain property to the plain attribute (for the gridless CSS)", async () => {
+		const el = createGrid({ plain: true });
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el.hasAttribute("plain")).toBe(true);
+
+		(el as unknown as { plain: boolean }).plain = false;
+		await el.updateComplete;
+		expect(el.hasAttribute("plain")).toBe(false);
+
+		document.body.removeChild(el);
+	});
+
+	it("removes the gridlines in plain mode (:host([plain]) .grid gap:0)", () => {
+		const cssText = (
+			customElements.get("epp-grid") as unknown as {
+				styles: { cssText: string };
+			}
+		).styles.cssText;
+		const idx = cssText.indexOf(":host([plain]) .grid");
+		expect(idx).toBeGreaterThan(-1);
+		const rule = cssText.slice(idx, cssText.indexOf("}", idx));
+		expect(rule).toMatch(/gap:\s*0/);
+	});
+
+	it("renders inside cells as the room color, not the zone color", async () => {
+		const { grid, zoneConfigs } = paintedGrid();
+		const el = createGrid({
+			grid,
+			zoneConfigs,
+			occupancy: { 1: true },
+			plain: true,
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const styles = cellStyles(el);
+		// No cell paints the zone color…
+		expect(styles.some((s) => s.includes("#b8e7ff"))).toBe(false);
+		// …inside cells fall back to the flat room (card-background) color.
+		expect(styles.some((s) => s.includes("--card-background-color"))).toBe(
+			true,
+		);
+		document.body.removeChild(el);
+	});
+
+	it("drops the occupancy glow in plain mode (no box-shadow)", async () => {
+		const { grid, zoneConfigs } = paintedGrid();
+		const el = createGrid({
+			grid,
+			zoneConfigs,
+			occupancy: { 1: true },
+			plain: true,
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(cellStyles(el).some((s) => s.includes("box-shadow"))).toBe(false);
+		document.body.removeChild(el);
+	});
+
+	it("drops overlay stripes in plain mode (no background-image)", async () => {
+		const { grid, zoneConfigs } = paintedGrid();
+		const el = createGrid({
+			grid,
+			zoneConfigs,
+			occupancy: { 1: true },
+			plain: true,
+			showOverlays: true,
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(cellStyles(el).some((s) => s.includes("background-image"))).toBe(
+			false,
+		);
+		document.body.removeChild(el);
+	});
+
+	it("keeps out-of-range range shading in plain mode", async () => {
+		const { grid, zoneConfigs } = paintedGrid();
+		const normal = createGrid({ grid, zoneConfigs });
+		document.body.appendChild(normal);
+		await normal.updateComplete;
+		const normalHatch = cellStyles(normal).filter((s) =>
+			s.includes("#c8c8c8"),
+		).length;
+		document.body.removeChild(normal);
+		expect(normalHatch).toBeGreaterThan(0); // sanity: the fixture has out-of-range cells
+
+		const el = createGrid({ grid, zoneConfigs, plain: true });
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const plainHatch = cellStyles(el).filter((s) =>
+			s.includes("#c8c8c8"),
+		).length;
+		expect(plainHatch).toBe(normalHatch);
+		document.body.removeChild(el);
+	});
+});
+
+describe("epp-grid rest-of-room colour", () => {
+	const ROOM = "rgb(10, 20, 30)";
+
+	it("recolours rest-of-room (zone 0) cells in the full grid while keeping painted zones", async () => {
+		const grid = initGridFromRoom(3000, 4000);
+		// Paint every other inside cell as zone 1 so both zone 0 and zone 1 remain.
+		let n = 0;
+		for (let i = 0; i < grid.length; i++) {
+			if (grid[i] & CELL_ROOM_BIT && n++ % 2 === 0) {
+				grid[i] = cellSetZone(grid[i], 1);
+			}
+		}
+		const zoneConfigs = new Array(7).fill(null);
+		zoneConfigs[0] = { name: "Zone 1", color: ZONE_COLORS[0], type: "default" };
+		const el = createGrid({ grid, zoneConfigs, roomColor: ROOM });
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const styles = cellStyles(el);
+		expect(styles.some((s) => s.includes(ROOM))).toBe(true); // rest-of-room recoloured
+		expect(styles.some((s) => s.includes("#b8e7ff"))).toBe(true); // zone 1 kept
+		document.body.removeChild(el);
+	});
+
+	it("uses the room colour for the whole room in plain mode", async () => {
+		const grid = initGridFromRoom(3000, 4000);
+		for (let i = 0; i < grid.length; i++) {
+			if (grid[i] & CELL_ROOM_BIT) grid[i] = cellSetZone(grid[i], 1);
+		}
+		const zoneConfigs = new Array(7).fill(null);
+		zoneConfigs[0] = { name: "Zone 1", color: ZONE_COLORS[0], type: "default" };
+		const el = createGrid({ grid, zoneConfigs, plain: true, roomColor: ROOM });
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const styles = cellStyles(el);
+		expect(styles.some((s) => s.includes(ROOM))).toBe(true); // flattened to room colour
+		expect(styles.some((s) => s.includes("#b8e7ff"))).toBe(false); // zone colour dropped
+		document.body.removeChild(el);
+	});
+});
+
+describe("epp-grid fill mode (card fills available width)", () => {
+	// The cell's inline `width: Npx` is computed from cellPx in render(), so we can
+	// drive the measured width directly (happy-dom has no layout) and read it back.
+	function cellPx(el: any): number {
+		const cell = el.shadowRoot!.querySelector(".cell") as HTMLElement | null;
+		return cell ? Number.parseInt(cell.style.width || "0", 10) : 0;
+	}
+
+	it("grows cells past the 48px desktop cap to fill the measured width when fill is set", async () => {
+		const el = createGrid({ fill: true }) as any;
+		el._availPx = 1500; // a wide measured container
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(cellPx(el)).toBeGreaterThan(48);
+		document.body.removeChild(el);
+	});
+
+	it("keeps cells capped at the 48px desktop max when fill is off", async () => {
+		const el = createGrid({ fill: false }) as any;
+		el._availPx = 1500;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(cellPx(el)).toBeLessThanOrEqual(48);
+		document.body.removeChild(el);
+	});
+
+	it("ignores a small available height in fill mode (fills width, grows tall)", async () => {
+		const el = createGrid({ fill: true }) as any;
+		el._availPx = 1500;
+		el._availHeightPx = 250; // would otherwise bound the grid height
+		document.body.appendChild(el);
+		await el.updateComplete;
+		// Height is not allowed to shrink a fill map below its width-driven size.
+		expect(cellPx(el)).toBeGreaterThan(48);
 		document.body.removeChild(el);
 	});
 });

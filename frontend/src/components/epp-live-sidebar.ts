@@ -75,6 +75,9 @@ export class EppLiveSidebar extends LitElement {
 	/** When false, the zone-section header is a plain label, not an editor link. */
 	@property({ type: Boolean }) interactive = true;
 
+	/** When false, the per-row info (?) tips are hidden (compact overview card). */
+	@property({ type: Boolean }) showInfoTips = true;
+
 	static styles = css`
     :host {
       display: block;
@@ -186,7 +189,7 @@ export class EppLiveSidebar extends LitElement {
 				${dot}
 				<span class="live-sensor-label">${s.label}</span>
 				<span class="live-sensor-state ${s.on ? "detected" : ""}">${s.on ? this.localize("live.detected") : this.localize("live.clear")}</span>
-				<epp-info-tip .text=${s.info} .localize=${this.localize}></epp-info-tip>
+				${this.showInfoTips ? html`<epp-info-tip .text=${s.info} .localize=${this.localize}></epp-info-tip>` : nothing}
 			</div>
 		`;
 	}
