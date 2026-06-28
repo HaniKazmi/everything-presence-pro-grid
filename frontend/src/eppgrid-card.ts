@@ -127,7 +127,7 @@ export class EppGridCard extends LitElement {
 			.card-secondary {
 				font-size: var(--epp-font-sm);
 				color: var(--epp-text-muted);
-				margin-top: 2px;
+				margin-top: var(--epp-space-1);
 			}
 			.overview {
 				display: flex;

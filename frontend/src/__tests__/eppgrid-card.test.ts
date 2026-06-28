@@ -578,6 +578,25 @@ describe("eppgrid-card templated header", () => {
 		expect(el.shadowRoot!.querySelector(".placeholder")).toBeTruthy();
 	});
 
+	it("shows the header block above the nothing-to-show placeholder", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-nts",
+			primary: "Lounge",
+			show_map: false,
+			show_sensors: false,
+		} as never);
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card-primary")?.textContent,
+		).toContain("Lounge");
+		expect(el.shadowRoot!.querySelector(".placeholder")).toBeTruthy();
+	});
+
 	it("disposes template subscriptions on disconnect", async () => {
 		const h = makeTemplatingHass();
 		const el = document.createElement("eppgrid-card") as EppGridCard;
