@@ -21,7 +21,8 @@ export function buildSchema(devices: DeviceOption[]): unknown[] {
 				},
 			},
 		},
-		{ name: "title", selector: { text: {} } },
+		{ name: "primary", selector: { template: {} } },
+		{ name: "secondary", selector: { template: {} } },
 		{
 			name: "layout",
 			selector: {
