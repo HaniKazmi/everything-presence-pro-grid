@@ -71,4 +71,4 @@ just that zone.
 
 ## Where to next
 
-- **[Automations →](automations.md)** — put the group's Occupancy and zone-presence entities to use with worked examples.
+- **[Overview dashboard card →](overview-card.md)** — add a live map and sensor view for a device to any Home Assistant dashboard.
