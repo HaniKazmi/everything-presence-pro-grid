@@ -10,15 +10,15 @@ multiple sensors by hand.
 A device group exposes:
 
 - One **occupancy** binary sensor that is on if any source sensor's occupancy is
-  on.
+    on.
 - The same for **static presence**, **motion presence**, **target presence**,
-  and **mmWave presence** — each only created if at least one source has that
-  entity enabled.
+    and **mmWave presence** — each only created if at least one source has that
+    entity enabled.
 - One **Rest of room** binary sensor, combined across all source devices.
 - One binary sensor per **zone** (1–7) on each source — passing through with the
-  zone's original name.
+    zone's original name.
 - One binary sensor per **merged zone** you define — for combining named zones
-  from different sources into a single sensor.
+    from different sources into a single sensor.
 
 Every sensor can be turned off in the editor if you don't want it in the group.
 If a source goes offline, the device group ignores it. The helper becomes
@@ -27,22 +27,23 @@ unavailable only when every source is unavailable.
 ## Creating a device group
 
 1. Open the Everything Presence Pro Grid panel and switch to the **Device
-   Groups** tab.
-2. Click **Add a device group**.
-3. Enter a **Device name**; optionally choose an **Area** to assign the virtual
-   device (and its source devices) to.
-4. Under **Devices**, toggle on the sensors to include. Each shows whether it is
-   **Online**, **Offline**, or **no longer exists**.
-5. Under **Sensors**, every sensor from the included devices is on by default —
-   toggle off any you don't want. Presence sensors show which devices provide
-   them and flag any device where the sensor is disabled in HA.
-6. To combine named zones from different devices into a single binary sensor,
-   switch the Sensors list to **Merge zones**, tick two or more zones, give the
-   merged zone a name (e.g. "Bed"), and click **Merge**. The merged zone appears
-   in the list and becomes a single binary sensor.
-7. Click **Save**.
+    Groups** tab.
+1. Click **Add a device group**.
+1. Enter a **Device name**; optionally choose an **Area** to assign the virtual
+    device (and its source devices) to.
+1. Under **Devices**, toggle on the sensors to include. Each shows whether it is
+    **Online**, **Offline**, or **no longer exists**.
+1. Under **Sensors**, every sensor from the included devices is on by default —
+    toggle off any you don't want. Presence sensors show which devices provide
+    them and flag any device where the sensor is disabled in HA.
+1. To combine named zones from different devices into a single binary sensor,
+    switch the Sensors list to **Merge zones**, tick two or more zones, give
+    the merged zone a name (e.g. "Bed"), and click **Merge**. The merged zone
+    appears in the list and becomes a single binary sensor.
+1. Click **Save**.
 
 <!-- TODO: recapture for the two-section editor -->
+
 ![Device Groups Editor.](../images/device-groups/form.png "Device Group Editor")
 
 The new virtual device appears under **Settings → Devices & Services → EPP
@@ -53,7 +54,7 @@ Grid** with all its aggregated entities.
 Each device group in the list has a **⋮ menu**:
 
 - **Edit** reopens the editor — change the name, devices, area, sensors, or
-  merged zones and **Save**.
+    merged zones and **Save**.
 - **Delete** removes the group and all its helper entities.
 
 A merged zone has its own **⋮ menu** inside the editor for editing or removing
@@ -71,4 +72,5 @@ just that zone.
 
 ## Where to next
 
-- **[Overview dashboard card →](overview-card.md)** — add a live map and sensor view for a device to any Home Assistant dashboard.
+- **[Overview dashboard card →](overview-card.md)** — add a live map and sensor
+    view for a device to any Home Assistant dashboard.

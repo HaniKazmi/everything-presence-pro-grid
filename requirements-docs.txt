@@ -1,2 +1,14 @@
 mkdocs-material>=9.5,<10
 mkdocs-git-revision-date-localized-plugin>=1.2,<2
+
+# Markdown formatter (config in .mdformat.toml: wrap = 80). The plugins are
+# required to reproduce the formatting — gfm for tables, mkdocs for admonitions,
+# frontmatter so docs/index.md's YAML front matter (Material `hide:`) is
+# preserved rather than mangled into a thematic break.
+# Pinned exactly: mdformat's output is version-sensitive, so a floating minor
+# could reformat already-correct files and fail the CI check on unrelated PRs.
+# Bump deliberately, reformatting the docs in the same commit.
+mdformat==1.0.0
+mdformat-gfm==1.0.0
+mdformat-mkdocs==5.1.4
+mdformat-frontmatter==2.1.2

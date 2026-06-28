@@ -19,20 +19,21 @@ spots.
 Practical guidance:
 
 1. Pick the corner opposite the door, or the corner that gives the clearest view
-   of the zones you care about most.
-2. Mount pointing towards the opposite corner, or in the direction which will
-   give you the best coverage of areas of interest.
-3. Avoid corners blocked by furniture or walls on either side of the device. The
-   FOV needs to project into open space.
+    of the zones you care about most.
+1. Mount pointing towards the opposite corner, or in the direction which will
+    give you the best coverage of areas of interest.
+1. Avoid corners blocked by furniture or walls on either side of the device. The
+    FOV needs to project into open space.
 
 !!! tip
-    The motion sensor's range can't be tuned. If the device points directly at
-    the door, its line of sight runs straight through the open doorway, and it
-    can pick up movement up to 12 m away in the next room — marking the room
-    occupied when no one is in it. Where this matters, angle the device so its
-    line of sight faces a wall rather than an open doorway. Also see the
-    [mmWave Presence entity](how-detection-works.md#the-mmwave-presence-entity)
-    for an alternative when optimal placement isn't possible.
+
+    The motion sensor's range can't be tuned. If the device points directly at the
+    door, its line of sight runs straight through the open doorway, and it can pick
+    up movement up to 12 m away in the next room — marking the room occupied when no
+    one is in it. Where this matters, angle the device so its line of sight faces a
+    wall rather than an open doorway. Also see the
+    [mmWave Presence entity](how-detection-works.md#the-mmwave-presence-entity) for
+    an alternative when optimal placement isn't possible.
 
 ![Top-down comparison. Left: the device is aimed across the room and straight through an open doorway, so its line of sight reaches a person about 12 m away in the next room. Right: the device is aimed at a solid wall, so its line of sight stops inside the room.](../images/placement/motion-range-doorway.svg){ width="100%" }
 
@@ -95,9 +96,10 @@ calibration offset.
 ![Side-by-side comparison: wall mount reports lateral + depth as floor coordinates; ceiling mount reports lateral + a vertical gap dominated by the person's height.](../images/placement/ceiling-mount-fov.svg){ width="80%" }
 
 !!! warning
-    Ceiling mounting is not currently supported. If you've mounted a device on
-    the ceiling in a previous installation, move it to a wall corner before
-    running calibration.
+
+    Ceiling mounting is not currently supported. If you've mounted a device on the
+    ceiling in a previous installation, move it to a wall corner before running
+    calibration.
 
     If you have a good use case for ceiling mounting, open an issue with your
     rationale and we can discuss it.
@@ -108,20 +110,20 @@ The two radars have different effective ranges, which affects where you can
 place zones.
 
 - **LD2450 tracking circle — 6 m.** Inside this circle the sensor reports 2D
-  target coordinates, which the zone engine uses for per-zone presence and
-  target-count entities. Outside this circle the LD2450 can still see radar
-  returns but can't localise them into coordinates.
+    target coordinates, which the zone engine uses for per-zone presence and
+    target-count entities. Outside this circle the LD2450 can still see radar
+    returns but can't localise them into coordinates.
 - **SEN0609 presence circle — 16 m.** Inside this much larger circle the SEN0609
-  reports a single "someone is here" signal, with no coordinates.
+    reports a single "someone is here" signal, with no coordinates.
 
 Practical consequence:
 
 - **Zones of interest must fit inside the 6 m tracking circle.** A zone at 7 m
-  from the sensor won't get per-target counts or movement-based zone-entry
-  events. It will still contribute to room-level occupancy through the SEN0609
-  and the combined Occupancy sensor, just not through zone-specific entities.
+    from the sensor won't get per-target counts or movement-based zone-entry
+    events. It will still contribute to room-level occupancy through the SEN0609
+    and the combined Occupancy sensor, just not through zone-specific entities.
 - For larger rooms, this is usually the main constraint on where to mount the
-  sensor. Pick a corner that puts your important zones inside the 6 m circle.
+    sensor. Pick a corner that puts your important zones inside the 6 m circle.
 
 In the image below the sensor is monitoring the two entrances with the LD2450
 tracking sensor, but its range doesn't reach the sofa. The static sensor still
@@ -146,17 +148,17 @@ these after calibration with Interference or Suppress overlays. See
 ## Worked example: a 4 × 5 m living room
 
 - **Room:** 4 m × 5 m with one door, a ceiling fan in the centre, and a sofa
-  against the long wall opposite the door.
+    against the long wall opposite the door.
 - **Mount location:** the corner diagonally opposite the door, above the side
-  table.
+    table.
 - **Orientation:** angled towards the opposite corner, so the 120° FOV covers
-  the whole floor.
+    the whole floor.
 - **Mount height:** 1.3 m, aimed horizontally.
 - **Zone of interest:**
-  - "Sofas" — ~1 m from the sensor, comfortably inside the 6 m tracking circle.
+    - "Sofas" — ~1 m from the sensor, comfortably inside the 6 m tracking circle.
 - **Follow-ups after calibration:**
-  - Entry/Exit overlay painted across the doorway cells.
-  - Interference overlay on the ceiling-fan cell.
+    - Entry/Exit overlay painted across the doorway cells.
+    - Interference overlay on the ceiling-fan cell.
 
 That setup covers the whole room with tracking, keeps the sensor out of
 sight-lines and foot traffic, and lets the SEN0609 hold occupancy when people
@@ -167,4 +169,4 @@ settle still on the sofas.
 ## Where to next
 
 - **[Calibration →](calibration.md)** — run the four-corner wizard so the grid
-  matches the real geometry of your room.
+    matches the real geometry of your room.

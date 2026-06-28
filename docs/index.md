@@ -6,7 +6,8 @@ hide:
 
 # Everything Presence Pro Grid
 
-An alternate firmware and Home Assistant integration for the Everything Presence Pro presence sensor.
+An alternate firmware and Home Assistant integration for the Everything Presence
+Pro presence sensor.
 
 It provides:
 
@@ -23,15 +24,18 @@ It provides:
 ## Quick start
 
 1. [Install](user-guide/installation.md) the integration via HACS.
-2. [Flash](user-guide/flashing-firmware.md) the Grid firmware onto your device via USB.
-3. [Mount](user-guide/placement.md) the device and [calibrate](user-guide/calibration.md) the grid.
-4. Paint [detection zones](user-guide/detection-zones.md) on the grid.
-5. Build [automations](user-guide/automations.md).
+1. [Flash](user-guide/flashing-firmware.md) the Grid firmware onto your device
+    via USB.
+1. [Mount](user-guide/placement.md) the device and
+    [calibrate](user-guide/calibration.md) the grid.
+1. Paint [detection zones](user-guide/detection-zones.md) on the grid.
+1. Build [automations](user-guide/automations.md).
 
----
+______________________________________________________________________
 
 [Read the full introduction →](user-guide/introduction.md)
 
 ## For developers
 
-Architecture, data catalog, and contribution guide for the integration itself live under [Developers](developers/index.md).
+Architecture, data catalog, and contribution guide for the integration itself
+live under [Developers](developers/index.md).
