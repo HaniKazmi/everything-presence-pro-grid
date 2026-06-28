@@ -17,6 +17,11 @@ and firmware downloads, see the
   Non-admin household users can view dashboards that include this card without
   needing admin access. Feature requested by @tuckerdude
   ([#295](https://github.com/clintongormley/everything-presence-pro-grid/issues/295)).
+- **Request a translation.** If Everything Presence Pro Grid isn't translated
+  into your Home Assistant language yet, the panel now shows a dismissable banner
+  that opens a pre-filled translation request on GitHub — naming your language so
+  you can ask for it, and offer to help review it
+  ([#301](https://github.com/clintongormley/everything-presence-pro-grid/pull/301)).
 
 ## v1.2.3 — 2026-06-24
 
