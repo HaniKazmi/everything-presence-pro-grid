@@ -5,9 +5,11 @@ title: 'Translation request: '
 labels: translation
 ---
 
-**Language requested:** <!-- e.g. Français (fr), Português (Brasil) (pt-BR) -->
+I'd like Everything Presence Pro Grid to be translated into:
 
-I'd like to use Everything Presence Pro Grid in my language.
+<!-- Your language, e.g. Français (fr), Português (Brasil) (pt-BR) -->
 
-<!-- Optional: can you help translate? Reply here and we'll point you at the
-     translation file (frontend/src/translations/<code>.json). -->
+- [ ] I'm happy to review the translations
+
+<!-- If you tick the box above, we'll point you at the translation file
+     (frontend/src/translations/<code>.json) so you can check it. -->
