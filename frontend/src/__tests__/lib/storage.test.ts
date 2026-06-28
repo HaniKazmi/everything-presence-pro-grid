@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	isLangRequestDismissed,
 	persistDismissedLangRequest,
 	persistSelectedMac,
-	readDismissedLangRequest,
 	readStoredMac,
 	STORAGE_KEY_LANG_REQUEST_DISMISSED,
 	STORAGE_KEY_SELECTED_MAC,
@@ -54,23 +54,38 @@ describe("lib/storage", () => {
 	});
 
 	describe("language-request dismissal", () => {
-		it("returns null when nothing is stored", () => {
-			expect(readDismissedLangRequest()).toBeNull();
+		it("reports nothing dismissed initially", () => {
+			expect(isLangRequestDismissed("fr")).toBe(false);
 		});
 
-		it("round-trips the dismissed locale code", () => {
+		it("round-trips a dismissed locale code", () => {
 			persistDismissedLangRequest("pt-BR");
-			expect(localStorage.getItem(STORAGE_KEY_LANG_REQUEST_DISMISSED)).toBe(
-				"pt-BR",
-			);
-			expect(readDismissedLangRequest()).toBe("pt-BR");
+			expect(isLangRequestDismissed("pt-BR")).toBe(true);
 		});
 
-		it("returns null when localStorage throws on read", () => {
+		it("remembers multiple dismissed locales independently", () => {
+			persistDismissedLangRequest("fr");
+			persistDismissedLangRequest("de");
+			expect(isLangRequestDismissed("fr")).toBe(true);
+			expect(isLangRequestDismissed("de")).toBe(true);
+			expect(isLangRequestDismissed("es")).toBe(false);
+		});
+
+		it("does not duplicate a re-dismissed locale", () => {
+			persistDismissedLangRequest("fr");
+			persistDismissedLangRequest("fr");
+			expect(
+				JSON.parse(
+					localStorage.getItem(STORAGE_KEY_LANG_REQUEST_DISMISSED) ?? "[]",
+				),
+			).toEqual(["fr"]);
+		});
+
+		it("reports false when localStorage throws on read", () => {
 			const spy = vi.spyOn(localStorage, "getItem").mockImplementation(() => {
 				throw new Error("blocked");
 			});
-			expect(readDismissedLangRequest()).toBeNull();
+			expect(isLangRequestDismissed("fr")).toBe(false);
 			spy.mockRestore();
 		});
 

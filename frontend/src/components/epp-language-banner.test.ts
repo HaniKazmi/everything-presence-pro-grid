@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "./epp-language-banner.js";
-import { STORAGE_KEY_LANG_REQUEST_DISMISSED } from "../lib/storage.js";
+import {
+	isLangRequestDismissed,
+	persistDismissedLangRequest,
+} from "../lib/storage.js";
 import type { EppLanguageBanner } from "./epp-language-banner.js";
 import { buildTranslationRequestUrl } from "./epp-language-banner.js";
 
@@ -61,7 +64,7 @@ describe("epp-language-banner", () => {
 	});
 
 	it("stays hidden when already dismissed for that locale", async () => {
-		localStorage.setItem(STORAGE_KEY_LANG_REQUEST_DISMISSED, "fr");
+		persistDismissedLangRequest("fr");
 		const el = await fixture("fr");
 		expect(el.shadowRoot!.querySelector(".banner")).toBeNull();
 	});
@@ -73,13 +76,21 @@ describe("epp-language-banner", () => {
 			el.shadowRoot!.querySelector("epp-icon-button") as HTMLElement
 		).dispatchEvent(new Event("click", { bubbles: true, composed: true }));
 		await el.updateComplete;
-		expect(localStorage.getItem(STORAGE_KEY_LANG_REQUEST_DISMISSED)).toBe("de");
+		expect(isLangRequestDismissed("de")).toBe(true);
 		expect(el.shadowRoot!.querySelector(".banner")).toBeNull();
 	});
 
 	it("reappears for a different unshipped locale after dismissing another", async () => {
-		localStorage.setItem(STORAGE_KEY_LANG_REQUEST_DISMISSED, "de");
+		persistDismissedLangRequest("de");
 		const el = await fixture("fr");
 		expect(el.shadowRoot!.querySelector(".banner")).not.toBeNull();
+	});
+
+	it("keeps an earlier-dismissed locale dismissed after dismissing another", async () => {
+		persistDismissedLangRequest("fr");
+		persistDismissedLangRequest("de");
+		// Switching back to the first dismissed locale must stay hidden.
+		const el = await fixture("fr");
+		expect(el.shadowRoot!.querySelector(".banner")).toBeNull();
 	});
 });

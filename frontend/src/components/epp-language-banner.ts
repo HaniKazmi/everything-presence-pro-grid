@@ -2,10 +2,11 @@ import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 import "../ui/epp-icon-button.js";
 import {
+	isLangRequestDismissed,
 	persistDismissedLangRequest,
-	readDismissedLangRequest,
 } from "../lib/storage.js";
 import {
+	defaultLocalize,
 	getLanguageSupport,
 	type LocalizeFn,
 	languageDisplayName,
@@ -34,7 +35,7 @@ export function buildTranslationRequestUrl(
 export class EppLanguageBanner extends LitElement {
 	// Permissive: we only read hass.locale.language / hass.language.
 	@property({ attribute: false }) hass: unknown;
-	@property({ attribute: false }) localize!: LocalizeFn;
+	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 	// In-memory dismissal keyed by locale so a live language switch re-prompts.
 	@state() private _dismissedCode: string | null = null;
 	// Resolved once per `hass` change (not per render): the nudge to show, or
@@ -83,7 +84,7 @@ export class EppLanguageBanner extends LitElement {
 		const support = getLanguageSupport(
 			this.hass as { locale?: { language?: string }; language?: string },
 		);
-		if (support.available || readDismissedLangRequest() === support.code) {
+		if (support.available || isLangRequestDismissed(support.code)) {
 			this._nudge = null;
 			return;
 		}
