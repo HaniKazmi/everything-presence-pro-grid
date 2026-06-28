@@ -15,7 +15,8 @@ and firmware downloads, see the
   groups and map layers appear. The card heading (Primary and Secondary text)
   supports Jinja templates, so it can show live values from any entity.
   Non-admin household users can view dashboards that include this card without
-  needing admin access.
+  needing admin access. Feature requested by @tuckerdude
+  ([#295](https://github.com/clintongormley/everything-presence-pro-grid/issues/295)).
 
 ## v1.2.3 — 2026-06-24
 
