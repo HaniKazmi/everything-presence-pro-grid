@@ -1,4 +1,4 @@
-import { css, html, LitElement, nothing } from "lit";
+import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 import "../ui/epp-icon-button.js";
 import {
@@ -37,6 +37,12 @@ export class EppLanguageBanner extends LitElement {
 	@property({ attribute: false }) localize!: LocalizeFn;
 	// In-memory dismissal keyed by locale so a live language switch re-prompts.
 	@state() private _dismissedCode: string | null = null;
+	// Resolved once per `hass` change (not per render): the nudge to show, or
+	// null when the language is covered or already dismissed for this locale.
+	// Keeps the localStorage read + Intl.DisplayNames + URL build off the
+	// per-render path (HA pushes a fresh `hass` far less often than Lit renders).
+	@state() private _nudge: { code: string; name: string; url: string } | null =
+		null;
 
 	static styles = css`
 		:host {
@@ -72,24 +78,37 @@ export class EppLanguageBanner extends LitElement {
 		}
 	`;
 
-	render() {
+	willUpdate(changed: PropertyValues) {
+		if (!changed.has("hass")) return;
 		const support = getLanguageSupport(
 			this.hass as { locale?: { language?: string }; language?: string },
 		);
-		if (support.available) return nothing;
-		if (this._dismissedCode === support.code) return nothing;
-		if (readDismissedLangRequest() === support.code) return nothing;
-
+		if (support.available || readDismissedLangRequest() === support.code) {
+			this._nudge = null;
+			return;
+		}
 		const name = languageDisplayName(support.code);
+		this._nudge = {
+			code: support.code,
+			name,
+			url: buildTranslationRequestUrl(support.code, name),
+		};
+	}
+
+	render() {
+		const nudge = this._nudge;
+		if (!nudge || this._dismissedCode === nudge.code) return nothing;
 		return html`
 			<div class="banner" role="status">
 				<ha-icon icon="mdi:translate"></ha-icon>
 				<span class="message"
-					>${this.localize("language_request.message", { language: name })}</span
+					>${this.localize("language_request.message", {
+						language: nudge.name,
+					})}</span
 				>
 				<a
 					class="action"
-					href=${buildTranslationRequestUrl(support.code, name)}
+					href=${nudge.url}
 					target="_blank"
 					rel="noopener noreferrer"
 					>${this.localize("language_request.action")}</a
@@ -97,7 +116,7 @@ export class EppLanguageBanner extends LitElement {
 				<epp-icon-button
 					icon="mdi:close"
 					.label=${this.localize("language_request.dismiss")}
-					@click=${(e: Event) => this._dismiss(e, support.code)}
+					@click=${(e: Event) => this._dismiss(e, nudge.code)}
 				></epp-icon-button>
 			</div>
 		`;

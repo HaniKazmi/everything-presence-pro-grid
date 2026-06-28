@@ -53,42 +53,34 @@ describe("lib/storage", () => {
 		});
 	});
 
-	afterEach(() => {
-		localStorage.clear();
-	});
-});
-
-describe("lib/storage — language-request dismissal", () => {
-	beforeEach(() => {
-		localStorage.clear();
-	});
-
-	it("returns null when nothing is stored", () => {
-		expect(readDismissedLangRequest()).toBeNull();
-	});
-
-	it("round-trips the dismissed locale code", () => {
-		persistDismissedLangRequest("pt-BR");
-		expect(localStorage.getItem(STORAGE_KEY_LANG_REQUEST_DISMISSED)).toBe(
-			"pt-BR",
-		);
-		expect(readDismissedLangRequest()).toBe("pt-BR");
-	});
-
-	it("returns null when localStorage throws on read", () => {
-		const spy = vi.spyOn(localStorage, "getItem").mockImplementation(() => {
-			throw new Error("blocked");
+	describe("language-request dismissal", () => {
+		it("returns null when nothing is stored", () => {
+			expect(readDismissedLangRequest()).toBeNull();
 		});
-		expect(readDismissedLangRequest()).toBeNull();
-		spy.mockRestore();
-	});
 
-	it("swallows errors when localStorage throws on write", () => {
-		const spy = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
-			throw new Error("blocked");
+		it("round-trips the dismissed locale code", () => {
+			persistDismissedLangRequest("pt-BR");
+			expect(localStorage.getItem(STORAGE_KEY_LANG_REQUEST_DISMISSED)).toBe(
+				"pt-BR",
+			);
+			expect(readDismissedLangRequest()).toBe("pt-BR");
 		});
-		expect(() => persistDismissedLangRequest("fr")).not.toThrow();
-		spy.mockRestore();
+
+		it("returns null when localStorage throws on read", () => {
+			const spy = vi.spyOn(localStorage, "getItem").mockImplementation(() => {
+				throw new Error("blocked");
+			});
+			expect(readDismissedLangRequest()).toBeNull();
+			spy.mockRestore();
+		});
+
+		it("swallows errors when localStorage throws on write", () => {
+			const spy = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+				throw new Error("blocked");
+			});
+			expect(() => persistDismissedLangRequest("fr")).not.toThrow();
+			spy.mockRestore();
+		});
 	});
 
 	afterEach(() => {

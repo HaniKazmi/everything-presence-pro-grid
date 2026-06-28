@@ -2312,15 +2312,15 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 			border: none;
 			border-top: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
 		}
-	`,e([ue({attribute:!1})],bs.prototype,"items",void 0),e([Ae()],bs.prototype,"_open",void 0),customElements.get("epp-kebab-menu")||customElements.define("epp-kebab-menu",bs);const ys="epp_selected_mac";function Cs(){try{return localStorage.getItem(ys)}catch{return null}}function xs(e){try{""===e?localStorage.removeItem(ys):localStorage.setItem(ys,e)}catch{}}const Bs="epp_lang_request_dismissed";class Ss extends ce{constructor(){super(...arguments),this._dismissedCode=null}render(){const e=function(e){const t=e?.locale?.language??e?.language??"";if(!t)return{available:!0,code:"",baseCode:""};const i=t.split("-")[0];return{available:Boolean(Kt[t])||Boolean(Kt[i]),code:t,baseCode:i}}(this.hass);if(e.available)return J;if(this._dismissedCode===e.code)return J;if(function(){try{return localStorage.getItem(Bs)}catch{return null}}()===e.code)return J;const t=function(e){if(!e)return e;try{const t=new Intl.DisplayNames([e],{type:"language"}).of(e);if(t)return t}catch{}try{const t=new Intl.DisplayNames(["en"],{type:"language"}).of(e);if(t)return t}catch{}return e}(e.code);return N`
+	`,e([ue({attribute:!1})],bs.prototype,"items",void 0),e([Ae()],bs.prototype,"_open",void 0),customElements.get("epp-kebab-menu")||customElements.define("epp-kebab-menu",bs);const ys="epp_selected_mac";function Cs(){try{return localStorage.getItem(ys)}catch{return null}}function xs(e){try{""===e?localStorage.removeItem(ys):localStorage.setItem(ys,e)}catch{}}const Bs="epp_lang_request_dismissed";class Ss extends ce{constructor(){super(...arguments),this._dismissedCode=null,this._nudge=null}willUpdate(e){if(!e.has("hass"))return;const t=function(e){const t=e?.locale?.language??e?.language??"";if(!t)return{available:!0,code:"",baseCode:""};const i=t.split("-")[0];return{available:Boolean(Kt[t])||Boolean(Kt[i]),code:t,baseCode:i}}(this.hass);if(t.available||function(){try{return localStorage.getItem(Bs)}catch{return null}}()===t.code)return void(this._nudge=null);const i=function(e){if(!e)return e;try{const t=new Intl.DisplayNames([e],{type:"language"}).of(e);if(t)return t}catch{}try{const t=new Intl.DisplayNames(["en"],{type:"language"}).of(e);if(t)return t}catch{}return e}(t.code);var s,r;this._nudge={code:t.code,name:i,url:(s=t.code,r=i,`https://github.com/clintongormley/everything-presence-pro-grid/issues/new?${new URLSearchParams({template:"translation_request.md",labels:"translation",title:`Translation request: ${r} (${s})`}).toString()}`)}}render(){const e=this._nudge;return e&&this._dismissedCode!==e.code?N`
 			<div class="banner" role="status">
 				<ha-icon icon="mdi:translate"></ha-icon>
 				<span class="message"
-					>${this.localize("language_request.message",{language:t})}</span
+					>${this.localize("language_request.message",{language:e.name})}</span
 				>
 				<a
 					class="action"
-					href=${i=e.code,s=t,`https://github.com/clintongormley/everything-presence-pro-grid/issues/new?${new URLSearchParams({template:"translation_request.md",labels:"translation",title:`Translation request: ${s} (${i})`}).toString()}`}
+					href=${e.url}
 					target="_blank"
 					rel="noopener noreferrer"
 					>${this.localize("language_request.action")}</a
@@ -2331,7 +2331,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 					@click=${t=>this._dismiss(t,e.code)}
 				></epp-icon-button>
 			</div>
-		`;var i,s}_dismiss(e,t){e.stopPropagation(),function(e){try{localStorage.setItem(Bs,e)}catch{}}(t),this._dismissedCode=t}}Ss.styles=a`
+		`:J}_dismiss(e,t){e.stopPropagation(),function(e){try{localStorage.setItem(Bs,e)}catch{}}(t),this._dismissedCode=t}}Ss.styles=a`
 		:host {
 			display: block;
 		}
@@ -2363,7 +2363,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 		.action:hover {
 			text-decoration: underline;
 		}
-	`,e([ue({attribute:!1})],Ss.prototype,"hass",void 0),e([ue({attribute:!1})],Ss.prototype,"localize",void 0),e([Ae()],Ss.prototype,"_dismissedCode",void 0),customElements.get("epp-language-banner")||customElements.define("epp-language-banner",Ss);class Is extends ce{constructor(){super(...arguments),this.sensorState={occupancy:!1,static_presence:!1,motion_presence:!1,target_presence:!1,mmwave:!1,illuminance:null,temperature:null,humidity:null,co2:null},this.zoneState={occupancy:{},target_counts:{},frame_count:0},this.zoneConfigs=[],this.hasPerspective=!1,this.localize=Jt,this.presenceKeys=null,this.showZones=!0,this.envKeys=null,this.interactive=!0}_renderRow(e){const t=void 0!==e.color?N`
+	`,e([ue({attribute:!1})],Ss.prototype,"hass",void 0),e([ue({attribute:!1})],Ss.prototype,"localize",void 0),e([Ae()],Ss.prototype,"_dismissedCode",void 0),e([Ae()],Ss.prototype,"_nudge",void 0),customElements.get("epp-language-banner")||customElements.define("epp-language-banner",Ss);class Is extends ce{constructor(){super(...arguments),this.sensorState={occupancy:!1,static_presence:!1,motion_presence:!1,target_presence:!1,mmwave:!1,illuminance:null,temperature:null,humidity:null,co2:null},this.zoneState={occupancy:{},target_counts:{},frame_count:0},this.zoneConfigs=[],this.hasPerspective=!1,this.localize=Jt,this.presenceKeys=null,this.showZones=!0,this.envKeys=null,this.interactive=!0}_renderRow(e){const t=void 0!==e.color?N`
 					<div
 						class="live-sensor-dot"
 						style=${e.color?`background: ${e.color};${e.on?` box-shadow: 0 0 6px 2px ${e.color};`:""}`:"background: #fff; border: 1px solid #ccc;"+(e.on?" box-shadow: 0 0 6px 2px #999;":"")}
