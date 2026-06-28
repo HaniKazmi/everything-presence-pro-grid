@@ -156,7 +156,10 @@ export function languageDisplayName(code: string): string {
 	if (!code) return code;
 	try {
 		const native = new Intl.DisplayNames([code], { type: "language" }).of(code);
-		if (native) return native;
+		// `Intl.DisplayNames` defaults to fallback:"code", so an unknown tag
+		// echoes the code back. Treat that as "no native name" so the English
+		// fallback below still gets a chance (e.g. "tlh" → "Klingon").
+		if (native && native !== code) return native;
 	} catch {
 		/* old runtime / invalid code — fall through */
 	}

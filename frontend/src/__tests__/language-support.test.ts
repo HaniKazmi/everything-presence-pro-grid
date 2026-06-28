@@ -80,6 +80,24 @@ describe("languageDisplayName", () => {
 		spy.mockRestore();
 	});
 
+	it("falls back to the English name when the native lookup just echoes the code", () => {
+		// Intl.DisplayNames defaults to fallback:"code": an unknown tag returns
+		// the code itself. The native attempt must not accept that — the English
+		// name should still win (e.g. "tlh" → "Klingon").
+		let callCount = 0;
+		const spy = vi.spyOn(Intl, "DisplayNames").mockImplementation(function (
+			this: unknown,
+		) {
+			callCount++;
+			// 1st call = native ([code]) echoes the code; 2nd = English name.
+			return {
+				of: () => (callCount === 1 ? "tlh" : "Klingon"),
+			} as unknown as Intl.DisplayNames;
+		});
+		expect(languageDisplayName("tlh")).toBe("Klingon");
+		spy.mockRestore();
+	});
+
 	it("returns an empty string unchanged", () => {
 		expect(languageDisplayName("")).toBe("");
 	});
