@@ -61,6 +61,7 @@ appropriate. The integration manages enable/disable/rename.
 | Heap Largest Block  | sensor        | largest free contiguous block — TLS handshake limiter (diagnostic)         |
 | Heap Min Free       | sensor        | all-time low-water mark via `heap_caps_get_minimum_free_size` (diagnostic) |
 | Loop Time           | sensor        | ESPHome main loop time in ms (diagnostic)                                  |
+| WiFi Signal         | sensor        | RSSI in dBm via `wifi_signal` — wifi-ble-co2 variant (diagnostic, 60s)     |
 
 ### Disabled by Default
 
