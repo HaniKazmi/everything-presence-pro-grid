@@ -45,6 +45,20 @@ wifi:
     then:
       - script.execute: control_leds
 
+sensor:
+  # RSSI as a diagnostic entity so a device dropping off WiFi can be diagnosed
+  # from its real mounting location — signal otherwise only shows in the serial
+  # connect banner, which requires tethering and so moves the device away from
+  # the spot whose coverage you're measuring. Lives in this wifi variant, not
+  # the shared base, because `wifi_signal` requires a `wifi:` component and the
+  # ethernet variant has none (it would fail that variant's config). The
+  # platform supplies device_class/unit (dBm)/state_class itself.
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    id: wifi_signal_db
+    entity_category: diagnostic
+    update_interval: 60s
+
 improv_serial:
   next_url: http://{{ip_address}}
 
