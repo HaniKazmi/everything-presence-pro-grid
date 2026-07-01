@@ -541,7 +541,7 @@ export function estimateTextBox(
 	fontSizeMm: number,
 	bold: boolean,
 ): { width: number; height: number } {
-	const lines = (text && text.length > 0 ? text : " ").split("\n");
+	const lines = text.split("\n");
 	const maxChars = lines.reduce((m, l) => Math.max(m, l.length), 1);
 	const charW =
 		fontSizeMm * TEXT_CHAR_WIDTH_RATIO * (bold ? TEXT_BOLD_WIDTH_FACTOR : 1);

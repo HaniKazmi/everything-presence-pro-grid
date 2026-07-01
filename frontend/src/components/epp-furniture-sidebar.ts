@@ -4,6 +4,8 @@ import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 import { FLOOR_PLAN_SVGS, FURNITURE_CATALOG } from "../constants.js";
 import {
 	clampTextSizeMm,
+	DEFAULT_TEXT_FONT,
+	DEFAULT_TEXT_SIZE_MM,
 	type FurnitureItem,
 	type FurnitureSticker,
 	filterAndSortStickers,
@@ -43,6 +45,10 @@ const TEXT_BG_PRESETS = [
 	"#212121",
 	"#b0bec5",
 ];
+const TEXT_FONT_OPTIONS = TEXT_FONTS.map((f) => ({
+	value: f.key,
+	label: f.label,
+}));
 
 export class EppFurnitureSidebar extends LitElement {
 	@property({ attribute: false }) furniture: FurnitureItem[] = [];
@@ -404,10 +410,6 @@ export class EppFurnitureSidebar extends LitElement {
 	}
 
 	private _renderTextEditor(item: FurnitureItem) {
-		const fontOptions = TEXT_FONTS.map((f) => ({
-			value: f.key,
-			label: f.label,
-		}));
 		const useHaSelect = !!customElements.get("ha-select");
 		return html`
 			<div class="furn-text-editor">
@@ -432,8 +434,8 @@ export class EppFurnitureSidebar extends LitElement {
 						useHaSelect
 							? html`<ha-select
 									class="furn-font"
-									.value=${item.fontFamily ?? "arial"}
-									.options=${fontOptions}
+									.value=${item.fontFamily ?? DEFAULT_TEXT_FONT}
+									.options=${TEXT_FONT_OPTIONS}
 									@selected=${(e: CustomEvent) => {
 										const v = (e.target as any).value;
 										if (v) this._fireUpdate(item.id, { fontFamily: v });
@@ -448,9 +450,9 @@ export class EppFurnitureSidebar extends LitElement {
 											fontFamily: (e.target as HTMLSelectElement).value,
 										})}
 								>
-									${fontOptions.map(
+									${TEXT_FONT_OPTIONS.map(
 										(o) =>
-											html`<option value=${o.value} ?selected=${o.value === (item.fontFamily ?? "arial")}>${o.label}</option>`,
+											html`<option value=${o.value} ?selected=${o.value === (item.fontFamily ?? DEFAULT_TEXT_FONT)}>${o.label}</option>`,
 									)}
 								</select>`
 					}
@@ -462,7 +464,7 @@ export class EppFurnitureSidebar extends LitElement {
 						max="300"
 						step="1"
 						.label=${this.localize("text_label.size_cm")}
-						.value=${String(Math.round((item.fontSize ?? 200) / 10))}
+						.value=${String(Math.round((item.fontSize ?? DEFAULT_TEXT_SIZE_MM) / 10))}
 						@value-changed=${(e: CustomEvent) => {
 							const cm = parseFloat(e.detail?.value);
 							if (!Number.isFinite(cm)) return;

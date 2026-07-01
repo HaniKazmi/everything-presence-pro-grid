@@ -289,6 +289,18 @@ export class EppFurnitureOverlay extends LitElement {
 		this._fireEvent("furniture-delete", id);
 	}
 
+	private _renderSelectionControls(item: FurnitureItem) {
+		return html`
+			<div class="furn-rotate-stem"></div>
+			<div class="furn-rotate-handle" @pointerdown=${(e: PointerEvent) => this._onRotatePointerDown(e, item.id)}>
+				<ha-icon icon="mdi:rotate-right" style="--mdc-icon-size: 14px;"></ha-icon>
+			</div>
+			<div class="furn-delete-btn" @pointerdown=${(e: PointerEvent) => this._onDeletePointerDown(e, item.id)}>
+				<ha-icon icon="mdi:close" style="--mdc-icon-size: 14px;"></ha-icon>
+			</div>
+		`;
+	}
+
 	render() {
 		if (!this.furniture.length) return nothing;
 
@@ -301,8 +313,6 @@ export class EppFurnitureOverlay extends LitElement {
 				${this.furniture.map((item) => {
 					const leftPx = (startCol - this.minCol) * step + this._mmToPx(item.x);
 					const topPx = (0 - this.minRow) * step + this._mmToPx(item.y);
-					const wPx = this._mmToPx(item.width);
-					const hPx = this._mmToPx(item.height);
 					const selected = this.selectedFurnitureId === item.id;
 					const tone = this.furnitureTones?.get(item.id);
 
@@ -328,23 +338,13 @@ export class EppFurnitureOverlay extends LitElement {
 								@pointerdown=${(e: PointerEvent) => this._onItemPointerDown(e, item.id)}
 							>
 								<span class="furniture-text-content" style="${contentStyle}">${item.text ?? ""}</span>
-								${
-									selected
-										? html`
-											<div class="furn-rotate-stem"></div>
-											<div class="furn-rotate-handle" @pointerdown=${(e: PointerEvent) => this._onRotatePointerDown(e, item.id)}>
-												<ha-icon icon="mdi:rotate-right" style="--mdc-icon-size: 14px;"></ha-icon>
-											</div>
-											<div class="furn-delete-btn" @pointerdown=${(e: PointerEvent) => this._onDeletePointerDown(e, item.id)}>
-												<ha-icon icon="mdi:close" style="--mdc-icon-size: 14px;"></ha-icon>
-											</div>
-										`
-										: nothing
-								}
+								${selected ? this._renderSelectionControls(item) : nothing}
 							</div>
 						`;
 					}
 
+					const wPx = this._mmToPx(item.width);
+					const hPx = this._mmToPx(item.height);
 					return html`
 						<div
 							class="furniture-item${selected ? " selected" : ""}${
@@ -384,15 +384,7 @@ export class EppFurnitureOverlay extends LitElement {
 												></div>
 											`,
 										)}
-										<!-- Rotate handle with stem -->
-										<div class="furn-rotate-stem"></div>
-										<div class="furn-rotate-handle" @pointerdown=${(e: PointerEvent) => this._onRotatePointerDown(e, item.id)}>
-											<ha-icon icon="mdi:rotate-right" style="--mdc-icon-size: 14px;"></ha-icon>
-										</div>
-										<!-- Delete button -->
-										<div class="furn-delete-btn" @pointerdown=${(e: PointerEvent) => this._onDeletePointerDown(e, item.id)}>
-											<ha-icon icon="mdi:close" style="--mdc-icon-size: 14px;"></ha-icon>
-										</div>
+										${this._renderSelectionControls(item)}
 									`
 									: nothing
 							}

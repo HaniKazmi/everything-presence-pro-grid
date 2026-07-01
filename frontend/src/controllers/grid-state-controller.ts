@@ -12,6 +12,8 @@ import {
 	computeFurnitureRotation,
 	createFurnitureItem,
 	createTextItem,
+	DEFAULT_TEXT_ALIGN,
+	DEFAULT_TEXT_FONT,
 	DEFAULT_TEXT_SIZE_MM,
 	estimateTextBox,
 	type FurnitureItem,
@@ -116,9 +118,9 @@ export function serializeFurniture(f: FurnitureItem): Record<string, unknown> {
 	};
 	if (f.type === "text") {
 		out.text = f.text ?? "";
-		out.fontFamily = f.fontFamily ?? "arial";
-		out.fontSize = f.fontSize ?? 200;
-		out.align = f.align ?? "center";
+		out.fontFamily = f.fontFamily ?? DEFAULT_TEXT_FONT;
+		out.fontSize = f.fontSize ?? DEFAULT_TEXT_SIZE_MM;
+		out.align = f.align ?? DEFAULT_TEXT_ALIGN;
 		out.bold = f.bold ?? false;
 		out.italic = f.italic ?? false;
 		if (typeof f.color === "string") out.color = f.color;
@@ -318,17 +320,25 @@ export class GridStateController implements ReactiveController {
 	// Furniture management
 	// =====================================================================
 
-	addFurniture(sticker: FurnitureSticker): void {
-		const id = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-		const item = createFurnitureItem(
-			sticker,
-			this.host._roomWidth,
-			this.host._roomDepth,
-			id,
-		);
+	private _newFurnitureId(): string {
+		return `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+	}
+
+	private _addAndSelectFurniture(item: FurnitureItem): void {
 		this.host._furniture = [...this.host._furniture, item];
 		this.host._selectedFurnitureId = item.id;
 		this.host._dirty = true;
+	}
+
+	addFurniture(sticker: FurnitureSticker): void {
+		this._addAndSelectFurniture(
+			createFurnitureItem(
+				sticker,
+				this.host._roomWidth,
+				this.host._roomDepth,
+				this._newFurnitureId(),
+			),
+		);
 	}
 
 	addCustomFurniture(icon: string): void {
@@ -343,16 +353,14 @@ export class GridStateController implements ReactiveController {
 	}
 
 	addTextFurniture(text: string): void {
-		const id = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-		const item = createTextItem(
-			text,
-			this.host._roomWidth,
-			this.host._roomDepth,
-			id,
+		this._addAndSelectFurniture(
+			createTextItem(
+				text,
+				this.host._roomWidth,
+				this.host._roomDepth,
+				this._newFurnitureId(),
+			),
 		);
-		this.host._furniture = [...this.host._furniture, item];
-		this.host._selectedFurnitureId = item.id;
-		this.host._dirty = true;
 	}
 
 	removeFurniture(id: string): void {

@@ -5,6 +5,8 @@ import {
 	DEFAULT_TEXT_FONT,
 	DEFAULT_TEXT_SIZE_MM,
 	TEXT_FONTS,
+	TEXT_ICON,
+	TEXT_LABEL_KEY,
 } from "./furniture.js";
 import {
 	GRID_CELL_COUNT,
@@ -171,13 +173,10 @@ export function parseFurniture(rawFurniture: unknown): FurnitureItem[] {
 		const base: FurnitureItem = {
 			id: toNonEmptyString(f?.id, `f_load_${i}`),
 			type,
-			icon: toNonEmptyString(
-				f?.icon,
-				type === "text" ? "mdi:format-text" : "mdi:help",
-			),
+			icon: toNonEmptyString(f?.icon, type === "text" ? TEXT_ICON : "mdi:help"),
 			label: toNonEmptyString(
 				f?.label,
-				type === "text" ? "text_label.label" : "Item",
+				type === "text" ? TEXT_LABEL_KEY : "Item",
 			),
 			x: toFiniteNumber(f?.x, 0),
 			y: toFiniteNumber(f?.y, 0),
