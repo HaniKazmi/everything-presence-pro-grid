@@ -361,6 +361,20 @@ describe("Editor view event wiring", () => {
 		expect(spy).toHaveBeenCalledWith({ type: "svg", icon: "armchair" });
 	});
 
+	it("furniture-add-text calls _addTextFurniture", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._view = "editor";
+		a._sidebarTab = "furniture";
+		const container = renderPanel(el);
+		const spy = vi.spyOn(el as any, "_addTextFurniture");
+		const sidebar = container.querySelector("epp-furniture-sidebar")!;
+		sidebar.dispatchEvent(
+			new CustomEvent("furniture-add-text", { bubbles: true }),
+		);
+		expect(spy).toHaveBeenCalled();
+	});
+
 	it("furniture-remove calls _removeFurniture", () => {
 		const el = createPanel();
 		const a = el as any;
