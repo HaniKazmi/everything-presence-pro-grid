@@ -493,6 +493,25 @@ void EPPComponent::loop() {
     last_heatmap_decay_ms_ = now;
     heatmap_.decay(std::pow(0.5f, 1.0f / (float) HEATMAP_HALF_LIFE_TICKS));
   }
+
+  // Timer 7: Heatmap publish (base64 of encode_normalized(), user Hz)
+  if (heatmap_interval_ms_ > 0 && heatmap_sensor_ != nullptr &&
+      now - last_heatmap_publish_ms_ >= heatmap_interval_ms_) {
+    last_heatmap_publish_ms_ = now;
+    uint8_t norm[GRID_CELL_COUNT];
+    heatmap_.encode_normalized(norm);
+    // base64 of 400 bytes -> 536 chars + NUL; GRID_BASE64_MAX is the same
+    // ceil(n/3)*4 + slack formula already used for the set_grid decode path.
+    char encoded[GRID_BASE64_MAX];
+    size_t encoded_len = 0;
+    int ret = mbedtls_base64_encode(reinterpret_cast<unsigned char *>(encoded), sizeof(encoded),
+                                    &encoded_len, norm, sizeof(norm));
+    if (ret != 0) {
+      ESP_LOGE(TAG, "Heatmap base64 encode failed (error %d)", ret);
+    } else {
+      heatmap_sensor_->publish_state(std::string(encoded, encoded_len));
+    }
+  }
 }
 
 float EPPComponent::get_setup_priority() const {
@@ -512,6 +531,7 @@ void EPPComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "    device_tracking:  %s", device_tracking_sensor_ ? "yes" : "no");
   ESP_LOGCONFIG(TAG, "    firmware_version: %s", firmware_version_sensor_ ? "yes" : "no");
   ESP_LOGCONFIG(TAG, "    zone_state:       %s", zone_state_sensor_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "    heatmap:          %s", heatmap_sensor_ ? "yes" : "no");
   ESP_LOGCONFIG(TAG, "    static_input:     %s", static_presence_sensor_ ? "yes" : "no");
   ESP_LOGCONFIG(TAG, "    motion_input:     %s", motion_presence_sensor_ ? "yes" : "no");
   ESP_LOGCONFIG(TAG, "    target_count:     %s", target_count_sensor_ ? "yes" : "no");

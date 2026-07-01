@@ -77,6 +77,7 @@ class EPPComponent : public esphome::Component {
   void set_zone_state_sensor(esphome::text_sensor::TextSensor *sensor) {
     zone_state_sensor_ = sensor;
   }
+  void set_heatmap_sensor(esphome::text_sensor::TextSensor *sensor) { heatmap_sensor_ = sensor; }
   void set_entity_target_interval(uint32_t ms) { entity_target_interval_ms_ = ms; }
   void set_entity_zone_interval(uint32_t ms) { entity_zone_interval_ms_ = ms; }
   void set_display_interval(uint32_t ms) { display_interval_ms_ = ms; }
@@ -209,6 +210,9 @@ class EPPComponent : public esphome::Component {
 
   // Zone state text sensor (JSON at 1Hz)
   esphome::text_sensor::TextSensor *zone_state_sensor_{nullptr};
+
+  // Heatmap text sensor (base64 of encode_normalized(), gated by heatmap_interval_ms_)
+  esphome::text_sensor::TextSensor *heatmap_sensor_{nullptr};
 
   // Sensor presence inputs (references to raw hardware binary sensors)
   esphome::binary_sensor::BinarySensor *static_presence_sensor_{nullptr};
