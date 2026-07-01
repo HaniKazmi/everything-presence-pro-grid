@@ -2,7 +2,7 @@ import { GRID_CELL_MM } from "./grid.js";
 
 export interface FurnitureItem {
 	id: string;
-	type: "icon" | "svg";
+	type: "icon" | "svg" | "text";
 	icon: string;
 	label: string;
 	x: number; // mm from left edge of room
@@ -11,6 +11,15 @@ export interface FurnitureItem {
 	height: number; // mm
 	rotation: number; // degrees
 	lockAspect: boolean;
+	// Text-label fields (present only when type === "text"):
+	text?: string;
+	fontFamily?: string; // a TEXT_FONTS key
+	fontSize?: number; // mm (real-world text height), rendered via mmToPx
+	color?: string; // #RRGGBB; undefined => themed var(--epp-text)
+	bold?: boolean;
+	italic?: boolean;
+	align?: "left" | "center" | "right";
+	background?: string; // #RRGGBB box fill; undefined => no background box
 }
 
 export interface FurnitureSticker {
@@ -462,4 +471,120 @@ export function snapRotation(angle: number, step = 15, threshold = 7): number {
 	let diff = Math.abs(a - nearest);
 	if (diff > 180) diff = 360 - diff;
 	return diff < threshold ? nearest : Math.round(a) % 360;
+}
+
+// Curated system fonts for text labels. `key` is stored (validated by the
+// backend enum _FURNITURE_FONT_KEYS — keep in sync); `stack` is the CSS
+// font-family applied at render; `label` is a proper-noun font name (not
+// translated). Generic fallbacks keep text readable if a font is absent.
+export const TEXT_FONTS: { key: string; label: string; stack: string }[] = [
+	{ key: "arial", label: "Arial", stack: "Arial, Helvetica, sans-serif" },
+	{ key: "verdana", label: "Verdana", stack: "Verdana, Geneva, sans-serif" },
+	{ key: "tahoma", label: "Tahoma", stack: "Tahoma, 'Segoe UI', sans-serif" },
+	{
+		key: "georgia",
+		label: "Georgia",
+		stack: "Georgia, 'Times New Roman', serif",
+	},
+	{
+		key: "times",
+		label: "Times New Roman",
+		stack: "'Times New Roman', Times, serif",
+	},
+	{
+		key: "courier",
+		label: "Courier New",
+		stack: "'Courier New', Courier, monospace",
+	},
+	{
+		key: "trebuchet",
+		label: "Trebuchet MS",
+		stack: "'Trebuchet MS', Verdana, sans-serif",
+	},
+	{
+		key: "comic",
+		label: "Comic Sans MS",
+		stack: "'Comic Sans MS', 'Comic Sans', cursive",
+	},
+];
+
+export const DEFAULT_TEXT_FONT = "arial";
+export const DEFAULT_TEXT_SIZE_MM = 200;
+export const DEFAULT_TEXT_ALIGN: "left" | "center" | "right" = "center";
+export const TEXT_SIZE_MIN_MM = 30;
+export const TEXT_SIZE_MAX_MM = 3000;
+export const TEXT_LABEL_KEY = "text_label.label";
+export const TEXT_ICON = "mdi:format-text";
+
+/** CSS font-family stack for a TEXT_FONTS key; first font as fallback. */
+export function fontStack(key: string): string {
+	return (TEXT_FONTS.find((f) => f.key === key) ?? TEXT_FONTS[0]).stack;
+}
+
+/** Clamp a text size (mm) into [TEXT_SIZE_MIN_MM, TEXT_SIZE_MAX_MM]. */
+export function clampTextSizeMm(mm: number): number {
+	if (!Number.isFinite(mm)) return DEFAULT_TEXT_SIZE_MM;
+	return Math.min(TEXT_SIZE_MAX_MM, Math.max(TEXT_SIZE_MIN_MM, mm));
+}
+
+// Deterministic estimate of a label's room-space bounding box (mm). The
+// on-screen box auto-hugs the text via CSS (width:max-content), so this is
+// used only for drag clamping and out-of-grid filtering — deliberately a
+// little generous (conservative) so a label near the edge is never wrongly
+// dropped on save. Ratios approximate average glyph advance / line height.
+const TEXT_CHAR_WIDTH_RATIO = 0.62;
+const TEXT_LINE_HEIGHT_RATIO = 1.3;
+const TEXT_BOLD_WIDTH_FACTOR = 1.05;
+
+export function estimateTextBox(
+	text: string,
+	fontSizeMm: number,
+	bold: boolean,
+): { width: number; height: number } {
+	const lines = (text && text.length > 0 ? text : " ").split("\n");
+	const maxChars = lines.reduce((m, l) => Math.max(m, l.length), 1);
+	const charW =
+		fontSizeMm * TEXT_CHAR_WIDTH_RATIO * (bold ? TEXT_BOLD_WIDTH_FACTOR : 1);
+	const width = Math.max(fontSizeMm, maxChars * charW);
+	const height = Math.max(
+		fontSizeMm,
+		lines.length * fontSizeMm * TEXT_LINE_HEIGHT_RATIO,
+	);
+	return { width: Math.round(width), height: Math.round(height) };
+}
+
+/**
+ * Create a new text-label furniture item, centered in the room.
+ *
+ * @param text Initial (already-localized) label text
+ * @param roomWidth Room width in mm
+ * @param roomDepth Room depth in mm
+ * @param id Unique id (pass a generated id)
+ */
+export function createTextItem(
+	text: string,
+	roomWidth: number,
+	roomDepth: number,
+	id: string,
+): FurnitureItem {
+	const fontSize = DEFAULT_TEXT_SIZE_MM;
+	const { width, height } = estimateTextBox(text, fontSize, false);
+	return {
+		id,
+		type: "text",
+		icon: TEXT_ICON,
+		label: TEXT_LABEL_KEY,
+		x: Math.max(0, (roomWidth - width) / 2),
+		y: Math.max(0, (roomDepth - height) / 2),
+		width,
+		height,
+		rotation: 0,
+		lockAspect: false,
+		text,
+		fontFamily: DEFAULT_TEXT_FONT,
+		fontSize,
+		align: DEFAULT_TEXT_ALIGN,
+		bold: false,
+		italic: false,
+	};
 }
