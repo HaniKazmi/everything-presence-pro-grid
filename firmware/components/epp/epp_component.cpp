@@ -167,6 +167,14 @@ void EPPComponent::loop() {
 
     const auto &result = zone_engine_.tick(zone_input, ts, sensor_input);
 
+    // Heatmap: bump the cell each validly-detected target occupies this frame.
+    for (int i = 0; i < epp::MAX_TARGETS; i++) {
+      const auto &tw = zone_input.targets[i];
+      if (!tw.active) continue;
+      int cell = grid_.xy_to_cell(tw.median_x, tw.median_y);
+      if (cell >= 0 && grid_.cell_is_room(cell)) heatmap_.bump(cell);
+    }
+
     // Output zone engine log entries immediately (before throttle may overwrite)
     for (int i = 0; i < result.log_count; ++i) {
       if (result.log[i].level == epp::LogLevel::INFO) {
@@ -476,6 +484,15 @@ void EPPComponent::loop() {
       }
     }
   }
+
+  // Timer 6: Heatmap decay — every 5 min, multiply all cells so activity
+  // fades with a ~14-day half-life. 4032 five-minute ticks == 14 days.
+  static constexpr uint32_t HEATMAP_DECAY_INTERVAL_MS = 5u * 60u * 1000u;
+  static constexpr uint32_t HEATMAP_HALF_LIFE_TICKS = 4032u;
+  if (now - last_heatmap_decay_ms_ >= HEATMAP_DECAY_INTERVAL_MS) {
+    last_heatmap_decay_ms_ = now;
+    heatmap_.decay(std::pow(0.5f, 1.0f / (float) HEATMAP_HALF_LIFE_TICKS));
+  }
 }
 
 float EPPComponent::get_setup_priority() const {
@@ -647,6 +664,9 @@ void EPPComponent::set_grid(const std::string &grid_data,
   grid_ = Grid(origin_x, origin_y);
   grid_.load_from_bytes(decoded, GRID_CELL_COUNT);
   zone_engine_.set_grid(grid_);
+
+  // Cell↔space mapping changed — old heat would be misaligned.
+  reset_heatmap_();
 
   int entry_count = 0;
   int interference_count = 0;
@@ -940,6 +960,10 @@ void EPPComponent::save_grid_to_nvs_() {
     return;
   }
   ESP_LOGD(TAG, "Grid saved to NVS (%d bytes)", (int)sizeof(buf));
+}
+
+void EPPComponent::reset_heatmap_() {
+  heatmap_.reset();
 }
 
 void EPPComponent::save_zones_to_nvs_(const std::string &zones_json) {

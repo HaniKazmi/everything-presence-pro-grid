@@ -17,6 +17,7 @@
 #include "epp_relay_publish.h"
 #include "epp_indexed_setter.h"
 #include "epp_event_codec.h"
+#include "epp_heatmap.h"
 
 #include <string>
 
@@ -80,6 +81,7 @@ class EPPComponent : public esphome::Component {
   void set_entity_zone_interval(uint32_t ms) { entity_zone_interval_ms_ = ms; }
   void set_display_interval(uint32_t ms) { display_interval_ms_ = ms; }
   void set_zone_state_interval(uint32_t ms) { zone_state_interval_ms_ = ms; }
+  void set_heatmap_interval(int ms) { heatmap_interval_ms_ = ms < 0 ? 0 : (uint32_t) ms; }
   void set_static_presence_sensor(esphome::binary_sensor::BinarySensor *sensor) {
     static_presence_sensor_ = sensor;
   }
@@ -179,6 +181,9 @@ class EPPComponent : public esphome::Component {
   void save_zones_to_nvs_(const std::string &zones_json);
   void save_relay_to_nvs_();
 
+  // Heatmap
+  void reset_heatmap_();
+
   // Cached perspective blob for NVS (8 coeffs + room_width + room_depth).
   // Doubles as the idempotency cache for set_perspective() — see
   // epp_change_detector.h.
@@ -248,6 +253,14 @@ class EPPComponent : public esphome::Component {
   uint32_t last_display_publish_ms_ = 0;
   uint32_t last_zone_state_ms_ = 0;
   uint32_t last_system_ms_ = 0;
+
+  // Heatmap: per-cell activity accumulator (see epp_heatmap.h). Bumped every
+  // frame in loop(), decayed on a timer, reset whenever the grid changes.
+  epp::Heatmap heatmap_{};
+  uint32_t heatmap_interval_ms_ = 0;      // 0 = don't publish
+  uint32_t last_heatmap_publish_ms_ = 0;
+  uint32_t last_heatmap_decay_ms_ = 0;
+  uint32_t last_heatmap_nvs_ms_ = 0;
 
   // Cached zone result for the publish throttles. Only the fields BEFORE the
   // log buffer are maintained — loop() copies offsetof(ProcessingResult, log)
