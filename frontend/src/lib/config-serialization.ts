@@ -55,7 +55,7 @@ function normalizeType(raw: unknown): Zone0Config["type"] {
 // configuration blob could otherwise inject arbitrary CSS. Only the exact
 // #rrggbb shape produced by the editor is accepted; anything else falls
 // back to the slot's palette default.
-const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
+export const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
 function normalizeColor(raw: unknown, slotIndex: number): string {
 	return typeof raw === "string" && HEX_COLOR_PATTERN.test(raw)

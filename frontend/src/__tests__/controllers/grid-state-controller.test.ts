@@ -2445,4 +2445,41 @@ describe("serializeFurniture text labels", () => {
 		expect("text" in out).toBe(false);
 		expect("fontFamily" in out).toBe(false);
 	});
+
+	it("emits valid #RRGGBB colours but omits empty/malformed ones (backend would reject the whole save)", () => {
+		const base = {
+			id: "t2",
+			type: "text" as const,
+			icon: "mdi:format-text",
+			label: "text_label.label",
+			x: 0,
+			y: 0,
+			width: 3,
+			height: 4,
+			rotation: 0,
+			lockAspect: false,
+			text: "Hi",
+			fontFamily: "arial",
+			fontSize: 200,
+			align: "center" as const,
+			bold: false,
+			italic: false,
+		};
+		const valid = serializeFurniture({
+			...base,
+			color: "#112233",
+			background: "#ffffff",
+		});
+		expect(valid.color).toBe("#112233");
+		expect(valid.background).toBe("#ffffff");
+
+		// Empty string and non-hex must be dropped, not sent to the backend.
+		const bad = serializeFurniture({
+			...base,
+			color: "",
+			background: "red",
+		});
+		expect("color" in bad).toBe(false);
+		expect("background" in bad).toBe(false);
+	});
 });

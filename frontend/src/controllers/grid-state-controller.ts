@@ -6,6 +6,7 @@ import {
 	determineOverlayPaintAction,
 	determinePaintAction,
 } from "../lib/cell-painting.js";
+import { HEX_COLOR_PATTERN } from "../lib/config-serialization.js";
 import {
 	clampFurnitureMove,
 	computeFurnitureResize,
@@ -124,8 +125,17 @@ export function serializeFurniture(f: FurnitureItem): Record<string, unknown> {
 		out.align = f.align ?? DEFAULT_TEXT_ALIGN;
 		out.bold = f.bold ?? false;
 		out.italic = f.italic ?? false;
-		if (typeof f.color === "string") out.color = f.color;
-		if (typeof f.background === "string") out.background = f.background;
+		// Only emit colours matching #RRGGBB. A stray empty/malformed value
+		// (transient UI state, a future picker change) would otherwise be sent
+		// and rejected by the backend's COLOR_HEX_SCHEMA — failing the WHOLE
+		// set_room_layout save, not just this label. Validate at the boundary.
+		if (typeof f.color === "string" && HEX_COLOR_PATTERN.test(f.color))
+			out.color = f.color;
+		if (
+			typeof f.background === "string" &&
+			HEX_COLOR_PATTERN.test(f.background)
+		)
+			out.background = f.background;
 	}
 	return out;
 }
