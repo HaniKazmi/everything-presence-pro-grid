@@ -35,8 +35,8 @@ function openWs(
 	entry.closing = false;
 	conn
 		.subscribeMessage((msg: unknown) => handleMsg(entry, msg), {
-			type: "eppgrid/subscribe_heatmap",
-			mac: deviceId,
+			type: "eppgrid/overview/subscribe_heatmap",
+			device_id: deviceId,
 		})
 		.then((unsub: () => void) => {
 			// If the entry was torn down (last subscriber left, or it was

@@ -18,13 +18,13 @@ function makeHass() {
 }
 
 describe("HeatmapStore", () => {
-	it("sends the subscribe_heatmap message with the device id as mac", async () => {
+	it("sends the overview/subscribe_heatmap message with the device_id", async () => {
 		const h = makeHass();
 		const off = subscribeHeatmap(h.hass, "dev1", vi.fn());
 		await Promise.resolve();
 		expect(h.subscribeMessage).toHaveBeenCalledWith(expect.any(Function), {
-			type: "eppgrid/subscribe_heatmap",
-			mac: "dev1",
+			type: "eppgrid/overview/subscribe_heatmap",
+			device_id: "dev1",
 		});
 		off();
 	});

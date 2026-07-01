@@ -847,7 +847,9 @@ describe("eppgrid-card heatmap wiring", () => {
 		document.body.appendChild(el);
 		await el.updateComplete;
 		expect(
-			h.subs.some((s) => s.params.type === "eppgrid/subscribe_heatmap"),
+			h.subs.some(
+				(s) => s.params.type === "eppgrid/overview/subscribe_heatmap",
+			),
 		).toBe(true);
 	});
 
@@ -863,7 +865,9 @@ describe("eppgrid-card heatmap wiring", () => {
 		document.body.appendChild(el);
 		await el.updateComplete;
 		expect(
-			h.subs.some((s) => s.params.type === "eppgrid/subscribe_heatmap"),
+			h.subs.some(
+				(s) => s.params.type === "eppgrid/overview/subscribe_heatmap",
+			),
 		).toBe(false);
 	});
 
@@ -880,7 +884,9 @@ describe("eppgrid-card heatmap wiring", () => {
 		document.body.appendChild(el);
 		await el.updateComplete;
 		expect(
-			h.subs.some((s) => s.params.type === "eppgrid/subscribe_heatmap"),
+			h.subs.some(
+				(s) => s.params.type === "eppgrid/overview/subscribe_heatmap",
+			),
 		).toBe(false);
 	});
 
@@ -913,7 +919,7 @@ describe("eppgrid-card heatmap wiring", () => {
 		h.emitTo("eppgrid/overview/subscribe", { snapshot: CALIBRATED });
 		await el.updateComplete;
 
-		h.emitTo("eppgrid/subscribe_heatmap", { cells: [0, 5, 0, 3] });
+		h.emitTo("eppgrid/overview/subscribe_heatmap", { cells: [0, 5, 0, 3] });
 		h.emitTo("eppgrid/overview/subscribe", {
 			targets: [{ x: 100, y: 200, status: "active" }],
 			sensors: {
@@ -949,7 +955,7 @@ describe("eppgrid-card heatmap wiring", () => {
 		document.body.appendChild(el);
 		await el.updateComplete;
 		const heat = h.subs.find(
-			(s) => s.params.type === "eppgrid/subscribe_heatmap",
+			(s) => s.params.type === "eppgrid/overview/subscribe_heatmap",
 		)!;
 		el.remove();
 		expect(heat.unsub).toHaveBeenCalledTimes(1);
