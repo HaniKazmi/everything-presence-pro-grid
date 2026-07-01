@@ -6,11 +6,11 @@ the problem isn't there, open a GitHub issue.
 
 ## Device keeps going unavailable
 
-Each device has six diagnostic entities under **Settings → Devices & services →
-ESPHome → [your device] → Diagnostic** (filter by Diagnostic in the entity card
-menu). They make it easy to tell whether an "unavailable" episode in HA history
-was a real reboot (memory exhaustion, brownout, watchdog) or just a network
-blip:
+Each device exposes several diagnostic entities under **Settings → Devices &
+services → ESPHome → [your device] → Diagnostic** (filter by Diagnostic in the
+entity card menu). They make it easy to tell whether an "unavailable" episode in
+HA history was a real reboot (memory exhaustion, brownout, watchdog) or just a
+network blip:
 
 - **Heap Free** — current free RAM in bytes.
 - **Heap Largest Block** — biggest contiguous chunk available; lower than
@@ -24,12 +24,15 @@ blip:
     `EXT` (manual restart), `SW_CPU` / `TASK_WDT` / `INT_WDT` /
     `LOAD_PROHIBITED` (firmware crash, often memory-related), `BROWNOUT` (power
     dip).
+- **WiFi Signal** — current signal strength (RSSI) in dBm, on WiFi builds. See
+    [WiFi keeps dropping](#wifi-keeps-dropping) below.
 
 **How to diagnose**: open HA history for **Heap Min Free** and **Uptime**. If
 `Uptime` dropped to 0 around the unavailable window, the device rebooted — check
 `Reset Reason` for the cause. If `Uptime` kept climbing through the unavailable
 window, the device stayed up and you have a network problem (WiFi, router, HA
-connectivity), not a firmware problem.
+connectivity), not a firmware problem — see
+[WiFi keeps dropping](#wifi-keeps-dropping).
 
 A `Heap Min Free` reading below ~5 KB means the device has come close to running
 out of memory at some point this uptime cycle. If reboots correlate, you likely
@@ -74,6 +77,36 @@ isn't a full BLE-off — it stops the active scan and (after the reboot) drops a
 in-flight proxy connections. Most users don't need this knob; it's mostly a
 safety valve if you have heavy proxied-BLE load or are seeing OOM-driven
 reboots.
+
+## WiFi keeps dropping
+
+If `Uptime` keeps climbing but the device still goes unavailable, it's losing
+its network connection rather than rebooting. On WiFi builds the **WiFi Signal**
+diagnostic entity (RSSI, in dBm, updated once a minute) shows how strong the
+connection is *at the device's mounted location* — which is exactly what you
+can't measure by plugging it into a laptop, because that moves it somewhere with
+different reception.
+
+Read it from **Settings → Devices & services → ESPHome → [your device] →
+Diagnostic**. RSSI is negative; closer to zero is stronger:
+
+| WiFi Signal    | Meaning                            |
+| -------------- | ---------------------------------- |
+| Above -60 dBm  | Excellent                          |
+| -60 to -70 dBm | Good                               |
+| -70 to -80 dBm | Marginal — expect occasional drops |
+| Below -80 dBm  | Poor — frequent drops likely       |
+
+If the signal is marginal or poor, the fix is on the network side:
+
+- Move the device closer to your router, or add or relocate a mesh node or
+    access point nearer its mounting spot.
+- On a mesh network, a device parked midway between two nodes can bounce between
+    them — bringing it clearly within range of one node usually settles it.
+- Give the device a fixed DHCP reservation so its IP never changes.
+
+The **WiFi Signal** entity only exists on WiFi builds; the ethernet variant has
+no WiFi radio.
 
 ## Reporting an issue
 

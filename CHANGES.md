@@ -4,6 +4,41 @@ User-facing changes to Everything Presence Pro Grid. For full release assets
 and firmware downloads, see the
 [GitHub releases page](https://github.com/clintongormley/everything-presence-pro-grid/releases).
 
+## v1.5.0 — unreleased
+
+### New features
+
+- **Activity heatmap and movement trails.** The live view and the overview card
+    can now show an on-device activity heatmap — a rolling picture of where
+    movement happens most in the room — plus live movement trails that fade in
+    behind each target as it moves. Toggle the **Heatmap** layer on the live view
+    or in the card editor. Requires updating the device firmware.
+- **Text labels in the furniture layout.** Annotate the layout with free-floating
+    text — room names, captions, notes. Labels scale with the room and support
+    different fonts, real-world sizing, bold and italic, alignment, a text colour
+    (with an auto-contrast option), and an optional background box.
+- **WiFi Signal diagnostic.** WiFi builds now expose a **WiFi Signal** (RSSI)
+    diagnostic entity, so you can read signal strength at the device's mounted
+    location straight from Home Assistant — the quickest way to tell whether a
+    device that keeps dropping off the network has a coverage problem. Requires
+    updating the device firmware.
+
+### Improvements
+
+- **Furniture resizes proportionally by default.** Dragging a **corner** handle
+    keeps a furniture item's proportions; the **edge** handles stretch a single
+    dimension when you need to match a piece that isn't the preset's shape.
+- **Furniture adapts to the room colour.** Furniture icons automatically pick a
+    light or dark shade so they stay legible whatever rest-of-room colour you
+    choose.
+- **Overview card: cleaner out-of-coverage cells.** Cells outside the sensor's
+    coverage fade out on the overview card instead of showing cross-hatching.
+
+### Fixes
+
+- **Overview card keeps its width** when you open its settings in the dashboard
+    editor.
+
 ## v1.4.0 — 2026-06-28
 
 ### Improvements
