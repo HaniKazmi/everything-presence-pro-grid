@@ -460,8 +460,12 @@ export class EppFurnitureSidebar extends LitElement {
 									.label=${this.localize("text_label.font")}
 									.value=${item.fontFamily ?? DEFAULT_TEXT_FONT}
 									.options=${TEXT_FONT_OPTIONS}
-									@selected=${(e: CustomEvent) => {
-										const v = (e.target as any).value;
+									@selected=${(e: CustomEvent<{ value: string }>) => {
+										// ha-select reports the chosen value in e.detail.value; reading
+										// e.target.value here is unreliable (stale at selected-time) and
+										// made the picker snap back to the default. Matches the working
+										// pattern in epp-settings-view / epp-device-source-list.
+										const v = e.detail?.value;
 										if (v) this._fireUpdate(item.id, { fontFamily: v });
 									}}
 									@closed=${(e: Event) => e.stopPropagation()}

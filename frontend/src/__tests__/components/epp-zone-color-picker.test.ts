@@ -1,7 +1,102 @@
 import { describe, expect, it, vi } from "vitest";
 import "../../components/epp-zone-color-picker.js";
-import type { EppZoneColorPicker } from "../../components/epp-zone-color-picker.js";
+import {
+	clampPopoverPosition,
+	type EppZoneColorPicker,
+} from "../../components/epp-zone-color-picker.js";
 import { ZONE_PRESET_COLORS } from "../../lib/zone-defaults.js";
+
+describe("clampPopoverPosition", () => {
+	const rect = (left: number, top: number, h = 16) => ({
+		left,
+		top,
+		bottom: top + h,
+	});
+
+	it("anchors under the trigger when it fits", () => {
+		const { left, top } = clampPopoverPosition(
+			rect(100, 100),
+			184,
+			200,
+			1000,
+			800,
+			6,
+			8,
+		);
+		expect(left).toBe(100);
+		expect(top).toBe(122); // bottom (116) + gap (6)
+	});
+
+	it("clamps left when the popover would overflow the right edge", () => {
+		const { left } = clampPopoverPosition(
+			rect(950, 100),
+			184,
+			200,
+			1000,
+			800,
+			6,
+			8,
+		);
+		expect(left).toBe(1000 - 184 - 8); // 808
+	});
+
+	it("clamps left to the margin when the clamped position is still negative", () => {
+		// popover as wide as the viewport → right-edge clamp yields -8, then the
+		// min-margin branch pins it to the margin.
+		const { left } = clampPopoverPosition(
+			rect(100, 100),
+			320,
+			200,
+			320,
+			800,
+			6,
+			8,
+		);
+		expect(left).toBe(8);
+	});
+
+	it("flips above the trigger when it would overflow the bottom", () => {
+		const { top } = clampPopoverPosition(
+			rect(100, 700),
+			184,
+			200,
+			1000,
+			780,
+			6,
+			8,
+		);
+		// below (722) + 200 + 8 > 780 → flip: top(700) - gap(6) - h(200) = 494
+		expect(top).toBe(494);
+	});
+
+	it("stays below when there is no room above either", () => {
+		const { top } = clampPopoverPosition(
+			rect(100, 50),
+			184,
+			200,
+			1000,
+			260,
+			6,
+			8,
+		);
+		// below overflows, but above = 50 - 6 - 200 = -156 < margin → stays below
+		expect(top).toBe(72); // 66 + 6
+	});
+
+	it("falls back to the raw anchor when layout is unmeasurable (0s)", () => {
+		const { left, top } = clampPopoverPosition(
+			rect(950, 700),
+			0,
+			0,
+			0,
+			0,
+			6,
+			8,
+		);
+		expect(left).toBe(950);
+		expect(top).toBe(722); // 716 + 6, no clamping
+	});
+});
 
 async function fixture(
 	props: Partial<EppZoneColorPicker> = {},

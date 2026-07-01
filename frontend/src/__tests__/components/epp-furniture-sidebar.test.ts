@@ -771,8 +771,15 @@ describe("epp-furniture-sidebar text label editor", () => {
 
 			const spy = vi.fn();
 			el.addEventListener("furniture-update", spy);
+			// Real ha-select reports the chosen value in the event detail, not on
+			// e.target — model that so this exercises the actual selected-value read.
 			select.value = "verdana";
-			select.dispatchEvent(new CustomEvent("selected", { bubbles: true }));
+			select.dispatchEvent(
+				new CustomEvent("selected", {
+					detail: { value: "verdana" },
+					bubbles: true,
+				}),
+			);
 			expect(spy).toHaveBeenCalledWith(
 				expect.objectContaining({
 					detail: { id: "t1", updates: { fontFamily: "verdana" } },
@@ -808,8 +815,9 @@ describe("epp-furniture-sidebar text label editor", () => {
 		if (!select) return; // ha-select already claimed by another define elsewhere
 		const spy = vi.fn();
 		el.addEventListener("furniture-update", spy);
-		select.value = "";
-		select.dispatchEvent(new CustomEvent("selected", { bubbles: true }));
+		select.dispatchEvent(
+			new CustomEvent("selected", { detail: { value: "" }, bubbles: true }),
+		);
 		expect(spy).not.toHaveBeenCalled();
 	});
 

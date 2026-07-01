@@ -5,6 +5,48 @@ import { defaultLocalize, type LocalizeFn } from "../localize.js";
 
 // Vertical gap (px) between the trigger dot and the popover below it.
 const POPOVER_GAP_PX = 6;
+// Minimum gap (px) between the popover and the viewport edges when clamping.
+const POPOVER_MARGIN_PX = 8;
+
+/**
+ * Compute the popover's fixed {left, top} so it stays within the viewport.
+ *
+ * Anchors under the trigger, but clamps to the viewport so a trigger near the
+ * right/bottom edge (e.g. the text-label colour pickers in the far-right
+ * sidebar) doesn't push the popover off-screen; flips above the trigger when it
+ * would overflow the bottom. Falls back to the raw anchor when a dimension is
+ * unmeasurable (0 — e.g. happy-dom, which computes no layout). Pure so it can be
+ * unit-tested without a real layout engine.
+ */
+export function clampPopoverPosition(
+	rect: { left: number; top: number; bottom: number },
+	popoverWidth: number,
+	popoverHeight: number,
+	viewportWidth: number,
+	viewportHeight: number,
+	gap = POPOVER_GAP_PX,
+	margin = POPOVER_MARGIN_PX,
+): { left: number; top: number } {
+	let left = rect.left;
+	if (
+		viewportWidth &&
+		popoverWidth &&
+		left + popoverWidth + margin > viewportWidth
+	) {
+		left = viewportWidth - popoverWidth - margin;
+	}
+	if (left < margin) left = margin;
+	let top = rect.bottom + gap;
+	if (
+		viewportHeight &&
+		popoverHeight &&
+		top + popoverHeight + margin > viewportHeight
+	) {
+		const above = rect.top - gap - popoverHeight;
+		if (above >= margin) top = above;
+	}
+	return { left, top };
+}
 
 /**
  * Zone colour picker: a trigger dot that opens a popover of preset swatches
@@ -276,11 +318,20 @@ export class EppZoneColorPicker extends LitElement {
 			".trigger",
 		) as HTMLElement | null;
 		if (!popover || !trigger) return;
-		// Anchor the fixed popover under the trigger. Deliberate read (rect) then
-		// write (inline styles); writes don't touch reactive state, so no loop.
+		// Anchor the fixed popover under the trigger, clamped to the viewport.
+		// Deliberate read (rect/size) then write (inline styles); writes don't
+		// touch reactive state, so no loop. Positioning math lives in the pure
+		// clampPopoverPosition helper (unit-tested; happy-dom computes no layout).
 		const r = trigger.getBoundingClientRect();
-		popover.style.left = `${r.left}px`;
-		popover.style.top = `${r.bottom + POPOVER_GAP_PX}px`;
+		const { left, top } = clampPopoverPosition(
+			r,
+			popover.offsetWidth,
+			popover.offsetHeight,
+			window.innerWidth,
+			window.innerHeight,
+		);
+		popover.style.left = `${left}px`;
+		popover.style.top = `${top}px`;
 	}
 }
 
