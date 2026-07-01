@@ -8333,6 +8333,22 @@ class TestBuildFlags:
         assert result[0]["firmware_channel"] == "stable"
         assert result[0]["model"] == "pro"
 
+    async def test_list_devices_surfaces_heatmap_build_flag(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """list_devices passes through the heatmap build flag without dropping it."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP Device", host="192.168.1.50", available=True)
+        manager._build_flags[mac] = {"heatmap": True}
+
+        result = manager.list_devices()
+        assert len(result) == 1
+        assert result[0]["heatmap"] is True
+
+        # Also test heatmap=False flows through as a boolean (not dropped or coerced).
+        manager._build_flags[mac] = {"heatmap": False}
+        result = manager.list_devices()
+        assert len(result) == 1
+        assert result[0]["heatmap"] is False
+
     async def test_push_config_skips_fetch_when_cached_session(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
