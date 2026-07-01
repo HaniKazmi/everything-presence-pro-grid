@@ -565,8 +565,8 @@ describe("epp-furniture-sidebar text label editor", () => {
 			selectedFurnitureId: "t1",
 		});
 		expect(el.shadowRoot.querySelector(".furn-text-editor")).toBeTruthy();
-		// Not the furniture dims box:
-		expect(el.shadowRoot.querySelector(".furn-dims")).toBeNull();
+		// Not the icon/svg selected-item box (its W/H/rotation editor):
+		expect(el.shadowRoot.querySelector(".furn-selected-info")).toBeNull();
 	});
 
 	it("caps the text input at the backend's 512-char limit", async () => {
@@ -627,12 +627,9 @@ describe("epp-furniture-sidebar text label editor", () => {
 		});
 		const spy = vi.fn();
 		el.addEventListener("furniture-update", spy);
-		el.shadowRoot.querySelector(".furn-size").dispatchEvent(
-			new CustomEvent("value-changed", {
-				detail: { value: "30" },
-				bubbles: true,
-			}),
-		);
+		const size = el.shadowRoot.querySelector(".furn-size") as HTMLInputElement;
+		size.value = "30";
+		size.dispatchEvent(new Event("change", { bubbles: true }));
 		const detail = spy.mock.calls.at(-1)![0].detail;
 		expect(detail.updates.fontSize).toBe(300); // 30cm -> 300mm
 	});
@@ -644,12 +641,9 @@ describe("epp-furniture-sidebar text label editor", () => {
 		});
 		const spy = vi.fn();
 		el.addEventListener("furniture-update", spy);
-		el.shadowRoot.querySelector(".furn-size").dispatchEvent(
-			new CustomEvent("value-changed", {
-				detail: { value: "" },
-				bubbles: true,
-			}),
-		);
+		const size = el.shadowRoot.querySelector(".furn-size") as HTMLInputElement;
+		size.value = "";
+		size.dispatchEvent(new Event("change", { bubbles: true }));
 		expect(spy).not.toHaveBeenCalled();
 	});
 
@@ -751,74 +745,6 @@ describe("epp-furniture-sidebar text label editor", () => {
 		).click();
 		expect(spy).toHaveBeenCalledTimes(1);
 		expect(spy.mock.calls[0][0].detail).toBe("t1");
-	});
-
-	it("uses the ha-select branch when ha-select is registered", async () => {
-		class FakeHaSelect extends HTMLElement {
-			value = "";
-			options: unknown[] = [];
-		}
-		if (!customElements.get("ha-select")) {
-			customElements.define("ha-select", FakeHaSelect);
-		}
-		try {
-			const el = await mountSidebar({
-				furniture: [SEL_TEXT],
-				selectedFurnitureId: "t1",
-			});
-			const select = el.shadowRoot.querySelector("ha-select.furn-font") as any;
-			expect(select).toBeTruthy();
-
-			const spy = vi.fn();
-			el.addEventListener("furniture-update", spy);
-			// Real ha-select reports the chosen value in the event detail, not on
-			// e.target — model that so this exercises the actual selected-value read.
-			select.value = "verdana";
-			select.dispatchEvent(
-				new CustomEvent("selected", {
-					detail: { value: "verdana" },
-					bubbles: true,
-				}),
-			);
-			expect(spy).toHaveBeenCalledWith(
-				expect.objectContaining({
-					detail: { id: "t1", updates: { fontFamily: "verdana" } },
-				}),
-			);
-
-			const outerSpy = vi.fn();
-			document.body.addEventListener("closed", outerSpy);
-			select.dispatchEvent(
-				new CustomEvent("closed", { bubbles: true, composed: true }),
-			);
-			expect(outerSpy).not.toHaveBeenCalled();
-			document.body.removeEventListener("closed", outerSpy);
-		} finally {
-			// Custom element registrations can't be undone; harmless to leave
-			// defined; other tests re-check `customElements.get("ha-select")`.
-		}
-	});
-
-	it("ignores an empty ha-select selection (falsy value)", async () => {
-		class FakeHaSelectEmpty extends HTMLElement {
-			value = "";
-			options: unknown[] = [];
-		}
-		if (!customElements.get("ha-select")) {
-			customElements.define("ha-select", FakeHaSelectEmpty);
-		}
-		const el = await mountSidebar({
-			furniture: [SEL_TEXT],
-			selectedFurnitureId: "t1",
-		});
-		const select = el.shadowRoot.querySelector("ha-select.furn-font") as any;
-		if (!select) return; // ha-select already claimed by another define elsewhere
-		const spy = vi.fn();
-		el.addEventListener("furniture-update", spy);
-		select.dispatchEvent(
-			new CustomEvent("selected", { detail: { value: "" }, bubbles: true }),
-		);
-		expect(spy).not.toHaveBeenCalled();
 	});
 
 	it("falls back to defaults when optional text fields are unset", async () => {

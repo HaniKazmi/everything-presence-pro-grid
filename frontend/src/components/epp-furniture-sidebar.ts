@@ -17,7 +17,6 @@ import { dialogStyles, sidebarRowStyles } from "../styles.js";
 import "../ui/epp-button.js";
 import "../ui/epp-dialog.js";
 import "../ui/epp-icon-button.js";
-import "../ui/epp-field.js";
 import "./epp-zone-color-picker.js";
 
 // Fixed label palettes (domain colours — not themed). Text presets favour
@@ -114,7 +113,8 @@ export class EppFurnitureSidebar extends LitElement {
 				gap: 2px;
 			}
 
-			.furn-dims input {
+			.furn-dims input,
+			.furn-dims select {
 				width: 100%;
 				padding: var(--epp-space-1, 4px);
 				border: 1px solid var(--divider-color, #e0e0e0);
@@ -150,26 +150,6 @@ export class EppFurnitureSidebar extends LitElement {
 				display: flex;
 				align-items: center;
 				gap: var(--epp-space-2, 8px);
-			}
-			/* Font + size share one row. Font flexes to fill the remaining width
-			   (so it can't jump when a long font name is chosen); size is a fixed
-			   narrow column. Both controls are pinned to the same height so the
-			   ha-select and the size field line up. */
-			.furn-font {
-				flex: 1;
-				min-width: 0;
-				box-sizing: border-box;
-			}
-			.furn-size {
-				flex: 0 0 7.5rem;
-			}
-			select.furn-font {
-				padding: 0 var(--epp-space-2, 8px);
-				border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
-				border-radius: var(--epp-radius-sm, 6px);
-				background: var(--epp-surface, var(--card-background-color, #fff));
-				color: var(--epp-text, var(--primary-text-color, #212121));
-				font: inherit;
 			}
 			.furn-seg {
 				display: inline-flex;
@@ -453,7 +433,6 @@ export class EppFurnitureSidebar extends LitElement {
 	}
 
 	private _renderTextEditor(item: FurnitureItem) {
-		const useHaSelect = !!customElements.get("ha-select");
 		return html`
 			<div class="furn-text-editor">
 				<div class="sidebar-item-row">
@@ -473,53 +452,41 @@ export class EppFurnitureSidebar extends LitElement {
 						})}
 				></textarea>
 
-				<div class="furn-row">
-					${
-						useHaSelect
-							? html`<ha-select
-									class="furn-font"
-									.label=${this.localize("text_label.font")}
-									.value=${item.fontFamily ?? DEFAULT_TEXT_FONT}
-									.options=${TEXT_FONT_OPTIONS}
-									@selected=${(e: CustomEvent<{ value: string }>) => {
-										// ha-select reports the chosen value in e.detail.value; reading
-										// e.target.value here is unreliable (stale at selected-time) and
-										// made the picker snap back to the default. Matches the working
-										// pattern in epp-settings-view / epp-device-source-list.
-										const v = e.detail?.value;
-										if (v) this._fireUpdate(item.id, { fontFamily: v });
-									}}
-									@closed=${(e: Event) => e.stopPropagation()}
-								></ha-select>`
-							: html`<select
-									class="furn-font"
-									aria-label=${this.localize("text_label.font")}
-									@change=${(e: Event) =>
-										this._fireUpdate(item.id, {
-											fontFamily: (e.target as HTMLSelectElement).value,
-										})}
-								>
-									${TEXT_FONT_OPTIONS.map(
-										(o) =>
-											html`<option value=${o.value} ?selected=${o.value === (item.fontFamily ?? DEFAULT_TEXT_FONT)}>${o.label}</option>`,
-									)}
-								</select>`
-					}
-					<epp-field
-						class="furn-size"
-						type="number"
-						unit="cm"
-						min="3"
-						max="300"
-						step="1"
-						.label=${this.localize("text_label.size_cm")}
-						.value=${String(Math.round((item.fontSize ?? DEFAULT_TEXT_SIZE_MM) / 10))}
-						@value-changed=${(e: CustomEvent) => {
-							const cm = parseFloat(e.detail?.value);
-							if (!Number.isFinite(cm)) return;
-							this._fireUpdate(item.id, { fontSize: clampTextSizeMm(cm * 10) });
-						}}
-					></epp-field>
+				<div class="furn-dims">
+					<label>
+						${this.localize("text_label.font")}
+						<select
+							class="furn-font"
+							aria-label=${this.localize("text_label.font")}
+							@change=${(e: Event) =>
+								this._fireUpdate(item.id, {
+									fontFamily: (e.target as HTMLSelectElement).value,
+								})}
+						>
+							${TEXT_FONT_OPTIONS.map(
+								(o) =>
+									html`<option value=${o.value} ?selected=${o.value === (item.fontFamily ?? DEFAULT_TEXT_FONT)}>${o.label}</option>`,
+							)}
+						</select>
+					</label>
+					<label>
+						${this.localize("text_label.size_cm")}
+						<input
+							class="furn-size"
+							type="number"
+							min="3"
+							max="300"
+							step="1"
+							.value=${String(Math.round((item.fontSize ?? DEFAULT_TEXT_SIZE_MM) / 10))}
+							@change=${(e: Event) => {
+								const cm = parseFloat((e.target as HTMLInputElement).value);
+								if (!Number.isFinite(cm)) return;
+								this._fireUpdate(item.id, {
+									fontSize: clampTextSizeMm(cm * 10),
+								});
+							}}
+						/>
+					</label>
 				</div>
 
 				<div class="furn-row">
