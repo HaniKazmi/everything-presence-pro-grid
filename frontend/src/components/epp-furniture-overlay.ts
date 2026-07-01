@@ -319,9 +319,16 @@ export class EppFurnitureOverlay extends LitElement {
 
 					if (item.type === "text") {
 						const fontPx = this._mmToPx(item.fontSize ?? DEFAULT_TEXT_SIZE_MM);
-						const bg = item.background
+						// Validate colours before they reach the inline style string
+						// (defense-in-depth): only a real #RRGGBB is spliced into CSS;
+						// anything else is treated as unset. hexToRgb doubles as the
+						// validator and as the RGB source for box auto-contrast.
+						const boxRgb = item.background ? hexToRgb(item.background) : null;
+						const bg = boxRgb
 							? `background: color-mix(in srgb, ${item.background} 85%, transparent);`
 							: "";
+						const explicitColor =
+							item.color && hexToRgb(item.color) ? item.color : null;
 						// Colour: an explicit user colour always wins. Otherwise auto-
 						// contrast (like furniture) — against the background box if one
 						// is set (the text sits on it), else against the cell underneath
@@ -331,11 +338,10 @@ export class EppFurnitureOverlay extends LitElement {
 							"var(--epp-text, var(--primary-text-color, #212121))";
 						let textColor: string;
 						let haloVar: string | null = null;
-						if (item.color) {
-							textColor = item.color;
-						} else if (item.background) {
-							const rgb = hexToRgb(item.background);
-							textColor = rgb ? furnitureContrast(rgb).color : DEFAULT_INK;
+						if (explicitColor) {
+							textColor = explicitColor;
+						} else if (boxRgb) {
+							textColor = furnitureContrast(boxRgb).color;
 						} else if (tone) {
 							textColor = tone.color;
 							haloVar = tone.halo;

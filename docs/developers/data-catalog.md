@@ -474,8 +474,9 @@ Furniture item fields:
     - `text` (string, ≤512 chars) — the label content.
     - `fontFamily` (enum key: arial | verdana | tahoma | georgia | times | courier
         | trebuchet | comic).
-    - `fontSize` (number, mm; clamped 30–3000) — real-world text height; scales
-        with the room.
+    - `fontSize` (number, mm; must be 30–3000 — the frontend clamps to this range
+        and the backend schema rejects values outside it) — real-world text
+        height; scales with the room.
     - `color` (`#RRGGBB`, optional) — text colour; omitted ⇒ auto-contrast against
         the background (the box if set, else the cell underneath), like furniture.
     - `bold` / `italic` (bool).

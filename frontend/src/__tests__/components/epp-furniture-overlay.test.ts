@@ -851,6 +851,24 @@ describe("epp-furniture-overlay text auto-contrast", () => {
 		expect(node.classList.contains("has-halo")).toBe(false);
 	});
 
+	it("ignores a non-hex colour/background (defence-in-depth) and falls back to auto", async () => {
+		const el = await mountOverlay({
+			furniture: [{ ...AUTO_TEXT, color: "red)", background: "url(evil)" }],
+			furnitureTones: new Map([
+				["t1", { color: "rgb(1, 2, 3)", halo: "rgba(0, 0, 0, 0.85)" }],
+			]),
+		});
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		const style = node
+			.querySelector(".furniture-text-content")
+			.getAttribute("style");
+		// The malformed values must never reach the CSS string.
+		expect(style).not.toContain("red)");
+		expect(style).not.toContain("url(evil)");
+		// Falls back to the cell tone (both explicit colour and box are invalid).
+		expect(style).toContain("rgb(1, 2, 3)");
+	});
+
 	it("falls back to themed ink (no halo) when color, tone and box are all absent", async () => {
 		const el = await mountOverlay({
 			furniture: [AUTO_TEXT],
