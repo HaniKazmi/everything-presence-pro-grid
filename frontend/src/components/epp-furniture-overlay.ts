@@ -4,7 +4,11 @@ import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 import { FLOOR_PLAN_SVGS } from "../constants.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import {
+	DEFAULT_TEXT_ALIGN,
+	DEFAULT_TEXT_FONT,
+	DEFAULT_TEXT_SIZE_MM,
 	EDGE_HANDLE_MIN_PX,
+	fontStack,
 	getResizeCursor,
 	mmToPx,
 	visibleHandles,
@@ -93,6 +97,26 @@ export class EppFurnitureOverlay extends LitElement {
 		.furniture-item.has-halo {
 			filter: drop-shadow(0 0 1.3px var(--epp-furniture-halo-color))
 				drop-shadow(0 0 1.3px var(--epp-furniture-halo-color));
+		}
+
+		.furniture-item--text {
+			border: none;
+			background: transparent;
+			width: max-content;
+			height: auto;
+			padding: 0;
+		}
+		.furniture-item--text.selected {
+			outline: 2px solid var(--epp-accent, var(--primary-color, #03a9f4));
+			outline-offset: 3px;
+		}
+		.furniture-text-content {
+			display: inline-block;
+			white-space: pre;
+			line-height: 1.2;
+			pointer-events: none;
+			padding: 2px 4px;
+			border-radius: var(--epp-radius-sm, 6px);
 		}
 
 		.furniture-item ha-icon {
@@ -281,6 +305,45 @@ export class EppFurnitureOverlay extends LitElement {
 					const hPx = this._mmToPx(item.height);
 					const selected = this.selectedFurnitureId === item.id;
 					const tone = this.furnitureTones?.get(item.id);
+
+					if (item.type === "text") {
+						const fontPx = this._mmToPx(item.fontSize ?? DEFAULT_TEXT_SIZE_MM);
+						const bg = item.background
+							? `background: color-mix(in srgb, ${item.background} 85%, transparent);`
+							: "";
+						const contentStyle = [
+							`font-family: ${fontStack(item.fontFamily ?? DEFAULT_TEXT_FONT)};`,
+							`font-size: ${fontPx}px;`,
+							`font-weight: ${item.bold ? 700 : 400};`,
+							`font-style: ${item.italic ? "italic" : "normal"};`,
+							`color: ${item.color ?? "var(--epp-text, var(--primary-text-color, #212121))"};`,
+							`text-align: ${item.align ?? DEFAULT_TEXT_ALIGN};`,
+							bg,
+						].join(" ");
+						return html`
+							<div
+								class="furniture-item furniture-item--text ${selected ? "selected" : ""}"
+								data-id="${item.id}"
+								style="left: ${leftPx}px; top: ${topPx}px; transform: rotate(${item.rotation}deg);"
+								@pointerdown=${(e: PointerEvent) => this._onItemPointerDown(e, item.id)}
+							>
+								<span class="furniture-text-content" style="${contentStyle}">${item.text ?? ""}</span>
+								${
+									selected
+										? html`
+											<div class="furn-rotate-stem"></div>
+											<div class="furn-rotate-handle" @pointerdown=${(e: PointerEvent) => this._onRotatePointerDown(e, item.id)}>
+												<ha-icon icon="mdi:rotate-right" style="--mdc-icon-size: 14px;"></ha-icon>
+											</div>
+											<div class="furn-delete-btn" @pointerdown=${(e: PointerEvent) => this._onDeletePointerDown(e, item.id)}>
+												<ha-icon icon="mdi:close" style="--mdc-icon-size: 14px;"></ha-icon>
+											</div>
+										`
+										: nothing
+								}
+							</div>
+						`;
+					}
 
 					return html`
 						<div
