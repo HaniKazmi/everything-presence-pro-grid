@@ -269,6 +269,24 @@ unsubscribe.
 
 Errors: `device_not_found` when the `device_id` doesn't match a known device.
 
+#### `eppgrid/overview/subscribe_heatmap`
+
+Streams the on-device activity heatmap for one device — the non-admin,
+`device_id`-based counterpart of the admin `subscribe_heatmap` command, used by
+the dashboard card's **Show heatmap** option. Like `overview/subscribe` it owns
+a refcounted session, and it counts under `heatmap_subs` (the subscriber counter
+that turns on the firmware's `heatmap_interval` emission).
+
+**Request:**
+`{ "type": "eppgrid/overview/subscribe_heatmap", "device_id": str }`
+
+**Events:** `{ "cells": [int, ...] }` — the decoded activity cells (0-255,
+row-major), streamed while the session is open; or `{ "available": false }` when
+the device session can't be opened. No snapshot is sent (unlike
+`overview/subscribe`).
+
+Errors: `device_not_found` when the `device_id` doesn't match a known device.
+
 ______________________________________________________________________
 
 ### `list_devices`
