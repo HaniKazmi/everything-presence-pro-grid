@@ -742,7 +742,7 @@ class tt extends et{}tt.directiveName="unsafeSVG",tt.resultType=2;const ot=(e=>(
 				.fadeUncovered=${!0}
 				.heatmapCells=${e.show_heatmap?this._heatmapCells:[]}
 				.trails=${e.show_heatmap?this._targetTrails:[]}
-				?showHeatmap=${e.show_heatmap&&e.show_map}
+				?showHeatmap=${e.show_heatmap}
 			></epp-grid>
 		`}_renderSensors(e){const t=this._parsedSnapshot,o=this._data.data,r=e.sensors;return W`
 			<epp-live-sidebar

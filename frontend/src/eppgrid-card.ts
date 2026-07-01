@@ -484,7 +484,7 @@ export class EppGridCard extends LitElement {
 				.fadeUncovered=${true}
 				.heatmapCells=${cfg.show_heatmap ? this._heatmapCells : []}
 				.trails=${cfg.show_heatmap ? this._targetTrails : []}
-				?showHeatmap=${cfg.show_heatmap && cfg.show_map}
+				?showHeatmap=${cfg.show_heatmap}
 			></epp-grid>
 		`;
 	}
