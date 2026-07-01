@@ -512,6 +512,14 @@ void EPPComponent::loop() {
       heatmap_sensor_->publish_state(std::string(encoded, encoded_len));
     }
   }
+
+  // Timer 8: Heatmap NVS save — hourly, so accumulated activity survives
+  // reboot/OTA without wearing flash on every decay/publish tick.
+  static constexpr uint32_t HEATMAP_NVS_INTERVAL_MS = 60u * 60u * 1000u;
+  if (now - last_heatmap_nvs_ms_ >= HEATMAP_NVS_INTERVAL_MS) {
+    last_heatmap_nvs_ms_ = now;
+    save_heatmap_to_nvs_();
+  }
 }
 
 float EPPComponent::get_setup_priority() const {
@@ -857,6 +865,15 @@ void EPPComponent::restore_from_nvs_() {
     ESP_LOGI(TAG, "Restored grid from NVS (origin %.0f, %.0f)", origin_x, origin_y);
   }
 
+  // Restore heatmap (GRID_CELL_COUNT floats, see epp_heatmap.h).
+  size_t hm_len = epp::Heatmap::blob_size();
+  uint8_t hm_buf[epp::Heatmap::blob_size()];
+  if (nvs_get_blob(handle, "heatmap", hm_buf, &hm_len) == ESP_OK &&
+      hm_len == epp::Heatmap::blob_size()) {
+    heatmap_.deserialize(hm_buf, hm_len);
+    ESP_LOGI(TAG, "Restored heatmap from NVS");
+  }
+
   // Restore relay settings
   uint8_t relay_trig = 0;
   if (nvs_get_u8(handle, "relay_trig", &relay_trig) == ESP_OK) {
@@ -984,6 +1001,26 @@ void EPPComponent::save_grid_to_nvs_() {
 
 void EPPComponent::reset_heatmap_() {
   heatmap_.reset();
+}
+
+void EPPComponent::save_heatmap_to_nvs_() {
+  nvs_handle_t handle;
+  if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to open NVS for writing");
+    return;
+  }
+
+  uint8_t buf[epp::Heatmap::blob_size()];
+  heatmap_.serialize(buf);
+
+  esp_err_t err = nvs_set_blob(handle, "heatmap", buf, sizeof(buf));
+  if (err == ESP_OK) err = nvs_commit(handle);
+  nvs_close(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to save heatmap to NVS: %s", esp_err_to_name(err));
+    return;
+  }
+  ESP_LOGD(TAG, "Heatmap saved to NVS (%d bytes)", (int)sizeof(buf));
 }
 
 void EPPComponent::save_zones_to_nvs_(const std::string &zones_json) {
