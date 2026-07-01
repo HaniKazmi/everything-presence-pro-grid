@@ -99,8 +99,9 @@ export function serializeSlot(
 
 /**
  * Serialize a furniture item for the `set_room_layout` wire payload.
- * The local-only `id` is intentionally dropped (the backend regenerates ids
- * on load via parseFurniture). Text items additionally emit their text
+ * The local-only `id` is intentionally dropped; the frontend regenerates ids
+ * on load via parseFurniture (the backend only validates/stores the payload).
+ * Text items additionally emit their text
  * fields; color/background are omitted when unset so render can fall back
  * to themed ink / no background and the payload stays lean.
  */

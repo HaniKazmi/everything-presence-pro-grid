@@ -1956,6 +1956,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 				<div class="furn-row">
 					${t?N`<ha-select
 									class="furn-font"
+									.label=${this.localize("text_label.font")}
 									.value=${e.fontFamily??Cs}
 									.options=${Fs}
 									@selected=${t=>{const i=t.target.value;i&&this._fireUpdate(e.id,{fontFamily:i})}}

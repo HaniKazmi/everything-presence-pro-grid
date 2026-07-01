@@ -457,6 +457,7 @@ export class EppFurnitureSidebar extends LitElement {
 						useHaSelect
 							? html`<ha-select
 									class="furn-font"
+									.label=${this.localize("text_label.font")}
 									.value=${item.fontFamily ?? DEFAULT_TEXT_FONT}
 									.options=${TEXT_FONT_OPTIONS}
 									@selected=${(e: CustomEvent) => {
