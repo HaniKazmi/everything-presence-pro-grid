@@ -151,6 +151,25 @@ export class EppFurnitureSidebar extends LitElement {
 				align-items: center;
 				gap: var(--epp-space-2, 8px);
 			}
+			/* Font picker: full-width so its width doesn't jump with the selected
+			   font name, and on its own row so its (taller) control height doesn't
+			   have to match the size field's side-by-side. */
+			.furn-font {
+				width: 100%;
+				box-sizing: border-box;
+			}
+			select.furn-font {
+				height: var(--epp-control-height, 40px);
+				padding: 0 var(--epp-space-2, 8px);
+				border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+				border-radius: var(--epp-radius-sm, 6px);
+				background: var(--epp-surface, var(--card-background-color, #fff));
+				color: var(--epp-text, var(--primary-text-color, #212121));
+				font: inherit;
+			}
+			.furn-size {
+				max-width: 10rem;
+			}
 			.furn-seg {
 				display: inline-flex;
 				border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
@@ -485,6 +504,8 @@ export class EppFurnitureSidebar extends LitElement {
 									)}
 								</select>`
 					}
+				</div>
+				<div class="furn-row">
 					<epp-field
 						class="furn-size"
 						type="number"
