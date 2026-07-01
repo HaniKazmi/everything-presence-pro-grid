@@ -6884,9 +6884,7 @@ class TestRequestPipelinePush:
 
         mock_push.assert_not_awaited()
 
-    async def test_async_stop_drains_pending_pipeline_pushes(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_async_stop_drains_pending_pipeline_pushes(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """A pipeline push pending in the debounce window is cancelled on async_stop.
 
         Without this, the timer task would outlive the config entry and HA
@@ -6901,9 +6899,7 @@ class TestRequestPipelinePush:
         # Pending tracking dict empty after stop.
         assert not manager._pending_pipeline_pushes
 
-    async def test_does_not_cancel_in_flight_pipeline_push(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_does_not_cancel_in_flight_pipeline_push(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """A new _request_pipeline_push during an in-flight push must not cancel it.
 
         Regression mirror of _request_push: _pending_pipeline_pushes[mac] must
@@ -6951,9 +6947,7 @@ class TestRequestPipelinePush:
         assert mock_push.await_count == 2
         assert not cancelled
 
-    async def test_cancelled_pending_push_drops_from_dict(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_cancelled_pending_push_drops_from_dict(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Cancelling a still-pending timer runs `_drop`, which removes the
         task from `_pending_pipeline_pushes` (the cancel-before-fire path)."""
         mac = "AA:BB:CC:DD:EE:FF"
