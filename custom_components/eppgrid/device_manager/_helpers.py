@@ -264,9 +264,7 @@ def supports_heatmap(version: str | None) -> bool:
         return False
 
 
-def strip_unsupported_pipeline_fields(
-    pipeline: dict[str, int], fw_ver: str | None
-) -> None:
+def strip_unsupported_pipeline_fields(pipeline: dict[str, int], fw_ver: str | None) -> None:
     """Drop pipeline fields the device's firmware can't accept (in place, BWC).
 
     Pre-1.3.0 ``epp_set_pipeline`` has no ``heatmap_interval`` variable, so
