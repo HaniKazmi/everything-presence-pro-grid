@@ -140,9 +140,13 @@ class EPPComponent : public esphome::Component {
   #endif
   static constexpr const char* FIRMWARE_VERSION_STR = ESPHOME_PROJECT_VERSION;
 
-  // Heatmap feature gate. Default on; set to 0 in a variant that can't spare the
-  // ~1.6 KB accumulator, which both compiles it out and reports heatmap=false to
-  // the panel (so the UI can explain *why* the layer is unavailable).
+  // Heatmap feature gate. Default on. Today this flag ONLY controls the
+  // reported `heatmap` capability flag (so the panel can show/hide the
+  // overlay and explain availability) — the `heatmap_` accumulator member
+  // and all heatmap logic are always compiled in regardless of this value.
+  // A future memory-constrained variant that sets this to 0 to reclaim the
+  // ~1.6 KB accumulator would ALSO need to #if-guard the `heatmap_` member
+  // and its use sites; that guarding doesn't exist yet.
   #ifndef EPP_HEATMAP_ENABLED
   #define EPP_HEATMAP_ENABLED 1
   #endif

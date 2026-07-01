@@ -170,7 +170,6 @@ export class DeviceController implements ReactiveController {
 			// hasn't been stashed yet — gating on it would silently drop the
 			// request and leave the device list stale after the reconnect.
 			const wantsDeviceListSub = this._wantDeviceListSub;
-			const wantsHeatmapSub = this._heatmapEnabled;
 			this._unsubDevice = undefined;
 			this._unsubTargets = undefined;
 			this._unsubDisplay = undefined;
@@ -202,13 +201,6 @@ export class DeviceController implements ReactiveController {
 				// without a rejection handler would surface as an unhandled
 				// promise rejection.
 				void this.subscribeDeviceList().catch(() => {});
-			}
-			if (wantsHeatmapSub) {
-				// Same intent-based resubscribe as the device list above: the
-				// heatmap overlay toggle is independent of the device
-				// session/target streams, so a connection swap must re-open it
-				// here rather than relying on subscribeTargets to run.
-				this._subscribeHeatmap();
 			}
 		}
 	}

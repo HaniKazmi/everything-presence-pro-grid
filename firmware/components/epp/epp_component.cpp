@@ -655,6 +655,12 @@ void EPPComponent::set_perspective(const std::string &perspective,
   ESP_LOGI(TAG, "Perspective set: room %.0fx%.0f mm", room_width, room_depth);
 
   if (changed) {
+    // Perspective changed → target→cell mapping changed → previously-accumulated
+    // heat is now spatially misaligned. Gated on `changed` so the integration's
+    // identical config re-push on every reconnect does NOT wipe the heatmap
+    // (that push would otherwise reset it, and even clobber the NVS-restored
+    // heat right after boot).
+    reset_heatmap_();
     save_perspective_to_nvs_();
   } else {
     ESP_LOGD(TAG, "Perspective unchanged, skipping NVS write");
@@ -697,9 +703,6 @@ void EPPComponent::set_grid(const std::string &grid_data,
   grid_.load_from_bytes(decoded, GRID_CELL_COUNT);
   zone_engine_.set_grid(grid_);
 
-  // Cell↔space mapping changed — old heat would be misaligned.
-  reset_heatmap_();
-
   int entry_count = 0;
   int interference_count = 0;
   int suppress_count = 0;
@@ -727,6 +730,11 @@ void EPPComponent::set_grid(const std::string &grid_data,
   has_grid_cache_ = true;
 
   if (changed) {
+    // Cell↔space mapping changed → previously-accumulated heat is misaligned.
+    // Gated on `changed` so the integration's identical config re-push on every
+    // reconnect does NOT wipe the heatmap (and so the NVS-restored heat survives
+    // the on-reconnect re-push right after boot).
+    reset_heatmap_();
     save_grid_to_nvs_();
   } else {
     ESP_LOGD(TAG, "Grid unchanged, skipping NVS write");

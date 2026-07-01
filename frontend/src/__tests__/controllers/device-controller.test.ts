@@ -1111,6 +1111,48 @@ describe("DeviceController", () => {
 			expect(unsubSpies[1]).not.toHaveBeenCalled();
 		});
 
+		it("does not resubscribe heatmap directly on a connection swap; it reconverges via subscribeTargets", async () => {
+			// eppgrid/subscribe_heatmap requires an open device session
+			// (backend get_session(mac)), exactly like subscribe_grid_targets /
+			// subscribe_display. Those are only re-subscribed via
+			// subscribeTargets(mac) AFTER the session reopens — never directly
+			// from the `hass` setter's connection-swap block. Firing
+			// _subscribeHeatmap() there runs before the session is open and the
+			// backend replies no_session, which can spuriously latch
+			// _connectionFailed. Heatmap must follow the same reconvergence
+			// path as grid-targets/display: swap -> (session reopens) ->
+			// subscribeTargets -> heatmap resubscribes.
+			ctrl.selectedMac = "aa";
+			ctrl.setHeatmapEnabled(true);
+			await new Promise((r) => setTimeout(r, 0));
+			(
+				ctrl.hass.connection.subscribeMessage as ReturnType<typeof vi.fn>
+			).mockClear();
+
+			const newSubscribe = vi.fn().mockResolvedValue(vi.fn());
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: { subscribeMessage: newSubscribe },
+			};
+			await new Promise((r) => setTimeout(r, 0));
+
+			// The swap itself must not open a heatmap sub on the new connection.
+			const heatmapCallsAfterSwap = newSubscribe.mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_heatmap",
+			);
+			expect(heatmapCallsAfterSwap.length).toBe(0);
+
+			// Once the session reopens and subscribeTargets runs (the normal
+			// reconnect path), heatmap resubscribes exactly once.
+			ctrl.subscribeTargets("aa");
+			await new Promise((r) => setTimeout(r, 0));
+
+			const heatmapCallsAfterResubscribe = newSubscribe.mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_heatmap",
+			);
+			expect(heatmapCallsAfterResubscribe.length).toBe(1);
+		});
+
 		it("re-establishes the heatmap sub when subscribeTargets runs and heatmap is enabled", () => {
 			ctrl.selectedMac = "aa";
 			ctrl.setHeatmapEnabled(true);
