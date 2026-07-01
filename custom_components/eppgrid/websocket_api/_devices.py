@@ -738,7 +738,7 @@ async def _start_target_stream(
     # reset to zero and the recomputed pipeline would silence the device while
     # this subscription is still live (the "target disappears" freeze).
     manager.note_target_subscribe(mac, counter_attr)
-    hass.async_create_task(manager.async_push_pipeline_to_device(mac))
+    manager.request_pipeline_push(mac)
 
     @callback
     def _unsub() -> None:
@@ -750,7 +750,7 @@ async def _start_target_stream(
         mgr = _get_manager(hass)
         if mgr:
             mgr.note_target_unsubscribe(mac, counter_attr)
-            hass.async_create_task(mgr.async_push_pipeline_to_device(mac))
+            mgr.request_pipeline_push(mac)
 
     connection.subscriptions[msg["id"]] = _unsub
 

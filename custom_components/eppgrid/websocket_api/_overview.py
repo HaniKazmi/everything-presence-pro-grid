@@ -78,7 +78,7 @@ async def _start_owned_target_stream(
         connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
         return
     manager.note_target_subscribe(mac, counter_attr)
-    hass.async_create_task(manager.async_push_pipeline_to_device(mac))
+    manager.request_pipeline_push(mac)
 
     released = False
 
@@ -92,7 +92,7 @@ async def _start_owned_target_stream(
         mgr = _get_manager(hass)
         if mgr:
             mgr.note_target_unsubscribe(mac, counter_attr)
-            hass.async_create_task(mgr.async_push_pipeline_to_device(mac))
+            mgr.request_pipeline_push(mac)
             mgr.release_session(mac, device_conn)
 
     connection.subscriptions[msg["id"]] = _unsub
