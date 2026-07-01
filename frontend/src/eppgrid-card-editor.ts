@@ -40,6 +40,7 @@ export function buildSchema(devices: DeviceOption[]): unknown[] {
 		{ name: "show_grid", selector: { boolean: {} } },
 		{ name: "show_furniture", selector: { boolean: {} } },
 		{ name: "show_overlays", selector: { boolean: {} } },
+		{ name: "show_heatmap", selector: { boolean: {} } },
 		{
 			name: "sensors",
 			type: "expandable",

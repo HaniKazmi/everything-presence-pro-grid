@@ -545,6 +545,7 @@
 			"show_grid": "Mostrar cuadrícula",
 			"show_furniture": "Mostrar mobiliario",
 			"show_overlays": "Mostrar superposiciones",
+			"show_heatmap": "Mostrar mapa de calor",
 			"room_color": "Color del resto de la sala",
 			"reset_room_color": "Restablecer a automático",
 			"presence": "Presencia",

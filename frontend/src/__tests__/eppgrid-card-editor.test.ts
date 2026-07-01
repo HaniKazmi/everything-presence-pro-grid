@@ -223,6 +223,46 @@ describe("eppgrid-card-editor", () => {
 		expect(entry.selector).toEqual({ boolean: {} });
 	});
 
+	it("buildSchema has a show_heatmap boolean toggle", () => {
+		const schema = buildSchema([]) as any[];
+		const entry = schema.find((s) => s.name === "show_heatmap");
+		expect(entry).toBeTruthy();
+		expect(entry.selector).toEqual({ boolean: {} });
+	});
+
+	it("toggling show_heatmap round-trips config-changed with show_heatmap: true", () => {
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "d1" } as any);
+		const got = vi.fn();
+		el.addEventListener("config-changed", (e: any) => got(e.detail.config));
+		el._valueChanged({
+			stopPropagation: vi.fn(),
+			detail: {
+				value: {
+					type: "custom:eppgrid-card",
+					device_id: "d1",
+					show_heatmap: true,
+				},
+			},
+		} as any);
+		const cfg = got.mock.calls.at(-1)![0];
+		expect(cfg.show_heatmap).toBe(true);
+	});
+
+	it("_computeLabel returns localized label for show_heatmap", () => {
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.hass = {
+			callWS: vi.fn(async () => []),
+			locale: { language: "en" },
+		} as any;
+		const result = (el as any)._computeLabel({ name: "show_heatmap" });
+		expect(result).toBe("Show heatmap");
+	});
+
 	it("buildSchema has a room_color color picker", () => {
 		const schema = buildSchema([]) as any[];
 		const entry = schema.find((s) => s.name === "room_color");
