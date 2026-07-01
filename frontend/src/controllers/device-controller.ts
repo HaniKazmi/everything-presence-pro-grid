@@ -54,6 +54,7 @@ export class DeviceController implements ReactiveController {
 	// --- Callbacks set by the host ---
 	onTargetData?: (data: TargetData) => void;
 	onRawTargetData?: (targets: RawTarget[]) => void;
+	onHeatmapData?: (cells: number[]) => void;
 	onDeviceListChanged?: () => void;
 	onSessionClosed?: () => void;
 	/** Selected device transitioned to available. Host decides whether to
@@ -71,8 +72,16 @@ export class DeviceController implements ReactiveController {
 	private _unsubDeviceList?: () => void;
 	private _unsubTargets?: () => void;
 	private _unsubDisplay?: () => void;
+	private _unsubHeatmap?: () => void;
 	private _targetRetryTimer?: ReturnType<typeof setTimeout>;
 	private _displayRetryTimer?: ReturnType<typeof setTimeout>;
+	private _heatmapRetryTimer?: ReturnType<typeof setTimeout>;
+	// Heatmap subscription *intent* — true between setHeatmapEnabled(true) and
+	// setHeatmapEnabled(false)/teardown. Mirrors `_wantDeviceListSub`: a
+	// connection swap or resubscribe (subscribeTargets) needs to know whether
+	// to re-open the heatmap sub, independent of whether one happens to be
+	// in flight or already stashed.
+	private _heatmapEnabled = false;
 	private _reconnecting = false;
 	private _connectionFailed = false;
 	private _lastSelectedOnline: boolean | null = null;
@@ -85,6 +94,7 @@ export class DeviceController implements ReactiveController {
 	// leak.
 	private _targetsGen = 0;
 	private _displayGen = 0;
+	private _heatmapGen = 0;
 	private _deviceListGen = 0;
 	// Guards the `subscribe_device` session itself. The backend refcounts
 	// these sessions and the ESP32 has only a few API connection slots, so a
@@ -121,7 +131,12 @@ export class DeviceController implements ReactiveController {
 	 * must be dropped (and its unsub released) instead of stashed.
 	 */
 	private _claimGen(
-		field: "_targetsGen" | "_displayGen" | "_deviceListGen" | "_sessionGen",
+		field:
+			| "_targetsGen"
+			| "_displayGen"
+			| "_heatmapGen"
+			| "_deviceListGen"
+			| "_sessionGen",
 	): { stale: () => boolean } {
 		const token = ++this[field];
 		return { stale: () => this[field] !== token };
@@ -137,6 +152,7 @@ export class DeviceController implements ReactiveController {
 		this._disposed = true;
 		this.unsubscribeDeviceList();
 		this.closeDeviceSession();
+		this._unsubscribeHeatmap();
 	}
 
 	// --- Hass reference ---
@@ -154,9 +170,11 @@ export class DeviceController implements ReactiveController {
 			// hasn't been stashed yet — gating on it would silently drop the
 			// request and leave the device list stale after the reconnect.
 			const wantsDeviceListSub = this._wantDeviceListSub;
+			const wantsHeatmapSub = this._heatmapEnabled;
 			this._unsubDevice = undefined;
 			this._unsubTargets = undefined;
 			this._unsubDisplay = undefined;
+			this._unsubHeatmap = undefined;
 			this._unsubDeviceList = undefined;
 			if (this._targetRetryTimer) {
 				clearTimeout(this._targetRetryTimer);
@@ -166,11 +184,16 @@ export class DeviceController implements ReactiveController {
 				clearTimeout(this._displayRetryTimer);
 				this._displayRetryTimer = undefined;
 			}
+			if (this._heatmapRetryTimer) {
+				clearTimeout(this._heatmapRetryTimer);
+				this._heatmapRetryTimer = undefined;
+			}
 			// Bump generation tokens so any in-flight subscribeMessage
 			// promises against the old connection drop their unsub when
 			// they finally resolve.
 			this._targetsGen++;
 			this._displayGen++;
+			this._heatmapGen++;
 			this._deviceListGen++;
 			this._sessionGen++;
 			if (wantsDeviceListSub) {
@@ -179,6 +202,13 @@ export class DeviceController implements ReactiveController {
 				// without a rejection handler would surface as an unhandled
 				// promise rejection.
 				void this.subscribeDeviceList().catch(() => {});
+			}
+			if (wantsHeatmapSub) {
+				// Same intent-based resubscribe as the device list above: the
+				// heatmap overlay toggle is independent of the device
+				// session/target streams, so a connection swap must re-open it
+				// here rather than relying on subscribeTargets to run.
+				this._subscribeHeatmap();
 			}
 		}
 	}
@@ -517,6 +547,7 @@ export class DeviceController implements ReactiveController {
 
 		this._subscribeGridTargets(conn, mac);
 		this.subscribeDisplay(mac);
+		if (this._heatmapEnabled) this._subscribeHeatmap();
 	}
 
 	unsubscribeTargets(): void {
@@ -610,8 +641,8 @@ export class DeviceController implements ReactiveController {
 	}
 
 	/**
-	 * Shared subscribe/retry scaffolding for the two live data streams
-	 * (grid targets, raw targets). Each stream owns its own generation
+	 * Shared subscribe/retry scaffolding for the live data streams (grid
+	 * targets, raw targets, heatmap). Each stream owns its own generation
 	 * token, retry timer and unsub slot — named via `stream` — so the
 	 * streams tear down independently; everything else (stash-or-drop on
 	 * resolution, capped retry on rejection) lives here so a future
@@ -622,9 +653,12 @@ export class DeviceController implements ReactiveController {
 		mac: string,
 		stream: {
 			type: string;
-			genField: "_targetsGen" | "_displayGen";
-			timerField: "_targetRetryTimer" | "_displayRetryTimer";
-			unsubField: "_unsubTargets" | "_unsubDisplay";
+			genField: "_targetsGen" | "_displayGen" | "_heatmapGen";
+			timerField:
+				| "_targetRetryTimer"
+				| "_displayRetryTimer"
+				| "_heatmapRetryTimer";
+			unsubField: "_unsubTargets" | "_unsubDisplay" | "_unsubHeatmap";
 			onEvent: (event: any) => void;
 		},
 		attempt = 1,
@@ -682,6 +716,44 @@ export class DeviceController implements ReactiveController {
 		}
 		safeUnsub(this._unsubDisplay);
 		this._unsubDisplay = undefined;
+	}
+
+	// --- Heatmap subscription ---
+	/**
+	 * Records heatmap-overlay intent and opens/closes the
+	 * `eppgrid/subscribe_heatmap` subscription against `selectedMac` to
+	 * match. Mirrors `_wantDeviceListSub`'s intent flag: `subscribeTargets`
+	 * and the `hass` connection-swap path both re-open the heatmap sub iff
+	 * `_heatmapEnabled`, so a reconnect (or the user re-enabling the
+	 * overlay) always converges on the right subscription state.
+	 */
+	setHeatmapEnabled(enabled: boolean): void {
+		this._heatmapEnabled = enabled;
+		this._unsubscribeHeatmap();
+		if (enabled) this._subscribeHeatmap();
+	}
+
+	private _subscribeHeatmap(): void {
+		if (!this._hass || !this.selectedMac || !this._heatmapEnabled) return;
+		this._subscribeStream(this._hass.connection, this.selectedMac, {
+			type: "eppgrid/subscribe_heatmap",
+			genField: "_heatmapGen",
+			timerField: "_heatmapRetryTimer",
+			unsubField: "_unsubHeatmap",
+			onEvent: (event: any) => {
+				this.onHeatmapData?.(event.cells ?? []);
+			},
+		});
+	}
+
+	private _unsubscribeHeatmap(): void {
+		this._heatmapGen++;
+		if (this._heatmapRetryTimer) {
+			clearTimeout(this._heatmapRetryTimer);
+			this._heatmapRetryTimer = undefined;
+		}
+		safeUnsub(this._unsubHeatmap);
+		this._unsubHeatmap = undefined;
 	}
 
 	// --- Device selection ---

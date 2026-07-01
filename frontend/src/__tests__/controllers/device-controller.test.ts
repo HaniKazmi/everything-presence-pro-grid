@@ -993,6 +993,112 @@ describe("DeviceController", () => {
 		});
 	});
 
+	// --- Heatmap subscription ---
+	describe("setHeatmapEnabled", () => {
+		it("subscribes to heatmap only when enabled and unsubscribes when disabled", async () => {
+			const unsub = vi.fn();
+			const subscribeMessage = vi.fn().mockResolvedValue(unsub);
+			ctrl.hass = { callWS: vi.fn(), connection: { subscribeMessage } };
+			ctrl.selectedMac = "AA:BB:CC:DD:EE:FF";
+
+			ctrl.setHeatmapEnabled(true);
+			await new Promise((r) => setTimeout(r, 0));
+			expect(subscribeMessage).toHaveBeenCalledWith(expect.any(Function), {
+				type: "eppgrid/subscribe_heatmap",
+				mac: "AA:BB:CC:DD:EE:FF",
+			});
+
+			ctrl.setHeatmapEnabled(false);
+			expect(unsub).toHaveBeenCalled();
+		});
+
+		it("does nothing when hass is null", () => {
+			ctrl.hass = null;
+			ctrl.selectedMac = "aa";
+			ctrl.setHeatmapEnabled(true);
+			expect(hass.connection.subscribeMessage).not.toHaveBeenCalled();
+		});
+
+		it("does nothing when selectedMac is empty", () => {
+			ctrl.selectedMac = "";
+			ctrl.setHeatmapEnabled(true);
+			expect(hass.connection.subscribeMessage).not.toHaveBeenCalled();
+		});
+
+		it("invokes onHeatmapData with event.cells", async () => {
+			let capturedCallback: ((event: any) => void) | undefined;
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: {
+					subscribeMessage: vi.fn().mockImplementation((cb: any, msg: any) => {
+						if (msg.type === "eppgrid/subscribe_heatmap") {
+							capturedCallback = cb;
+						}
+						return Promise.resolve(vi.fn());
+					}),
+				},
+			};
+			ctrl.selectedMac = "aa";
+			const onHeatmapData = vi.fn();
+			ctrl.onHeatmapData = onHeatmapData;
+
+			ctrl.setHeatmapEnabled(true);
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect(capturedCallback).toBeDefined();
+			capturedCallback!({ cells: [1, 2, 3] });
+			expect(onHeatmapData).toHaveBeenCalledWith([1, 2, 3]);
+		});
+
+		it("does not resubscribe when already enabled and enabled again", () => {
+			ctrl.selectedMac = "aa";
+			ctrl.setHeatmapEnabled(true);
+			const callsAfterFirst =
+				hass.connection.subscribeMessage.mock.calls.length;
+			ctrl.setHeatmapEnabled(true);
+			expect(hass.connection.subscribeMessage.mock.calls.length).toBe(
+				callsAfterFirst + 1,
+			);
+		});
+
+		it("re-establishes the heatmap sub when subscribeTargets runs and heatmap is enabled", () => {
+			ctrl.selectedMac = "aa";
+			ctrl.setHeatmapEnabled(true);
+			hass.connection.subscribeMessage.mockClear();
+			ctrl.subscribeTargets("aa");
+			const calls = hass.connection.subscribeMessage.mock.calls;
+			const heatmapCall = calls.find(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_heatmap",
+			);
+			expect(heatmapCall).toBeDefined();
+			expect(heatmapCall![1]).toEqual({
+				type: "eppgrid/subscribe_heatmap",
+				mac: "aa",
+			});
+		});
+
+		it("does not open a heatmap sub on subscribeTargets when heatmap is disabled", () => {
+			ctrl.selectedMac = "aa";
+			ctrl.subscribeTargets("aa");
+			const calls = hass.connection.subscribeMessage.mock.calls;
+			const heatmapCall = calls.find(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_heatmap",
+			);
+			expect(heatmapCall).toBeUndefined();
+		});
+
+		it("closes the heatmap sub on hostDisconnected", async () => {
+			ctrl.selectedMac = "aa";
+			ctrl.setHeatmapEnabled(true);
+			await new Promise((r) => setTimeout(r, 0));
+			const unsub = (ctrl as any)._unsubHeatmap;
+			expect(unsub).toBeDefined();
+			ctrl.hostDisconnected();
+			expect(unsub).toHaveBeenCalled();
+			expect((ctrl as any)._unsubHeatmap).toBeUndefined();
+		});
+	});
+
 	// --- selectDevice ---
 	describe("selectDevice", () => {
 		it("updates selectedMac and saves to localStorage", () => {
