@@ -165,6 +165,11 @@ describe("applyCardDefaults", () => {
 		expect(result.primary).toBe("{{ x }}");
 		expect(result.secondary).toBe("sub");
 	});
+
+	it("show_heatmap defaults to false and passes through when true", () => {
+		expect(applyCardDefaults({}).show_heatmap).toBe(false);
+		expect(applyCardDefaults({ show_heatmap: true }).show_heatmap).toBe(true);
+	});
 });
 
 describe("eppgrid-card setConfig", () => {

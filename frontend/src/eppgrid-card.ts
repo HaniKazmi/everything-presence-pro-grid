@@ -40,6 +40,7 @@ export interface EppGridCardConfig {
 	};
 	show_furniture?: boolean;
 	show_overlays?: boolean;
+	show_heatmap?: boolean;
 	/**
 	 * HA-managed keys the card itself never reads but must preserve through the
 	 * editor round-trip (see `EppGridCardEditor._valueChanged`): `grid_options`
@@ -68,6 +69,7 @@ type ResolvedCardConfig = Omit<EppGridCardConfig, "sensors"> & {
 	layout: "horizontal" | "vertical";
 	show_furniture: boolean;
 	show_overlays: boolean;
+	show_heatmap: boolean;
 	primary: string;
 	secondary: string;
 	sensors: {
@@ -114,6 +116,7 @@ export function applyCardDefaults(
 		layout: config.layout ?? "vertical",
 		show_furniture: config.show_furniture !== false,
 		show_overlays: config.show_overlays !== false,
+		show_heatmap: config.show_heatmap === true,
 		sensors: {
 			presence: {
 				// presence absent entirely → all on; presence present → only keys explicitly true
