@@ -1951,6 +1951,60 @@ class TestSchemaInputBounds:
         with pytest.raises(vol.Invalid):
             self._validate(websocket_set_room_layout, self._room_layout_payload([item]))
 
+    def test_furniture_accepts_text_item(self) -> None:
+        """A text label item with styling fields validates."""
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        item = self._furniture_item(
+            type="text",
+            text="Kids' corner",
+            fontFamily="georgia",
+            fontSize=200,
+            color="#112233",
+            bold=True,
+            italic=False,
+            align="center",
+            background="#ffffff",
+        )
+        # Should not raise.
+        self._validate(websocket_set_room_layout, self._room_layout_payload([item]))
+
+    def test_furniture_rejects_bad_font_family(self) -> None:
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        item = self._furniture_item(type="text", text="x", fontFamily="wingdings")
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_set_room_layout, self._room_layout_payload([item]))
+
+    def test_furniture_rejects_bad_align(self) -> None:
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        item = self._furniture_item(type="text", text="x", align="justify")
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_set_room_layout, self._room_layout_payload([item]))
+
+    def test_furniture_rejects_oversized_text(self) -> None:
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        item = self._furniture_item(type="text", text="x" * 513)
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_set_room_layout, self._room_layout_payload([item]))
+
+    def test_furniture_rejects_bad_text_color(self) -> None:
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        item = self._furniture_item(type="text", text="x", color="red")
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_set_room_layout, self._room_layout_payload([item]))
+
     def test_furniture_rejects_oversized_strings(self) -> None:
         """String fields in furniture items are length-bounded."""
         import voluptuous as vol
