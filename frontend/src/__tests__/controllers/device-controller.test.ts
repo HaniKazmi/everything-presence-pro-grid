@@ -1050,7 +1050,7 @@ describe("DeviceController", () => {
 			expect(onHeatmapData).toHaveBeenCalledWith([1, 2, 3]);
 		});
 
-		it("does not resubscribe when already enabled and enabled again", () => {
+		it("resubscribes once on redundant enable(true)", () => {
 			ctrl.selectedMac = "aa";
 			ctrl.setHeatmapEnabled(true);
 			const callsAfterFirst =
@@ -1059,6 +1059,56 @@ describe("DeviceController", () => {
 			expect(hass.connection.subscribeMessage.mock.calls.length).toBe(
 				callsAfterFirst + 1,
 			);
+		});
+
+		it("unsubscribes the prior heatmap sub before re-subscribing when subscribeTargets runs twice (reconnect)", async () => {
+			// Regression test for a subscription leak: subscribeTargets (via
+			// reopenSession on a device offline->online reconnect) used to call
+			// _subscribeHeatmap() without tearing down any heatmap sub that was
+			// already live, since closeDeviceSession/unsubscribeTargets never
+			// touch heatmap state. That opened a second server-side
+			// subscribe_heatmap subscription and silently overwrote
+			// _unsubHeatmap, leaking the first subscription's unsub forever.
+			const unsubSpies: Array<() => void> = [];
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: {
+					subscribeMessage: vi.fn().mockImplementation((_cb: any, msg: any) => {
+						if (msg.type === "eppgrid/subscribe_heatmap") {
+							const spy = vi.fn();
+							unsubSpies.push(spy);
+							return Promise.resolve(spy);
+						}
+						return Promise.resolve(vi.fn());
+					}),
+				},
+			};
+			ctrl.selectedMac = "aa";
+			ctrl.setHeatmapEnabled(true);
+			await new Promise((r) => setTimeout(r, 0));
+
+			// First heatmap sub is live.
+			expect(unsubSpies.length).toBe(1);
+
+			// Simulate a reconnect: subscribeTargets runs again while the
+			// heatmap sub is already live (e.g. device went offline then back
+			// online and reopenSession -> subscribeTargets fires again).
+			ctrl.subscribeTargets("aa");
+			await new Promise((r) => setTimeout(r, 0));
+
+			const heatmapCalls = (
+				ctrl.hass.connection.subscribeMessage as ReturnType<typeof vi.fn>
+			).mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_heatmap",
+			);
+			expect(heatmapCalls.length).toBe(2);
+			expect(unsubSpies.length).toBe(2);
+			// The first subscription's unsub must have fired — otherwise it's
+			// an orphaned, leaked server-side subscription.
+			expect(unsubSpies[0]).toHaveBeenCalled();
+			// Only one live subscription should remain: the second unsub must
+			// NOT have been called (it's the current, still-live sub).
+			expect(unsubSpies[1]).not.toHaveBeenCalled();
 		});
 
 		it("re-establishes the heatmap sub when subscribeTargets runs and heatmap is enabled", () => {

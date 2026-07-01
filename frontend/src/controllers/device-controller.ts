@@ -734,6 +734,7 @@ export class DeviceController implements ReactiveController {
 	}
 
 	private _subscribeHeatmap(): void {
+		this._unsubscribeHeatmap();
 		if (!this._hass || !this.selectedMac || !this._heatmapEnabled) return;
 		this._subscribeStream(this._hass.connection, this.selectedMac, {
 			type: "eppgrid/subscribe_heatmap",
