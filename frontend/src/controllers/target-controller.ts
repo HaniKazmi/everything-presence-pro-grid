@@ -177,6 +177,13 @@ export class TargetController implements ReactiveController {
 					const line = trails[i];
 					line.push({ x: t.x, y: t.y });
 					if (line.length > TRAIL_MAX) line.splice(0, line.length - TRAIL_MAX);
+				} else {
+					// Target slot went inactive (or was never valid) — clear its
+					// trail immediately. Otherwise the departed target's polyline
+					// lingers forever, and since the LD2450 reuses slots, a NEW
+					// target landing in slot i would inherit the OLD target's
+					// trail as a spurious line jumping across the room.
+					trails[i].length = 0;
 				}
 			}
 		}

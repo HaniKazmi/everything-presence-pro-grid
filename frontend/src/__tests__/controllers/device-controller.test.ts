@@ -1189,6 +1189,73 @@ describe("DeviceController", () => {
 			expect(unsub).toHaveBeenCalled();
 			expect((ctrl as any)._unsubHeatmap).toBeUndefined();
 		});
+
+		it("does not latch connectionFailed when the heatmap subscription exhausts retries (optional overlay)", async () => {
+			// The heatmap is an OPTIONAL overlay. If it runs while no device
+			// session is open yet (backend replies no_session), retries exhaust
+			// exactly like grid-targets/raw-targets — but that must NOT surface
+			// the connection-failed banner, since the core streams may be fine.
+			vi.useFakeTimers();
+			try {
+				const subscribeMock = vi
+					.fn()
+					.mockImplementation((_cb: any, msg: any) => {
+						if (msg.type === "eppgrid/subscribe_heatmap") {
+							return Promise.reject(new Error("no_session"));
+						}
+						return Promise.resolve(vi.fn());
+					});
+				ctrl.hass = {
+					callWS: vi.fn(),
+					connection: { subscribeMessage: subscribeMock },
+				};
+				ctrl.selectedMac = "aa";
+
+				ctrl.setHeatmapEnabled(true);
+				await vi.advanceTimersByTimeAsync(0);
+				// Drive well past 5 retry windows.
+				for (let i = 0; i < 8; i++) {
+					await vi.advanceTimersByTimeAsync(2000);
+				}
+
+				const heatmapSubs = subscribeMock.mock.calls.filter(
+					(c: any[]) => c[1]?.type === "eppgrid/subscribe_heatmap",
+				);
+				expect(heatmapSubs).toHaveLength(5);
+				expect(ctrl.connectionFailed).toBe(false);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("still latches connectionFailed when grid-targets exhausts retries even if heatmap is also subscribed", async () => {
+			vi.useFakeTimers();
+			try {
+				const subscribeMock = vi
+					.fn()
+					.mockImplementation((_cb: any, msg: any) => {
+						if (msg.type === "eppgrid/subscribe_grid_targets") {
+							return Promise.reject(new Error("unknown command"));
+						}
+						return Promise.resolve(vi.fn());
+					});
+				ctrl.hass = {
+					callWS: vi.fn(),
+					connection: { subscribeMessage: subscribeMock },
+				};
+				ctrl.selectedMac = "aa";
+				ctrl.setHeatmapEnabled(true);
+				ctrl.subscribeTargets("aa");
+				await vi.advanceTimersByTimeAsync(0);
+				for (let i = 0; i < 8; i++) {
+					await vi.advanceTimersByTimeAsync(2000);
+				}
+
+				expect(ctrl.connectionFailed).toBe(true);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
 	});
 
 	// --- selectDevice ---

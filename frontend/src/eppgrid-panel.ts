@@ -1490,7 +1490,16 @@ export class EPPGridPanel extends LitElement {
 		// Restore the persisted per-device heatmap preference and (re-)apply it
 		// to the freshly (re)wired DeviceController — a stale "on" flag must
 		// never re-open the subscription against a device that can't serve it.
-		this._heatmapEnabled = readHeatmapEnabled(mac);
+		// Gate on availability (old firmware / build without the heatmap
+		// accumulator): the render gate already stops heat from DISPLAYING in
+		// that case, but without this the subscription would still open,
+		// bumping backend subscriber counts for a stream nothing can show.
+		// The stored preference itself is left untouched — only whether we
+		// ACT on it now is gated, so it still applies once the device is
+		// available again.
+		const storedOn = readHeatmapEnabled(mac);
+		this._heatmapEnabled =
+			storedOn && this._heatmapAvailability() === "available";
 		this._deviceCtrl.setHeatmapEnabled(this._heatmapEnabled);
 	}
 

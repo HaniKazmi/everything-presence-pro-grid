@@ -652,6 +652,12 @@ export class DeviceController implements ReactiveController {
 				| "_heatmapRetryTimer";
 			unsubField: "_unsubTargets" | "_unsubDisplay" | "_unsubHeatmap";
 			onEvent: (event: any) => void;
+			// True for the heatmap stream: it's an OPTIONAL overlay, so
+			// exhausting its retries must not latch `_connectionFailed` (which
+			// drives the panel's connection-failed banner) — the core
+			// target/display streams may be perfectly healthy. Left undefined
+			// (falsy) for those non-optional streams, which still latch.
+			optional?: boolean;
 		},
 		attempt = 1,
 	): void {
@@ -683,9 +689,14 @@ export class DeviceController implements ReactiveController {
 				if (attempt >= SUBSCRIBE_RETRY_LIMIT) {
 					// Out of retries — surface the same connection-failed
 					// state the session-open path uses so the panel shows the
-					// banner instead of silently retrying forever.
-					this._connectionFailed = true;
-					this._host.requestUpdate();
+					// banner instead of silently retrying forever. Skipped for
+					// optional streams (heatmap): those can legitimately fail
+					// (e.g. no device session open yet) while the core streams
+					// are fine, so they must not trigger the banner.
+					if (!stream.optional) {
+						this._connectionFailed = true;
+						this._host.requestUpdate();
+					}
 					return;
 				}
 				const pending = this[stream.timerField];
@@ -735,6 +746,7 @@ export class DeviceController implements ReactiveController {
 			genField: "_heatmapGen",
 			timerField: "_heatmapRetryTimer",
 			unsubField: "_unsubHeatmap",
+			optional: true,
 			onEvent: (event: any) => {
 				this.onHeatmapData?.(event.cells ?? []);
 			},

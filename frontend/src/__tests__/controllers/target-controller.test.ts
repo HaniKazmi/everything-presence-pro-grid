@@ -316,6 +316,77 @@ describe("TargetController", () => {
 			expect(host._targetTrails[1].length).toBe(0); // inactive target has no trail
 		});
 
+		it("clears a slot's trail as soon as that target goes inactive", () => {
+			const INACTIVE_2 = [
+				{ x: null, y: null, status: "inactive", signal: 0 },
+				{ x: null, y: null, status: "inactive", signal: 0 },
+			];
+			host._targetTrails = [[], [], []];
+			// Build up a trail for target 0.
+			for (let i = 0; i < 5; i++) {
+				ctrl.handleTargetData(
+					makeTargetData({
+						targets: [
+							{ x: i * 10, y: 100, status: "active", signal: 5 },
+							...INACTIVE_2,
+						] as any,
+					}),
+				);
+			}
+			expect(host._targetTrails[0].length).toBe(5);
+
+			// Target 0 goes inactive — its trail must be cleared immediately,
+			// not left to linger on screen.
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [
+						{ x: null, y: null, status: "inactive", signal: 0 },
+						...INACTIVE_2,
+					] as any,
+				}),
+			);
+			expect(host._targetTrails[0].length).toBe(0);
+		});
+
+		it("does not connect a new target's trail across an inactive gap in a reused slot", () => {
+			const INACTIVE_2 = [
+				{ x: null, y: null, status: "inactive", signal: 0 },
+				{ x: null, y: null, status: "inactive", signal: 0 },
+			];
+			host._targetTrails = [[], [], []];
+			// Old target occupies slot 0 on the far side of the room.
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [
+						{ x: 0, y: 0, status: "active", signal: 5 },
+						...INACTIVE_2,
+					] as any,
+				}),
+			);
+			// Old target leaves — slot goes inactive.
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [
+						{ x: null, y: null, status: "inactive", signal: 0 },
+						...INACTIVE_2,
+					] as any,
+				}),
+			);
+			// LD2450 reuses slot 0 for a brand-new target elsewhere in the room.
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [
+						{ x: 500, y: 500, status: "active", signal: 5 },
+						...INACTIVE_2,
+					] as any,
+				}),
+			);
+
+			// Only the new target's point should be present — no jump line back
+			// to the old target's last position.
+			expect(host._targetTrails[0]).toEqual([{ x: 500, y: 500 }]);
+		});
+
 		it("stores sensor data on host._sensorState", () => {
 			const sensors = {
 				occupancy: true,

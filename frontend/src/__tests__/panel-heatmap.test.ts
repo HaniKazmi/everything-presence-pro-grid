@@ -1,15 +1,24 @@
 import { render } from "lit";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import "../components/epp-grid.js";
 import "../ui/index.js";
 import { GRID_CELL_COUNT } from "../lib/grid.js";
+import { persistHeatmapEnabled } from "../lib/storage.js";
 
 const MAC = "AA:BB:CC:DD:EE:01";
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
+	// Force isConnected=true without appending — appendChild fires
+	// connectedCallback which auto-runs _initialize and races with the
+	// explicit calls each test makes. _initialize early-exits on
+	// !isConnected to avoid scheduling retries against a detached host.
+	Object.defineProperty(el, "isConnected", {
+		value: true,
+		configurable: true,
+	});
 	el.hass = {
 		callWS: vi.fn().mockResolvedValue({}),
 		connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
@@ -166,5 +175,63 @@ describe("heatmap panel wiring", () => {
 
 		const toggle = c.querySelector("epp-toggle.heatmap-toggle") as any;
 		expect(toggle).not.toBeNull();
+	});
+});
+
+describe("heatmap restore on device load", () => {
+	beforeEach(() => {
+		localStorage.clear();
+	});
+
+	it("does not act on a stale stored 'on' flag when firmware is behind", async () => {
+		const panel = createPanel() as any;
+		persistHeatmapEnabled(MAC, true);
+		selectCalibratedDevice(panel, { firmware_status: "firmware_behind" });
+		const setHeatmapEnabled = vi.spyOn(panel._deviceCtrl, "setHeatmapEnabled");
+
+		await panel._loadDeviceConfig(MAC);
+
+		expect(panel._heatmapEnabled).toBe(false);
+		expect(setHeatmapEnabled).toHaveBeenCalledWith(false);
+	});
+
+	it("does not act on a stale stored 'on' flag when the build flag is false (no_memory)", async () => {
+		const panel = createPanel() as any;
+		persistHeatmapEnabled(MAC, true);
+		selectCalibratedDevice(panel, {
+			firmware_status: "compatible",
+			heatmap: false,
+		});
+		const setHeatmapEnabled = vi.spyOn(panel._deviceCtrl, "setHeatmapEnabled");
+
+		await panel._loadDeviceConfig(MAC);
+
+		expect(panel._heatmapEnabled).toBe(false);
+		expect(setHeatmapEnabled).toHaveBeenCalledWith(false);
+	});
+
+	it("restores the stored 'on' flag when the device is available", async () => {
+		const panel = createPanel() as any;
+		persistHeatmapEnabled(MAC, true);
+		selectCalibratedDevice(panel, { firmware_status: "compatible" });
+		const setHeatmapEnabled = vi.spyOn(panel._deviceCtrl, "setHeatmapEnabled");
+
+		await panel._loadDeviceConfig(MAC);
+
+		expect(panel._heatmapEnabled).toBe(true);
+		expect(setHeatmapEnabled).toHaveBeenCalledWith(true);
+	});
+
+	it("leaves the persisted preference itself untouched when unavailable", async () => {
+		const panel = createPanel() as any;
+		persistHeatmapEnabled(MAC, true);
+		selectCalibratedDevice(panel, { firmware_status: "firmware_behind" });
+
+		await panel._loadDeviceConfig(MAC);
+
+		// The stored preference is not overwritten — only whether we ACT on
+		// it at load time is gated. A later reconnect on compatible firmware
+		// should still see "on".
+		expect(localStorage.getItem(`epp_heatmap_enabled_${MAC}`)).toBe("1");
 	});
 });
