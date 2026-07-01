@@ -3,6 +3,7 @@ import { DEBUG_LOG_MAX } from "../constants.js";
 import { formatEvent } from "../lib/detection-events.js";
 import { OverlayTracker } from "../lib/overlay-tracker.js";
 import { applyPerspective } from "../lib/perspective.js";
+import { updateTrails } from "../lib/target-trails.js";
 import { resolveZoneParams, type ZoneConfig } from "../lib/zone-defaults.js";
 import {
 	createZoneEngineState,
@@ -19,10 +20,6 @@ import type { PanelHost } from "./panel-host.js";
 
 // TargetHost re-export kept so existing test imports keep working without churn.
 export type { PanelHost as TargetHost } from "./panel-host.js";
-
-// Max points kept per target's live movement-trail polyline (frontend-only,
-// ephemeral — see host._targetTrails).
-const TRAIL_MAX = 60;
 
 /**
  * TargetController manages target data, sensor state, zone state, zone engine,
@@ -168,24 +165,14 @@ export class TargetController implements ReactiveController {
 			return;
 		}
 		this.host._targets = data.targets;
-		// Live movement trails (frontend-only, ephemeral).
+		// Live movement trails (frontend-only, ephemeral). Clearing a slot
+		// immediately when its target goes inactive/invalid matters: the LD2450
+		// reuses slots, so a lingering trail would otherwise let a NEW target
+		// landing in slot i inherit the OLD target's trail as a spurious line
+		// jumping across the room. See lib/target-trails.ts for the shared logic
+		// (also used by the dashboard card).
 		if (this.host._view === "live" || this.host._view === "editor") {
-			const trails = this.host._targetTrails;
-			for (let i = 0; i < data.targets.length && i < trails.length; i++) {
-				const t = data.targets[i];
-				if (t.x != null && t.y != null && t.status === "active") {
-					const line = trails[i];
-					line.push({ x: t.x, y: t.y });
-					if (line.length > TRAIL_MAX) line.splice(0, line.length - TRAIL_MAX);
-				} else {
-					// Target slot went inactive (or was never valid) — clear its
-					// trail immediately. Otherwise the departed target's polyline
-					// lingers forever, and since the LD2450 reuses slots, a NEW
-					// target landing in slot i would inherit the OLD target's
-					// trail as a spurious line jumping across the room.
-					trails[i].length = 0;
-				}
-			}
+			updateTrails(this.host._targetTrails, data.targets);
 		}
 		this.host._sensorState = data.sensors;
 		if (data.zones) {
