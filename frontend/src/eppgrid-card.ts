@@ -2,6 +2,7 @@ import { css, html, LitElement, nothing } from "lit";
 import { state } from "lit/decorators.js";
 import "./components/epp-grid.js";
 import "./components/epp-live-sidebar.js";
+import { subscribeHeatmap } from "./card/heatmap-store.js";
 import {
 	type OverviewState,
 	subscribeOverview,
@@ -11,6 +12,7 @@ import type { SensorState } from "./components/epp-live-sidebar.js";
 import { parseConfig } from "./lib/config-serialization.js";
 import { isRgbTriple } from "./lib/furniture-contrast.js";
 import { MAX_RANGE } from "./lib/grid.js";
+import { createTrails, updateTrails } from "./lib/target-trails.js";
 import { defaultLocalize, type LocalizeFn, setupLocalize } from "./localize.js";
 import { tokens } from "./ui/tokens.js";
 
@@ -237,6 +239,12 @@ export class EppGridCard extends LitElement {
 	private _subConn: unknown = null;
 	private _subDevice: string | null = null;
 
+	private _heatmapCells: number[] = [];
+	private _targetTrails = createTrails();
+	private _unsubHeatmap: (() => void) | null = null;
+	private _heatSubConn: unknown = null;
+	private _heatSubDevice: string | null = null;
+
 	private _resolved?: ResolvedCardConfig;
 	private _presenceKeys: PresenceKey[] | null = null;
 	private _envKeys: EnvKey[] | null = null;
@@ -288,6 +296,10 @@ export class EppGridCard extends LitElement {
 		this._unsub = null;
 		this._subConn = null;
 		this._subDevice = null;
+		this._unsubHeatmap?.();
+		this._unsubHeatmap = null;
+		this._heatSubConn = null;
+		this._heatSubDevice = null;
 		this._primaryField.dispose();
 		this._secondaryField.dispose();
 	}
@@ -300,6 +312,7 @@ export class EppGridCard extends LitElement {
 			this._unsub = null;
 			this._subConn = null;
 			this._subDevice = null;
+			this._ensureHeatmapSub();
 			return;
 		}
 		if (
@@ -307,17 +320,58 @@ export class EppGridCard extends LitElement {
 			this._subConn === hass.connection &&
 			this._subDevice === deviceId
 		) {
+			this._ensureHeatmapSub();
 			return;
 		}
 		this._unsub?.();
 		this._subConn = hass.connection;
 		this._subDevice = deviceId;
+		this._targetTrails = createTrails();
 		this._unsub = subscribeOverview(hass, deviceId, (s) => {
 			if (s.snapshot !== this._lastSnapshot) {
 				this._lastSnapshot = s.snapshot;
 				this._parsedSnapshot = s.snapshot ? parseConfig(s.snapshot) : null;
 			}
 			this._data = s;
+			updateTrails(this._targetTrails, (s.data?.targets ?? []) as never);
+			this.requestUpdate();
+		});
+		this._ensureHeatmapSub();
+	}
+
+	/**
+	 * (Re)subscribes to the heatmap stream when `show_heatmap` and `show_map`
+	 * are both on and a device is selected; tears down otherwise. Mirrors the
+	 * overview subscription's connection/device identity guard above so a
+	 * `hass`/config re-evaluation doesn't reopen a live subscription.
+	 */
+	private _ensureHeatmapSub(): void {
+		const hass = this.__hass;
+		const deviceId = this._config?.device_id;
+		const wantSub =
+			!!hass &&
+			!!deviceId &&
+			this._resolved?.show_heatmap === true &&
+			this._resolved?.show_map === true;
+		if (!wantSub) {
+			this._unsubHeatmap?.();
+			this._unsubHeatmap = null;
+			this._heatSubConn = null;
+			this._heatSubDevice = null;
+			return;
+		}
+		if (
+			this._unsubHeatmap &&
+			this._heatSubConn === hass.connection &&
+			this._heatSubDevice === deviceId
+		) {
+			return;
+		}
+		this._unsubHeatmap?.();
+		this._heatSubConn = hass.connection;
+		this._heatSubDevice = deviceId;
+		this._unsubHeatmap = subscribeHeatmap(hass, deviceId, (cells) => {
+			this._heatmapCells = cells;
 			this.requestUpdate();
 		});
 	}
@@ -428,6 +482,9 @@ export class EppGridCard extends LitElement {
 				.roomColor=${rgbCss(cfg.room_color)}
 				.fill=${true}
 				.fadeUncovered=${true}
+				.heatmapCells=${cfg.show_heatmap ? this._heatmapCells : []}
+				.trails=${cfg.show_heatmap ? this._targetTrails : []}
+				?showHeatmap=${cfg.show_heatmap && cfg.show_map}
 			></epp-grid>
 		`;
 	}
