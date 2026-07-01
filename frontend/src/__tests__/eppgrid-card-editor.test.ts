@@ -230,6 +230,11 @@ describe("eppgrid-card-editor", () => {
 		expect(entry.selector).toEqual({ color_rgb: {} });
 	});
 
+	it("buildSchema puts room_color last so the reset-to-auto control sits next to it", () => {
+		const schema = buildSchema([]) as any[];
+		expect(schema[schema.length - 1].name).toBe("room_color");
+	});
+
 	it("buildSchema has presence as a nested expandable with five boolean keys", () => {
 		const schema = buildSchema([]) as any[];
 		const sensorsEntry = schema.find((s: any) => s.name === "sensors");

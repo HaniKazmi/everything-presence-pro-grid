@@ -40,7 +40,6 @@ export function buildSchema(devices: DeviceOption[]): unknown[] {
 		{ name: "show_grid", selector: { boolean: {} } },
 		{ name: "show_furniture", selector: { boolean: {} } },
 		{ name: "show_overlays", selector: { boolean: {} } },
-		{ name: "room_color", selector: { color_rgb: {} } },
 		{
 			name: "sensors",
 			type: "expandable",
@@ -72,6 +71,7 @@ export function buildSchema(devices: DeviceOption[]): unknown[] {
 				},
 			],
 		},
+		{ name: "room_color", selector: { color_rgb: {} } },
 	];
 }
 
