@@ -422,6 +422,7 @@ export class EppFurnitureSidebar extends LitElement {
 				<textarea
 					class="furn-text-input"
 					aria-label=${this.localize("text_label.text")}
+					maxlength="512"
 					.value=${item.text ?? ""}
 					@input=${(e: Event) =>
 						this._fireUpdate(item.id, {

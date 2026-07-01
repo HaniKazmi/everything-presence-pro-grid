@@ -157,7 +157,7 @@ _FURNITURE_ITEM_SCHEMA = vol.Schema(
         # are unaffected and PREVENT_EXTRA still bars arbitrary blobs.
         vol.Optional("text"): vol.All(str, vol.Length(max=512)),
         vol.Optional("fontFamily"): vol.In(_FURNITURE_FONT_KEYS),
-        vol.Optional("fontSize"): finite_float(min=10, max=5000),
+        vol.Optional("fontSize"): finite_float(min=30, max=3000),
         vol.Optional("color"): COLOR_HEX_SCHEMA,
         vol.Optional("bold"): bool,
         vol.Optional("italic"): bool,

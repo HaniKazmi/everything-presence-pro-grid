@@ -1969,6 +1969,26 @@ class TestSchemaInputBounds:
         # Should not raise.
         self._validate(websocket_set_room_layout, self._room_layout_payload([item]))
 
+    def test_furniture_rejects_undersized_font_size(self) -> None:
+        """fontSize below the 30mm frontend clamp is rejected."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        item = self._furniture_item(type="text", text="x", fontSize=20)
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_set_room_layout, self._room_layout_payload([item]))
+
+    def test_furniture_rejects_oversized_font_size(self) -> None:
+        """fontSize above the 3000mm frontend clamp is rejected."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        item = self._furniture_item(type="text", text="x", fontSize=4000)
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_set_room_layout, self._room_layout_payload([item]))
+
     def test_furniture_rejects_bad_font_family(self) -> None:
         import voluptuous as vol
 

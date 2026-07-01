@@ -569,6 +569,17 @@ describe("epp-furniture-sidebar text label editor", () => {
 		expect(el.shadowRoot.querySelector(".furn-dims")).toBeNull();
 	});
 
+	it("caps the text input at the backend's 512-char limit", async () => {
+		const el = await mountSidebar({
+			furniture: [SEL_TEXT],
+			selectedFurnitureId: "t1",
+		});
+		const ta = el.shadowRoot.querySelector(
+			".furn-text-input",
+		) as HTMLTextAreaElement;
+		expect(ta.getAttribute("maxlength")).toBe("512");
+	});
+
 	it("emits furniture-update when the text is edited", async () => {
 		const el = await mountSidebar({
 			furniture: [SEL_TEXT],
