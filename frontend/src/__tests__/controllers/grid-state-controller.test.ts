@@ -2360,3 +2360,53 @@ describe("serializeFurniture", () => {
 		});
 	});
 });
+
+describe("serializeFurniture text labels", () => {
+	it("emits text fields for a text item, omitting undefined color/background", () => {
+		const out = serializeFurniture({
+			id: "t1",
+			type: "text",
+			icon: "mdi:format-text",
+			label: "text_label.label",
+			x: 1,
+			y: 2,
+			width: 3,
+			height: 4,
+			rotation: 0,
+			lockAspect: false,
+			text: "Hi",
+			fontFamily: "arial",
+			fontSize: 200,
+			align: "center",
+			bold: true,
+			italic: false,
+		});
+		expect(out.type).toBe("text");
+		expect(out.text).toBe("Hi");
+		expect(out.fontFamily).toBe("arial");
+		expect(out.fontSize).toBe(200);
+		expect(out.align).toBe("center");
+		expect(out.bold).toBe(true);
+		expect(out.italic).toBe(false);
+		expect("color" in out).toBe(false);
+		expect("background" in out).toBe(false);
+		expect("id" in out).toBe(false); // still dropped
+	});
+
+	it("does not emit text fields for an icon item", () => {
+		const out = serializeFurniture({
+			id: "f1",
+			type: "icon",
+			icon: "mdi:desk",
+			label: "furniture.desk",
+			x: 0,
+			y: 0,
+			width: 600,
+			height: 600,
+			rotation: 0,
+			lockAspect: true,
+		});
+		expect("text" in out).toBe(false);
+		expect("fontFamily" in out).toBe(false);
+	});
+});

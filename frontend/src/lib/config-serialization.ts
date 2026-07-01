@@ -1,5 +1,12 @@
 import type { FurnitureItem } from "./furniture.js";
 import {
+	clampTextSizeMm,
+	DEFAULT_TEXT_ALIGN,
+	DEFAULT_TEXT_FONT,
+	DEFAULT_TEXT_SIZE_MM,
+	TEXT_FONTS,
+} from "./furniture.js";
+import {
 	GRID_CELL_COUNT,
 	initGridFromRoom,
 	MAX_ZONES,
@@ -159,12 +166,19 @@ export function parseFurniture(rawFurniture: unknown): FurnitureItem[] {
 	const arr = Array.isArray(rawFurniture) ? rawFurniture : [];
 	return arr.map((f: any, i: number) => {
 		const rawType = toNonEmptyString(f?.type, "icon");
-		const type: "icon" | "svg" = rawType === "svg" ? "svg" : "icon";
-		return {
+		const type: "icon" | "svg" | "text" =
+			rawType === "svg" ? "svg" : rawType === "text" ? "text" : "icon";
+		const base: FurnitureItem = {
 			id: toNonEmptyString(f?.id, `f_load_${i}`),
 			type,
-			icon: toNonEmptyString(f?.icon, "mdi:help"),
-			label: toNonEmptyString(f?.label, "Item"),
+			icon: toNonEmptyString(
+				f?.icon,
+				type === "text" ? "mdi:format-text" : "mdi:help",
+			),
+			label: toNonEmptyString(
+				f?.label,
+				type === "text" ? "text_label.label" : "Item",
+			),
 			x: toFiniteNumber(f?.x, 0),
 			y: toFiniteNumber(f?.y, 0),
 			width: toPositiveSize(f?.width, 600),
@@ -172,6 +186,29 @@ export function parseFurniture(rawFurniture: unknown): FurnitureItem[] {
 			rotation: toFiniteNumber(f?.rotation, 0),
 			lockAspect:
 				typeof f?.lockAspect === "boolean" ? f.lockAspect : type !== "svg",
+		};
+		if (type !== "text") return base;
+		const fontKey = TEXT_FONTS.some((ft) => ft.key === f?.fontFamily)
+			? (f.fontFamily as string)
+			: DEFAULT_TEXT_FONT;
+		const align =
+			f?.align === "left" || f?.align === "right" || f?.align === "center"
+				? f.align
+				: DEFAULT_TEXT_ALIGN;
+		return {
+			...base,
+			text: typeof f?.text === "string" ? f.text : "",
+			fontFamily: fontKey,
+			fontSize: clampTextSizeMm(
+				toFiniteNumber(f?.fontSize, DEFAULT_TEXT_SIZE_MM),
+			),
+			color: HEX_COLOR_PATTERN.test(String(f?.color)) ? f.color : undefined,
+			bold: f?.bold === true,
+			italic: f?.italic === true,
+			align,
+			background: HEX_COLOR_PATTERN.test(String(f?.background))
+				? f.background
+				: undefined,
 		};
 	});
 }

@@ -94,11 +94,13 @@ export function serializeSlot(
 
 /**
  * Serialize a furniture item for the `set_room_layout` wire payload.
- * Exactly these nine fields — the local-only `id` is intentionally dropped
- * (the backend regenerates ids on load via parseFurniture).
+ * The local-only `id` is intentionally dropped (the backend regenerates ids
+ * on load via parseFurniture). Text items additionally emit their text
+ * fields; color/background are omitted when unset so render can fall back
+ * to themed ink / no background and the payload stays lean.
  */
 export function serializeFurniture(f: FurnitureItem): Record<string, unknown> {
-	return {
+	const out: Record<string, unknown> = {
 		type: f.type,
 		icon: f.icon,
 		label: f.label,
@@ -109,6 +111,17 @@ export function serializeFurniture(f: FurnitureItem): Record<string, unknown> {
 		rotation: f.rotation,
 		lockAspect: f.lockAspect,
 	};
+	if (f.type === "text") {
+		out.text = f.text ?? "";
+		out.fontFamily = f.fontFamily ?? "arial";
+		out.fontSize = f.fontSize ?? 200;
+		out.align = f.align ?? "center";
+		out.bold = f.bold ?? false;
+		out.italic = f.italic ?? false;
+		if (typeof f.color === "string") out.color = f.color;
+		if (typeof f.background === "string") out.background = f.background;
+	}
+	return out;
 }
 
 /** Operations that can fail and surface through {@link GridStateController.onError}. */
