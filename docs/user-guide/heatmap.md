@@ -3,7 +3,7 @@
 The Heatmap layer shows where people actually spend time and move through the
 room, drawn straight onto the live grid.
 
-![Live overview grid with the heatmap layer enabled, showing warm-coloured cells over frequently-occupied areas.](../images/live-overview/overview.png "Live overview grid with the heatmap layer enabled, showing warm-coloured cells over frequently-occupied areas.")
+![Live overview grid with the heatmap layer enabled, showing warm-coloured cells over frequently-occupied areas.](../images/heatmap/overview.png "Live overview grid with the heatmap layer enabled, showing warm-coloured cells over frequently-occupied areas.")
 
 ## Turning it on
 

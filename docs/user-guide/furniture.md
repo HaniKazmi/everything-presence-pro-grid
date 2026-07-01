@@ -34,9 +34,13 @@ Click a furniture item on the grid to select it. Handles appear for every
 operation:
 
 - **Move:** click and drag anywhere inside the item.
-- **Resize:** drag one of the eight resize handles (four corners, four edges).
-    The defaults match typical real-world dimensions; resize to match the actual
-    furniture in your room.
+- **Resize:** drag one of the eight handles. **Corner handles resize
+    proportionally** — the item keeps its shape. **Edge handles** (top, bottom,
+    left, right) **stretch just that one dimension** — use them when your real
+    furniture isn't the same proportions as the preset. The defaults match
+    typical real-world dimensions, so a corner drag is usually all you need to
+    scale an item to your room. (Plain icon stickers always keep their
+    proportions; very small items show only the corner handles.)
 - **Rotate:** drag the circular handle on the rotation stem that extends above
     the item.
 - **Delete:** click the red **×** button at the top right of the selected item.
@@ -46,11 +50,6 @@ operation:
     Place the door stickers (`door-left-swing`, `door-right-swing`, `sliding-door`)
     exactly where you've drawn Entry/Exit [overlays](overlays.md). The doorway icons
     make it easy to see why the hatched overlay cells are there.
-
-!!! example "Screenshot placeholder"
-
-    **Grid with a dressed room — bed, dining table and chairs, sofa, doors marked at
-    entry points.** `furniture/dressed-room.png`
 
 ## Keyboard shortcuts
 
@@ -71,6 +70,35 @@ custom-icon slot at the end of the sticker list. It opens Home Assistant's
 built-in icon picker, which lets you choose any icon from the standard Material
 Design Icons set (`mdi:*`) bundled with HA. Once added, a custom icon behaves
 like any other piece of furniture.
+
+## Text labels
+
+Text labels let you annotate the layout — room names, a "TV" caption over the
+media unit, a note next to a tricky corner — as free-floating text that scales
+with the room, just like furniture.
+
+![Adding text labels to the Furniture view.](../images/furniture/text.png "Adding text labels to the Furniture view.")
+
+1. In the **Furniture** sidebar, click **Add text label**. A label lands centred
+    in the room.
+
+1. Move, resize, and rotate it on the grid exactly like a furniture item (corner
+    handles keep its proportions).
+
+1. With the label selected, its options appear in the sidebar:
+
+    - **Text** — the words to show.
+    - **Font** — pick from the built-in fonts.
+    - **Size (cm)** — the real-world text height. Like furniture, it scales with
+        the room, so the label keeps its size relative to everything else.
+    - **Bold**, **Italic**, and **Alignment** (left, centre, right).
+    - **Text colour** — choose a colour, or leave it on **Auto** to automatically
+        contrast against whatever is behind it.
+    - **Background** — leave it as **None** for plain text, or pick a colour for
+        a filled box behind the text.
+
+To remove a label, click the **×** next to its name in the sidebar, or select it
+and press **Delete**.
 
 ## Troubleshooting
 
