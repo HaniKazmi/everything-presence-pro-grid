@@ -466,6 +466,18 @@ bounded strings, **required** finite `x`/`y`/`width`/`height` geometry, optional
 finite `rotation`, `lockAspect` bool, optional bounded `id`; unknown keys
 rejected) and the list's serialized JSON is capped at 64 KiB.
 
+Furniture item fields:
+
+- `type`: `"icon" | "svg" | "text"` — a text label is `"text"`.
+- Text-label fields (present only when `type == "text"`):
+  - `text` (string, ≤512 chars) — the label content.
+  - `fontFamily` (enum key: arial | verdana | tahoma | georgia | times | courier | trebuchet | comic).
+  - `fontSize` (number, mm; clamped 30–3000) — real-world text height; scales with the room.
+  - `color` (`#RRGGBB`, optional) — text colour; omitted ⇒ themed default ink.
+  - `bold` / `italic` (bool).
+  - `align` (`"left" | "center" | "right"`).
+  - `background` (`#RRGGBB`, optional) — box fill (rendered ~85% opacity); omitted ⇒ no background.
+
 `zone_slots` is a fixed-length-8 array. Slot 0 is zone 0 (always present, no
 name/color); slots 1-7 are named zones or `null` when unused.
 
