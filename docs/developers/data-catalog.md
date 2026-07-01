@@ -206,9 +206,9 @@ events.
 Streams the on-device activity heatmap for the panel's Heatmap layer. Decodes
 the firmware `Heatmap` text sensor (base64 of 400 normalized bytes, row-major,
 0-255) into a dense array; any malformed/wrong-length payload decodes to 400
-zeroes rather than erroring. Admin only (`@require_admin`) — unlike
-`subscribe_raw_targets` / `subscribe_grid_targets`, which are open to any
-authenticated user.
+zeroes rather than erroring. Admin only (`@require_admin`), like the panel's
+other device-session streams (`subscribe_raw_targets` /
+`subscribe_grid_targets`).
 
 **Request:** `{ "type": "eppgrid/subscribe_heatmap", "mac": str }`
 

@@ -168,6 +168,10 @@ void EPPComponent::loop() {
     const auto &result = zone_engine_.tick(zone_input, ts, sensor_input);
 
     // Heatmap: bump the cell each validly-detected target occupies this frame.
+    // Gate on the target window's `active` flag only: an inactive window has no
+    // confirmed median position to bump. (Zone "pending" is a per-zone state,
+    // not a per-target one — it does not apply here; don't "fix" this to include
+    // pending.)
     for (int i = 0; i < epp::MAX_TARGETS; i++) {
       const auto &tw = zone_input.targets[i];
       if (!tw.active) continue;
