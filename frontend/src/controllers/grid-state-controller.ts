@@ -11,6 +11,9 @@ import {
 	computeFurnitureResize,
 	computeFurnitureRotation,
 	createFurnitureItem,
+	createTextItem,
+	DEFAULT_TEXT_SIZE_MM,
+	estimateTextBox,
 	type FurnitureItem,
 	type FurnitureSticker,
 	isFurnitureOutsideGrid,
@@ -339,6 +342,19 @@ export class GridStateController implements ReactiveController {
 		});
 	}
 
+	addTextFurniture(text: string): void {
+		const id = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+		const item = createTextItem(
+			text,
+			this.host._roomWidth,
+			this.host._roomDepth,
+			id,
+		);
+		this.host._furniture = [...this.host._furniture, item];
+		this.host._selectedFurnitureId = item.id;
+		this.host._dirty = true;
+	}
+
 	removeFurniture(id: string): void {
 		this.host._furniture = removeFurnitureItem(this.host._furniture, id);
 		if (this.host._selectedFurnitureId === id)
@@ -347,11 +363,23 @@ export class GridStateController implements ReactiveController {
 	}
 
 	updateFurniture(id: string, updates: Partial<FurnitureItem>): void {
-		this.host._furniture = updateFurnitureItem(
-			this.host._furniture,
-			id,
-			updates,
-		);
+		let next = updateFurnitureItem(this.host._furniture, id, updates);
+		// A text label auto-hugs its text: when a size-affecting field changes,
+		// recompute the stored bounding box so drag-clamping / out-of-grid stay
+		// accurate. Position-only edits (x/y/rotation) don't touch the box.
+		const item = next.find((f) => f.id === id);
+		if (
+			item?.type === "text" &&
+			("text" in updates || "fontSize" in updates || "bold" in updates)
+		) {
+			const box = estimateTextBox(
+				item.text ?? "",
+				item.fontSize ?? DEFAULT_TEXT_SIZE_MM,
+				item.bold ?? false,
+			);
+			next = updateFurnitureItem(next, id, box);
+		}
+		this.host._furniture = next;
 		this.host._dirty = true;
 	}
 

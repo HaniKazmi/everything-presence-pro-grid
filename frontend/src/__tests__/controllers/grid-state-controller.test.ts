@@ -371,6 +371,42 @@ describe("GridStateController", () => {
 	});
 
 	// =========================================================================
+	// addTextFurniture(text) / updateFurniture(id, updates) text auto-resize
+	// =========================================================================
+	describe("addTextFurniture(text)", () => {
+		it("addTextFurniture appends a selected, dirty text item", () => {
+			host._roomWidth = 4000;
+			host._roomDepth = 3000;
+			ctrl.addTextFurniture("Kids' corner");
+			expect(host._furniture).toHaveLength(1);
+			expect(host._furniture[0].type).toBe("text");
+			expect(host._furniture[0].text).toBe("Kids' corner");
+			expect(host._selectedFurnitureId).toBe(host._furniture[0].id);
+			expect(host._dirty).toBe(true);
+		});
+
+		it("updateFurniture recomputes text box when text changes", () => {
+			host._roomWidth = 4000;
+			host._roomDepth = 3000;
+			ctrl.addTextFurniture("Hi");
+			const id = host._furniture[0].id;
+			const before = host._furniture[0].width;
+			ctrl.updateFurniture(id, { text: "A much much longer label" });
+			expect(host._furniture[0].width).toBeGreaterThan(before);
+		});
+
+		it("updateFurniture does not resize text on a pure move", () => {
+			host._roomWidth = 4000;
+			host._roomDepth = 3000;
+			ctrl.addTextFurniture("Hi");
+			const id = host._furniture[0].id;
+			const before = host._furniture[0].width;
+			ctrl.updateFurniture(id, { x: 500 });
+			expect(host._furniture[0].width).toBe(before);
+		});
+	});
+
+	// =========================================================================
 	// removeFurniture(id)
 	// =========================================================================
 	describe("removeFurniture(id)", () => {
