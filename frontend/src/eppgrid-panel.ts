@@ -59,7 +59,11 @@ import {
 	SETTINGS_DEFAULTS,
 	SETTINGS_FIELD_MAP,
 } from "./lib/settings-defaults.js";
-import { persistSelectedMac } from "./lib/storage.js";
+import {
+	persistHeatmapEnabled,
+	persistSelectedMac,
+	readHeatmapEnabled,
+} from "./lib/storage.js";
 import { tablistKeydownIndex } from "./lib/tablist-nav.js";
 import { checkForNewBundle, parseBundleHash } from "./lib/version-check.js";
 import {
@@ -723,6 +727,10 @@ export class EPPGridPanel extends LitElement {
 	// device switch / session close. Not @state: consumed by the overlay
 	// render loop, not a Lit-reactive trigger on its own.
 	_targetTrails: Array<Array<{ x: number; y: number }>> = [[], [], []];
+	// Heatmap overlay: user intent (persisted per-device) and the latest decoded
+	// cell-activity frame from the `eppgrid/subscribe_heatmap` stream.
+	@state() private _heatmapEnabled = false;
+	@state() private _heatmapCells: number[] = [];
 	@state() _sensorState: SensorState = createInitialSensorState();
 	@state() _zoneState: ZoneStateSummary = createInitialZoneState();
 	@state() _showDebugLog = false;
@@ -1457,6 +1465,9 @@ export class EPPGridPanel extends LitElement {
 		this._deviceCtrl.onRawTargetData = (rawTargets) => {
 			this._targetCtrl.handleRawTargetData(rawTargets);
 		};
+		this._deviceCtrl.onHeatmapData = (cells) => {
+			this._heatmapCells = cells;
+		};
 		const config = await this._deviceCtrl.loadDeviceConfig(mac);
 		// Re-check after the await (mirroring _initialize): if the panel was
 		// removed while the load was in flight, don't apply config to a dead
@@ -1476,6 +1487,11 @@ export class EPPGridPanel extends LitElement {
 		if (dev) {
 			this._co2Enabled = dev.co2_enabled ?? false;
 		}
+		// Restore the persisted per-device heatmap preference and (re-)apply it
+		// to the freshly (re)wired DeviceController — a stale "on" flag must
+		// never re-open the subscription against a device that can't serve it.
+		this._heatmapEnabled = readHeatmapEnabled(mac);
+		this._deviceCtrl.setHeatmapEnabled(this._heatmapEnabled);
 	}
 
 	private _applyConfig(config: any): void {
@@ -2947,6 +2963,54 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
+	/**
+	 * Three-state heatmap capability gate for the selected device:
+	 *  - "needs_firmware": firmware predates 1.3.0 (unknown/behind/unavailable
+	 *    status) — the device has never told us about the build flag.
+	 *  - "no_memory": firmware is new enough but the build compiled the
+	 *    heatmap accumulator out (not enough RAM for this variant).
+	 *  - "available": the device can serve the heatmap subscription.
+	 */
+	private _heatmapAvailability(): "available" | "needs_firmware" | "no_memory" {
+		const dev = this._devices.find((d) => d.mac === this._selectedMac);
+		if (
+			!dev ||
+			dev.firmware_status === "firmware_behind" ||
+			dev.firmware_status === "unavailable"
+		) {
+			return "needs_firmware";
+		}
+		if (dev.heatmap === false) return "no_memory";
+		return "available";
+	}
+
+	private _renderHeatmapToggle() {
+		const avail = this._heatmapAvailability();
+		const disabled = avail !== "available";
+		const hint =
+			avail === "needs_firmware"
+				? this._localize("grid.heatmap_needs_firmware")
+				: avail === "no_memory"
+					? this._localize("grid.heatmap_no_memory")
+					: "";
+		const toggle = html`<epp-toggle
+			class="heatmap-toggle"
+			label=${this._localize("grid.heatmap_toggle")}
+			.checked=${this._heatmapEnabled && !disabled}
+			?disabled=${disabled}
+			@value-changed=${(e: CustomEvent) => {
+				this._heatmapEnabled = e.detail.value;
+				persistHeatmapEnabled(this._selectedMac, e.detail.value);
+				this._deviceCtrl.setHeatmapEnabled(e.detail.value);
+			}}
+		></epp-toggle>`;
+		// Disabled state always carries its reason via epp-tooltip — never a
+		// raw title= attribute.
+		return disabled
+			? html`<epp-tooltip content=${hint}>${toggle}</epp-tooltip>`
+			: toggle;
+	}
+
 	private _renderLiveGrid() {
 		// Pure render: last-in-room-position tracking for the pending-target
 		// display lives in TargetController.handleTargetData (per data frame),
@@ -2969,6 +3033,9 @@ export class EPPGridPanel extends LitElement {
 				.maxGridPx=${480}
 				?capHeightToHalfViewport=${this._isMobile}
 				.maxRangeMm=${this._computeMaxRangeMm()}
+				.heatmapCells=${this._heatmapCells}
+				?showHeatmap=${this._heatmapEnabled && this._heatmapAvailability() === "available"}
+				.trails=${this._targetTrails}
 				@furniture-select=${(e: CustomEvent) => {
 					this._selectedFurnitureId = e.detail;
 				}}
@@ -3153,6 +3220,7 @@ export class EPPGridPanel extends LitElement {
               ${gridContent}
               ${this._targetMenu ? this._renderTargetMenu() : nothing}
             </div>
+            ${this._perspective ? this._renderHeatmapToggle() : nothing}
             ${this._perspective ? this._renderBackendDebugLog() : nothing}
           </div>
           <epp-sheet inline open class="live-controls">
@@ -3314,6 +3382,9 @@ export class EPPGridPanel extends LitElement {
                 .maxRangeMm=${this._editorMaxRangeMm()}
                 .frozenBounds=${this._frozenBounds}
                 .dismissedTargets=${this._dismissedTargets}
+                .heatmapCells=${this._heatmapCells}
+                ?showHeatmap=${this._heatmapEnabled && this._heatmapAvailability() === "available"}
+                .trails=${this._targetTrails}
                 @cell-paint=${(e: CustomEvent) => {
 									const { index, action } = e.detail;
 									if (action === "down") this._onCellMouseDown(index);
@@ -3392,6 +3463,7 @@ export class EPPGridPanel extends LitElement {
             <div class="grid-container" @click=${onGridContainerClick}>
               ${gridTemplate}
             </div>
+            ${this._renderHeatmapToggle()}
             ${!this._isMobile && (this._sidebarTab === "zones" || this._sidebarTab === "overlays") ? this._renderDebugLog() : nothing}
           </div>
           <epp-sheet inline open class="editor-controls">

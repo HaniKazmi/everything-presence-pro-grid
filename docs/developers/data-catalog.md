@@ -266,6 +266,7 @@ Returns discovered EPP devices.
             "bluetooth_enabled": false,
             "co2_enabled": true,
             "ethernet_enabled": false,
+            "heatmap": true,
             "board_revision": "v2",
             "sensor_variant": "ld2450",
             "firmware_channel": "stable",
@@ -287,12 +288,19 @@ HA or ESPHome are reflected on the next call.
 `FIRMWARE_VERSION` using semver.
 
 The build flag fields (`bluetooth_enabled`, `co2_enabled`, `ethernet_enabled`,
-`board_revision`, `sensor_variant`, `firmware_channel`, `model`) are optional —
-they are only present after the device has connected and build flags have been
-fetched via the `get_build_flags` API action. Build flags are merged without
-overriding the base fields above (`mac`, `name`, `host`, `available`,
-`configured`, `area`, `firmware_status`, `current_connection_count`) — flag data
-comes from the device and must not rewrite identity fields.
+`heatmap`, `board_revision`, `sensor_variant`, `firmware_channel`, `model`) are
+optional — they are only present after the device has connected and build
+flags have been fetched via the `get_build_flags` API action. Build flags are
+merged without overriding the base fields above (`mac`, `name`, `host`,
+`available`, `configured`, `area`, `firmware_status`,
+`current_connection_count`) — flag data comes from the device and must not
+rewrite identity fields.
+
+`heatmap` reflects whether the connected firmware build compiled in the
+activity-heatmap accumulator (`EPP_HEATMAP_ENABLED`) — some variants omit it to
+save RAM. The panel gates the heatmap overlay toggle on this flag (plus
+`firmware_status`, since firmware older than 1.3.0 never sends it at all): see
+`_heatmapAvailability()` in `frontend/src/eppgrid-panel.ts`.
 
 ### `frontend_version`
 
