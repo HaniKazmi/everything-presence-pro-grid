@@ -1595,6 +1595,10 @@ export class EPPGridPanel extends LitElement {
 		this._gridCtrl.addCustomFurniture(icon);
 	}
 
+	private _addTextFurniture(): void {
+		this._gridCtrl.addTextFurniture(this._localize("text_label.default_text"));
+	}
+
 	private _removeFurniture(id: string): void {
 		this._gridCtrl.removeFurniture(id);
 	}
@@ -3555,6 +3559,9 @@ export class EPPGridPanel extends LitElement {
 										}}
                     @furniture-add-custom=${(e: CustomEvent) => {
 											this._addCustomFurniture(e.detail);
+										}}
+                    @furniture-add-text=${() => {
+											this._addTextFurniture();
 										}}
                     @furniture-remove=${(e: CustomEvent) => {
 											this._removeFurniture(e.detail);

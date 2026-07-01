@@ -320,6 +320,24 @@ describe("_addCustomFurniture", () => {
 	});
 });
 
+describe("_addTextFurniture", () => {
+	let el: EPPGridPanel;
+
+	beforeEach(() => {
+		el = createPanel();
+	});
+
+	it("adds a text label when the sidebar requests it", () => {
+		const a = el as any;
+		a._addTextFurniture();
+
+		expect(a._furniture.some((f: any) => f.type === "text")).toBe(true);
+		const t = a._furniture.find((f: any) => f.type === "text");
+		expect(typeof t.text).toBe("string");
+		expect(t.text.length).toBeGreaterThan(0);
+	});
+});
+
 describe("_onKeyDown furniture shortcuts", () => {
 	let el: EPPGridPanel;
 	let a: any;
