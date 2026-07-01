@@ -4422,6 +4422,43 @@ class TestSubscribeHeatmap:
         assert len(cells) == 400
         assert cells[5] == 200
 
+    async def test_subscribe_heatmap_emits_zeroed_cells_on_empty_state(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """An empty Heatmap state clears the overlay: emits an all-zero cells frame
+        rather than being dropped (which would leave the frontend showing stale
+        heat). `_decode_heatmap_b64` already maps empty -> all-zeros."""
+        from aioesphomeapi import TextSensorInfo
+        from aioesphomeapi import TextSensorState
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_device_conn = MagicMock()
+        mock_device_conn.entities = [
+            TextSensorInfo(object_id="heatmap", key=42, name="Heatmap"),
+        ]
+        mock_device_conn.subscribe_states = AsyncMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_heatmap
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 33, "type": "eppgrid/subscribe_heatmap", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_heatmap, connection, msg)
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+        connection.send_message.reset_mock()
+
+        on_state(TextSensorState(key=42, state="", missing_state=False))
+
+        connection.send_message.assert_called_once()
+        payload = connection.send_message.call_args[0][0]
+        cells = payload.get("event", {}).get("cells")
+        assert cells is not None
+        assert len(cells) == 400
+        assert all(c == 0 for c in cells)
+
     async def test_subscribe_heatmap_ignores_unrelated_state(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
@@ -5998,6 +6035,8 @@ class TestAdminGateAllCommands:
             "websocket_overview_list_devices",
             # overview card live stream — read-only, non-admin shared dashboard
             "websocket_overview_subscribe",
+            # card heatmap stream — read-only, non-admin shared dashboard
+            "websocket_overview_subscribe_heatmap",
         }
     )
 
@@ -7039,3 +7078,127 @@ class TestOverviewSubscribe:
             if c.args and isinstance(c.args[0], dict) and c.args[0].get("event", {}).get("available") is False
         ]
         assert avail_events, "expected an available:false event"
+
+
+class TestOverviewSubscribeHeatmap:
+    """Tests for eppgrid/overview/subscribe_heatmap (non-admin, device_id-based)."""
+
+    async def test_unknown_device_id(self, hass, config_entry):
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe_heatmap
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value=None)
+
+        connection = MagicMock()
+        msg = {"id": 20, "type": "eppgrid/overview/subscribe_heatmap", "device_id": "ghost"}
+        await call_async_handler(hass, websocket_overview_subscribe_heatmap, connection, msg)
+
+        connection.send_error.assert_called_once()
+        assert connection.send_error.call_args.args[1] == "device_not_found"
+
+    async def test_offline_device_sends_available_false_no_snapshot(self, hass, config_entry):
+        """No live session -> available:false event, no snapshot, no subscribe counter bump."""
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe_heatmap
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+        mock_dm.async_open_session = AsyncMock(return_value=None)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 21, "type": "eppgrid/overview/subscribe_heatmap", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe_heatmap, connection, msg)
+
+        connection.send_result.assert_called_once_with(21)
+        avail_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and c.args[0].get("event", {}).get("available") is False
+        ]
+        assert avail_events, "expected an available:false event"
+        snapshot_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and c.args[0].get("event", {}).get("snapshot") is not None
+        ]
+        assert not snapshot_events, "heatmap subscribe must never send a snapshot event"
+        mock_dm.note_target_subscribe.assert_not_called()
+
+    async def test_subscribe_heatmap_emits_cells_on_state(self, hass, config_entry):
+        """Live session + a heatmap TextSensorState update emits {"cells": [...]}."""
+        import base64
+
+        from aioesphomeapi import TextSensorInfo
+        from aioesphomeapi import TextSensorState
+
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe_heatmap
+
+        mac = "AA:BB:CC:DD:EE:01"
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value=mac)
+        device_conn = MagicMock()
+        device_conn.entities = [
+            TextSensorInfo(object_id="heatmap", key=42, name="Heatmap"),
+        ]
+        device_conn.subscribe_states = AsyncMock()
+        device_conn.unsubscribe_states = MagicMock()
+        mock_dm.async_open_session = AsyncMock(return_value=device_conn)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 22, "type": "eppgrid/overview/subscribe_heatmap", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe_heatmap, connection, msg)
+
+        connection.send_result.assert_called_once_with(22)
+        snapshot_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and c.args[0].get("event", {}).get("snapshot") is not None
+        ]
+        assert not snapshot_events, "heatmap subscribe must never send a snapshot event"
+        device_conn.subscribe_states.assert_awaited_once()
+        mock_dm.note_target_subscribe.assert_called_once_with(mac, "heatmap_subs")
+
+        on_state = device_conn.subscribe_states.await_args[0][0]
+        connection.send_message.reset_mock()
+
+        raw = bytearray(400)
+        raw[5] = 200
+        encoded = base64.b64encode(bytes(raw)).decode("ascii")
+        on_state(TextSensorState(key=42, state=encoded, missing_state=False))
+
+        connection.send_message.assert_called_once()
+        payload = connection.send_message.call_args[0][0]
+        cells = payload.get("event", {}).get("cells")
+        assert cells is not None
+        assert len(cells) == 400
+        assert cells[5] == 200
+
+    async def test_unsub_releases_session_and_is_idempotent(self, hass, config_entry):
+        """Symmetric unsub: note_target_unsubscribe + release_session fire exactly once each,
+        even if the unsub is double-fired (the `released` guard)."""
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe_heatmap
+
+        mac = "AA:BB:CC:DD:EE:01"
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value=mac)
+        device_conn = MagicMock()
+        device_conn.entities = []
+        device_conn.subscribe_states = AsyncMock()
+        device_conn.unsubscribe_states = MagicMock()
+        mock_dm.async_open_session = AsyncMock(return_value=device_conn)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 23, "type": "eppgrid/overview/subscribe_heatmap", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe_heatmap, connection, msg)
+
+        assert 23 in connection.subscriptions
+        connection.subscriptions[23]()
+        connection.subscriptions[23]()
+
+        device_conn.unsubscribe_states.assert_called_once()
+        assert mock_dm.note_target_unsubscribe.call_count == 1
+        mock_dm.note_target_unsubscribe.assert_called_once_with(mac, "heatmap_subs")
+        assert mock_dm.release_session.call_count == 1
+        mock_dm.release_session.assert_called_once_with(mac, device_conn)

@@ -64,10 +64,11 @@ sidebar.
 
 ### Map layers
 
-| Option             | Default | Description                                                |
-| ------------------ | ------- | ---------------------------------------------------------- |
-| **Show furniture** | on      | Overlay furniture icons on the grid.                       |
-| **Show overlays**  | on      | Show Entry/Exit, Interference, and Suppress cell markings. |
+| Option             | Default | Description                                                                                                 |
+| ------------------ | ------- | ----------------------------------------------------------------------------------------------------------- |
+| **Show furniture** | on      | Overlay furniture icons on the grid.                                                                        |
+| **Show overlays**  | on      | Show Entry/Exit, Interference, and Suppress cell markings.                                                  |
+| **Show heatmap**   | off     | Show the activity heatmap and live movement trails on the map. Requires firmware that supports the heatmap. |
 
 ### Templated text
 

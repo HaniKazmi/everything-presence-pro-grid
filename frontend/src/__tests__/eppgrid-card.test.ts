@@ -165,6 +165,11 @@ describe("applyCardDefaults", () => {
 		expect(result.primary).toBe("{{ x }}");
 		expect(result.secondary).toBe("sub");
 	});
+
+	it("show_heatmap defaults to false and passes through when true", () => {
+		expect(applyCardDefaults({}).show_heatmap).toBe(false);
+		expect(applyCardDefaults({ show_heatmap: true }).show_heatmap).toBe(true);
+	});
 });
 
 describe("eppgrid-card setConfig", () => {
@@ -826,6 +831,177 @@ describe("eppgrid-card templated header", () => {
 		const tpl = h.subs.find((s) => s.params.type === "render_template")!;
 		el.remove();
 		expect(tpl.unsub).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("eppgrid-card heatmap wiring", () => {
+	it("opens a heatmap subscription when show_heatmap and show_map are true", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-heat-open",
+			show_heatmap: true,
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(
+			h.subs.some(
+				(s) => s.params.type === "eppgrid/overview/subscribe_heatmap",
+			),
+		).toBe(true);
+	});
+
+	it("does not open a heatmap subscription when show_heatmap is false", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-heat-off",
+			show_heatmap: false,
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(
+			h.subs.some(
+				(s) => s.params.type === "eppgrid/overview/subscribe_heatmap",
+			),
+		).toBe(false);
+	});
+
+	it("does not open a heatmap subscription when show_map is false, even if show_heatmap is true", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-heat-no-map",
+			show_heatmap: true,
+			show_map: false,
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(
+			h.subs.some(
+				(s) => s.params.type === "eppgrid/overview/subscribe_heatmap",
+			),
+		).toBe(false);
+	});
+
+	it("passes showHeatmap=false and empty heatmapCells to epp-grid when show_heatmap is off", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-heat-props-off",
+			show_heatmap: false,
+		});
+		const grid = el.shadowRoot!.querySelector("epp-grid") as unknown as {
+			showHeatmap: boolean;
+			heatmapCells: number[];
+		};
+		expect(grid).toBeTruthy();
+		expect(grid.showHeatmap).toBe(false);
+		expect(grid.heatmapCells).toEqual([]);
+	});
+
+	it("feeds heat cells and updates trails from targets into epp-grid when show_heatmap is on", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-heat-live",
+			show_heatmap: true,
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		h.emitTo("eppgrid/overview/subscribe", { snapshot: CALIBRATED });
+		await el.updateComplete;
+
+		h.emitTo("eppgrid/overview/subscribe_heatmap", { cells: [0, 5, 0, 3] });
+		h.emitTo("eppgrid/overview/subscribe", {
+			targets: [{ x: 100, y: 200, status: "active" }],
+			sensors: {
+				occupancy: true,
+				illuminance: null,
+				temperature: null,
+				humidity: null,
+				co2: null,
+			},
+			zones: { occupancy: {}, target_counts: {}, frame_count: 1 },
+		});
+		await el.updateComplete;
+
+		const grid = el.shadowRoot!.querySelector("epp-grid") as unknown as {
+			showHeatmap: boolean;
+			heatmapCells: number[];
+			trails: Array<Array<{ x: number; y: number }>>;
+		};
+		expect(grid.showHeatmap).toBe(true);
+		expect(grid.heatmapCells).toEqual([0, 5, 0, 3]);
+		expect(grid.trails[0]).toEqual([{ x: 100, y: 200 }]);
+	});
+
+	it("closes the heatmap subscription on disconnectedCallback", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-heat-dispose",
+			show_heatmap: true,
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const heat = h.subs.find(
+			(s) => s.params.type === "eppgrid/overview/subscribe_heatmap",
+		)!;
+		el.remove();
+		expect(heat.unsub).toHaveBeenCalledTimes(1);
+	});
+
+	it("resets trails when the device changes", async () => {
+		const h = makeTemplatingHass();
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-heat-device-a",
+			show_heatmap: true,
+		});
+		el.hass = h.hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		h.emitTo("eppgrid/overview/subscribe", { snapshot: CALIBRATED });
+		h.emitTo("eppgrid/overview/subscribe", {
+			targets: [{ x: 100, y: 200, status: "active" }],
+			sensors: {
+				occupancy: true,
+				illuminance: null,
+				temperature: null,
+				humidity: null,
+				co2: null,
+			},
+			zones: { occupancy: {}, target_counts: {}, frame_count: 1 },
+		});
+		await el.updateComplete;
+		let grid = el.shadowRoot!.querySelector("epp-grid") as unknown as {
+			trails: Array<Array<{ x: number; y: number }>>;
+		};
+		expect(grid.trails[0].length).toBeGreaterThan(0);
+
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "card-heat-device-b",
+			show_heatmap: true,
+		});
+		await el.updateComplete;
+		h.emitTo("eppgrid/overview/subscribe", { snapshot: CALIBRATED });
+		await el.updateComplete;
+		grid = el.shadowRoot!.querySelector("epp-grid") as unknown as {
+			trails: Array<Array<{ x: number; y: number }>>;
+		};
+		expect(grid.trails.every((t) => t.length === 0)).toBe(true);
 	});
 });
 

@@ -1024,7 +1024,11 @@ def _make_heatmap_on_state(
     def _on_state(state: Any) -> None:
         if heatmap_key is None:
             return
-        if isinstance(state, TextSensorState) and state.key == heatmap_key and state.state:
+        # Emit even on an empty state: `_decode_heatmap_b64("")` returns an
+        # all-zero frame, so an empty firmware emit deterministically CLEARS the
+        # overlay rather than being dropped (which would leave stale heat on the
+        # panel/card). Only the entity-key check gates emission.
+        if isinstance(state, TextSensorState) and state.key == heatmap_key:
             cells = _decode_heatmap_b64(state.state)
             connection.send_message(websocket_api.event_message(msg_id, {"cells": cells}))
 

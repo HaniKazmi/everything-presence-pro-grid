@@ -545,6 +545,7 @@
 			"show_grid": "Show grid",
 			"show_furniture": "Show furniture",
 			"show_overlays": "Show overlays",
+			"show_heatmap": "Show heatmap",
 			"room_color": "Rest-of-room colour",
 			"reset_room_color": "Reset to auto",
 			"presence": "Presence",
