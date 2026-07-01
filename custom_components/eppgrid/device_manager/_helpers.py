@@ -195,6 +195,7 @@ def _compute_pipeline(
     config: dict[str, Any],
     raw_target_subs: int,
     grid_target_subs: int,
+    heatmap_subs: int = 0,
 ) -> dict[str, int]:
     """Derive all pipeline intervals from current settings and subscriber counts."""
     settings = config.get("settings", {})
@@ -212,6 +213,7 @@ def _compute_pipeline(
         "entity_zone_interval": zone_rate if any_zone else 0,
         "display_interval": 200 if has_display_sub else 0,
         "zone_state_interval": 1000 if grid_target_subs > 0 else 0,
+        "heatmap_interval": 2000 if heatmap_subs > 0 else 0,
     }
 
 
