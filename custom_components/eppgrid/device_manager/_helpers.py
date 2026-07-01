@@ -264,6 +264,20 @@ def supports_heatmap(version: str | None) -> bool:
         return False
 
 
+def strip_unsupported_pipeline_fields(
+    pipeline: dict[str, int], fw_ver: str | None
+) -> None:
+    """Drop pipeline fields the device's firmware can't accept (in place, BWC).
+
+    Pre-1.3.0 ``epp_set_pipeline`` has no ``heatmap_interval`` variable, so
+    pushing it would feed that firmware's service an unknown argument. Centralised
+    here so both push paths (`_push_pipeline_to_device` and the temp-connection
+    push) stay in sync as the pipeline schema evolves.
+    """
+    if not supports_heatmap(fw_ver):
+        pipeline.pop("heatmap_interval", None)
+
+
 def _sync_firmware_repair_issue(
     hass: HomeAssistant,
     *,

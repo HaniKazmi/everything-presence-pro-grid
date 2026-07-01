@@ -5056,7 +5056,10 @@ class TestEventCallbacks:
                 "custom_components.eppgrid.device_manager.DeviceConnection",
                 return_value=mock_conn,
             ),
-            patch("custom_components.eppgrid.device_manager.supports_heatmap", return_value=False),
+            patch(
+                "custom_components.eppgrid.device_manager._helpers.supports_heatmap",
+                return_value=False,
+            ),
         ):
             result = await manager._push_config_to_device(mac)
 

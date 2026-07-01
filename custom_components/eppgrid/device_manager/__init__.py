@@ -44,7 +44,7 @@ from ._helpers import _raise_service_unavailable as _raise_service_unavailable  
 from ._helpers import _resolve_zone_name
 from ._helpers import _sync_firmware_repair_issue
 from ._helpers import is_valid_zone_slots_shape
-from ._helpers import supports_heatmap
+from ._helpers import strip_unsupported_pipeline_fields
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1557,10 +1557,7 @@ class DeviceManager:
 
         dev = self.devices.get(mac)
         fw_ver = self.read_firmware_version(dev.device_id if dev is not None else None)
-        if not supports_heatmap(fw_ver):
-            # BWC: pre-1.3.0 epp_set_pipeline has no heatmap_interval variable;
-            # pushing an unknown field to it could error.
-            pipeline.pop("heatmap_interval", None)
+        strip_unsupported_pipeline_fields(pipeline, fw_ver)
 
         # Push via session if available, otherwise skip (device will get it on next full push)
         if session is not None and session.connected:
@@ -1755,13 +1752,9 @@ class DeviceManager:
                 await conn.async_push_config(config)
                 # Push pipeline directly (no subscribers on temp connections)
                 pipeline = _compute_pipeline(config, 0, 0, 0)
-                if not supports_heatmap(fw_ver):
-                    # BWC: pre-1.3.0 epp_set_pipeline has no heatmap_interval
-                    # variable; pushing an unknown field to it could error.
-                    # (`fw_ver` is already known-"compatible" here, so this is
-                    # a no-op today — kept for defense if the gating above
-                    # ever changes.)
-                    pipeline.pop("heatmap_interval", None)
+                # (`fw_ver` is already known-"compatible" here, so this strip is
+                # a no-op today — kept for defense if the gating above changes.)
+                strip_unsupported_pipeline_fields(pipeline, fw_ver)
                 with contextlib.suppress(HomeAssistantError):
                     await conn.async_execute_service("epp_set_pipeline", pipeline)
                 # Reuse the open temp connection for the flags fetch — see

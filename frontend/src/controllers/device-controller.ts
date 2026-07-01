@@ -729,8 +729,10 @@ export class DeviceController implements ReactiveController {
 	 */
 	setHeatmapEnabled(enabled: boolean): void {
 		this._heatmapEnabled = enabled;
-		this._unsubscribeHeatmap();
+		// `_subscribeHeatmap` unsubscribes any existing sub first, so the enable
+		// path needs no separate teardown; only the disable path does.
 		if (enabled) this._subscribeHeatmap();
+		else this._unsubscribeHeatmap();
 	}
 
 	private _subscribeHeatmap(): void {
