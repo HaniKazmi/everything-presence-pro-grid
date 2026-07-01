@@ -7,6 +7,7 @@ import {
 	TEXT_FONTS,
 	TEXT_ICON,
 	TEXT_LABEL_KEY,
+	TEXT_MAX_LEN,
 } from "./furniture.js";
 import {
 	GRID_CELL_COUNT,
@@ -196,7 +197,7 @@ export function parseFurniture(rawFurniture: unknown): FurnitureItem[] {
 				: DEFAULT_TEXT_ALIGN;
 		return {
 			...base,
-			text: typeof f?.text === "string" ? f.text : "",
+			text: typeof f?.text === "string" ? f.text.slice(0, TEXT_MAX_LEN) : "",
 			fontFamily: fontKey,
 			fontSize: clampTextSizeMm(
 				toFiniteNumber(f?.fontSize, DEFAULT_TEXT_SIZE_MM),

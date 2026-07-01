@@ -513,6 +513,10 @@ export const DEFAULT_TEXT_SIZE_MM = 200;
 export const DEFAULT_TEXT_ALIGN: "left" | "center" | "right" = "center";
 export const TEXT_SIZE_MIN_MM = 30;
 export const TEXT_SIZE_MAX_MM = 3000;
+// Max label length. Mirrors the backend schema's vol.Length(max=512); used to
+// cap the textarea input and to truncate on load (a hand-edited/corrupted blob
+// could otherwise hold unbounded text).
+export const TEXT_MAX_LEN = 512;
 export const TEXT_LABEL_KEY = "text_label.label";
 export const TEXT_ICON = "mdi:format-text";
 

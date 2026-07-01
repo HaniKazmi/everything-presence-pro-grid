@@ -10,6 +10,7 @@ import {
 	type FurnitureSticker,
 	filterAndSortStickers,
 	TEXT_FONTS,
+	TEXT_MAX_LEN,
 } from "../lib/furniture.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import { dialogStyles, sidebarRowStyles } from "../styles.js";
@@ -444,7 +445,7 @@ export class EppFurnitureSidebar extends LitElement {
 				<textarea
 					class="furn-text-input"
 					aria-label=${this.localize("text_label.text")}
-					maxlength="512"
+					maxlength=${TEXT_MAX_LEN}
 					.value=${item.text ?? ""}
 					@input=${(e: Event) =>
 						this._fireUpdate(item.id, {

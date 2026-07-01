@@ -63,4 +63,18 @@ describe("parseFurniture text labels", () => {
 		expect(item.text).toBeUndefined();
 		expect(item.fontFamily).toBeUndefined();
 	});
+
+	it("truncates over-long text on load (corrupted/hand-edited blob)", () => {
+		const [item] = parseFurniture([
+			{
+				type: "text",
+				text: "x".repeat(1000),
+				x: 0,
+				y: 0,
+				width: 10,
+				height: 10,
+			},
+		]);
+		expect(item.text?.length).toBe(512);
+	});
 });
