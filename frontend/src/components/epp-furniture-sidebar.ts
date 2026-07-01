@@ -50,6 +50,28 @@ const TEXT_FONT_OPTIONS = TEXT_FONTS.map((f) => ({
 	label: f.label,
 }));
 
+// Alignment choices with their literal a11y-label keys. Kept as explicit
+// string literals (not a `text_label.align_${a}` template) so the translation
+// checker can see them referenced — its dynamic-key detection only spans
+// dot-separated prefixes, not the underscore-glued `align_left` shape.
+const TEXT_ALIGN_OPTIONS = [
+	{
+		value: "left" as const,
+		labelKey: "text_label.align_left",
+		icon: "mdi:format-align-left",
+	},
+	{
+		value: "center" as const,
+		labelKey: "text_label.align_center",
+		icon: "mdi:format-align-center",
+	},
+	{
+		value: "right" as const,
+		labelKey: "text_label.align_right",
+		icon: "mdi:format-align-right",
+	},
+];
+
 export class EppFurnitureSidebar extends LitElement {
 	@property({ attribute: false }) furniture: FurnitureItem[] = [];
 	@property({ attribute: false }) selectedFurnitureId: string | null = null;
@@ -490,15 +512,15 @@ export class EppFurnitureSidebar extends LitElement {
 						@click=${() => this._fireUpdate(item.id, { italic: !item.italic })}
 					>${this.localize("text_label.italic")}</button>
 					<span class="furn-seg" role="group" aria-label=${this.localize("text_label.align")}>
-						${(["left", "center", "right"] as const).map(
+						${TEXT_ALIGN_OPTIONS.map(
 							(a) => html`<button
 								class="furn-align"
 								type="button"
-								data-align=${a}
-								aria-pressed=${(item.align ?? "center") === a ? "true" : "false"}
-								aria-label=${this.localize(`text_label.align_${a}`)}
-								@click=${() => this._fireUpdate(item.id, { align: a })}
-							><ha-icon icon="mdi:format-align-${a}" style="--mdc-icon-size:16px"></ha-icon></button>`,
+								data-align=${a.value}
+								aria-pressed=${(item.align ?? "center") === a.value ? "true" : "false"}
+								aria-label=${this.localize(a.labelKey)}
+								@click=${() => this._fireUpdate(item.id, { align: a.value })}
+							><ha-icon icon="${a.icon}" style="--mdc-icon-size:16px"></ha-icon></button>`,
 						)}
 					</span>
 				</div>
