@@ -677,6 +677,21 @@ describe("epp-furniture-overlay text items", () => {
 		expect(content.getAttribute("style")).toContain("left");
 	});
 
+	it("renders the text, never the item's icon, for a text item (regression: no mdi:format-text glyph)", async () => {
+		const el = await mountOverlay({ furniture: [TEXT_ITEM] });
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		expect(node).toBeTruthy();
+		// Unselected: the icon branch (<ha-icon icon="...">) must not render at
+		// all — the label content is the text span, not the item's icon glyph.
+		expect(node.querySelector("ha-icon")).toBeNull();
+		expect(
+			el.shadowRoot.querySelector('ha-icon[icon="mdi:format-text"]'),
+		).toBeNull();
+		expect(
+			node.querySelector(".furniture-text-content")?.textContent,
+		).toContain("Kids' corner");
+	});
+
 	it("shows rotate + delete but NO resize handles for a selected text item", async () => {
 		const el = await mountOverlay({
 			furniture: [TEXT_ITEM],
