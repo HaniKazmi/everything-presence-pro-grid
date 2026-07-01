@@ -3,15 +3,47 @@ import { property, state } from "lit/decorators.js";
 import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 import { FLOOR_PLAN_SVGS, FURNITURE_CATALOG } from "../constants.js";
 import {
+	clampTextSizeMm,
 	type FurnitureItem,
 	type FurnitureSticker,
 	filterAndSortStickers,
+	TEXT_FONTS,
 } from "../lib/furniture.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import { dialogStyles, sidebarRowStyles } from "../styles.js";
 import "../ui/epp-button.js";
 import "../ui/epp-dialog.js";
 import "../ui/epp-icon-button.js";
+import "../ui/epp-field.js";
+import "../ui/epp-toggle.js";
+import "./epp-zone-color-picker.js";
+
+// Fixed label palettes (domain colours — not themed). Text presets favour
+// high-contrast inks; background presets favour light fills.
+const TEXT_COLOR_PRESETS = [
+	"#212121",
+	"#ffffff",
+	"#f44336",
+	"#2196f3",
+	"#4caf50",
+	"#ff9800",
+	"#9c27b0",
+	"#000000",
+	"#ffeb3b",
+	"#795548",
+];
+const TEXT_BG_PRESETS = [
+	"#ffffff",
+	"#000000",
+	"#fff59d",
+	"#c8e6c9",
+	"#bbdefb",
+	"#ffccbc",
+	"#e1bee7",
+	"#eeeeee",
+	"#212121",
+	"#b0bec5",
+];
 
 export class EppFurnitureSidebar extends LitElement {
 	@property({ attribute: false }) furniture: FurnitureItem[] = [];
@@ -64,6 +96,83 @@ export class EppFurnitureSidebar extends LitElement {
 				background: var(--card-background-color, #fff);
 				color: var(--primary-text-color, #212121);
 			}
+
+			.furn-text-editor {
+				display: flex;
+				flex-direction: column;
+				gap: var(--epp-space-2, 8px);
+				padding: var(--epp-space-2, 8px);
+				border: 2px solid var(--epp-accent, var(--primary-color, #03a9f4));
+				border-radius: 8px;
+				margin-bottom: var(--epp-space-2, 8px);
+			}
+			.furn-text-input {
+				width: 100%;
+				min-height: 44px;
+				resize: vertical;
+				box-sizing: border-box;
+				padding: var(--epp-space-1, 4px);
+				border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+				border-radius: var(--epp-radius-sm, 6px);
+				font: inherit;
+				background: var(--epp-surface, var(--card-background-color, #fff));
+				color: var(--epp-text, var(--primary-text-color, #212121));
+			}
+			.furn-row {
+				display: flex;
+				align-items: center;
+				gap: var(--epp-space-2, 8px);
+			}
+			.furn-seg {
+				display: inline-flex;
+				border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+				border-radius: var(--epp-radius-sm, 6px);
+				overflow: hidden;
+			}
+			.furn-seg > button {
+				border: 0;
+				background: var(--epp-surface, #fff);
+				color: var(--epp-text-muted, var(--secondary-text-color, #757575));
+				padding: 6px 10px;
+				cursor: pointer;
+				font: inherit;
+				border-right: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+			}
+			.furn-seg > button:last-child { border-right: 0; }
+			.furn-seg > button[aria-pressed="true"] {
+				background: var(--epp-accent, var(--primary-color, #03a9f4));
+				color: var(--epp-accent-text, #fff);
+			}
+			.furn-seg-btn {
+				border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+				border-radius: var(--epp-radius-sm, 6px);
+				background: var(--epp-surface, #fff);
+				color: var(--epp-text-muted, var(--secondary-text-color, #757575));
+				padding: 6px 10px;
+				cursor: pointer;
+				font: inherit;
+			}
+			.furn-seg-btn[aria-pressed="true"] {
+				background: var(--epp-accent, var(--primary-color, #03a9f4));
+				color: var(--epp-accent-text, #fff);
+				border-color: var(--epp-accent, var(--primary-color, #03a9f4));
+			}
+			.furn-add-text {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				gap: var(--epp-space-1, 4px);
+				width: 100%;
+				margin-bottom: 6px;
+				padding: var(--epp-space-2, 8px);
+				border: 1px dashed var(--epp-accent, var(--primary-color, #03a9f4));
+				border-radius: 8px;
+				background: transparent;
+				color: var(--epp-accent, var(--primary-color, #03a9f4));
+				cursor: pointer;
+				font: inherit;
+			}
+			.furn-color-label { flex: 1; font-size: var(--epp-font-xs, 12px); color: var(--epp-text-muted, #757575); }
 
 			.furn-search {
 				position: sticky;
@@ -141,50 +250,67 @@ export class EppFurnitureSidebar extends LitElement {
 				}}
 			/>
 
+			<button
+				class="furn-add-text"
+				type="button"
+				@click=${() =>
+					this.dispatchEvent(
+						new CustomEvent("furniture-add-text", {
+							bubbles: true,
+							composed: true,
+						}),
+					)}
+			>
+				<ha-icon icon="mdi:format-text" style="--mdc-icon-size: 20px;"></ha-icon>
+				<span>${this.localize("text_label.add")}</span>
+			</button>
+
 			${
-				selected
-					? html`
-						<div class="furn-selected-info">
-							<div class="sidebar-item-row">
-								<ha-icon icon="${selected.icon}" style="--mdc-icon-size: 20px;"></ha-icon>
-								<strong>${this.localize(selected.label)}</strong>
-								<epp-icon-button icon="mdi:close" label=${this.localize("furniture.remove")} variant="danger" class="sidebar-remove-btn" @click=${() => this._fireRemove(selected.id)}></epp-icon-button>
+				selected && selected.type === "text"
+					? this._renderTextEditor(selected)
+					: selected
+						? html`
+							<div class="furn-selected-info">
+								<div class="sidebar-item-row">
+									<ha-icon icon="${selected.icon}" style="--mdc-icon-size: 20px;"></ha-icon>
+									<strong>${this.localize(selected.label)}</strong>
+									<epp-icon-button icon="mdi:close" label=${this.localize("furniture.remove")} variant="danger" class="sidebar-remove-btn" @click=${() => this._fireRemove(selected.id)}></epp-icon-button>
+								</div>
+								<div class="furn-dims">
+									<label>
+										${this.localize("dimensions.width_cm")}
+										<input type="number" min="10" step="5" .value=${String(Math.round(selected.width / 10))}
+											@change=${(e: Event) => this._fireDimensionUpdate(selected.id, "width", (e.target as HTMLInputElement).value)}
+										/>
+									</label>
+									<label>
+										${this.localize("dimensions.height_cm")}
+										<input type="number" min="10" step="5" .value=${String(Math.round(selected.height / 10))}
+											@change=${(e: Event) => this._fireDimensionUpdate(selected.id, "height", (e.target as HTMLInputElement).value)}
+										/>
+									</label>
+									<label>
+										${this.localize("dimensions.rotation")}
+										<input type="number" step="5" .value=${String(
+											// Render the stored value (trimmed to one decimal place
+											// to avoid long floats from free-rotate drags) so what
+											// the user sees matches what's saved and emitted.
+											Math.round(selected.rotation * 10) / 10,
+										)}
+											@change=${(e: Event) => {
+												const v = parseFloat(
+													(e.target as HTMLInputElement).value,
+												);
+												if (!Number.isFinite(v)) return;
+												const wrapped = ((v % 360) + 360) % 360;
+												this._fireUpdate(selected.id, { rotation: wrapped });
+											}}
+										/>
+									</label>
+								</div>
 							</div>
-							<div class="furn-dims">
-								<label>
-									${this.localize("dimensions.width_cm")}
-									<input type="number" min="10" step="5" .value=${String(Math.round(selected.width / 10))}
-										@change=${(e: Event) => this._fireDimensionUpdate(selected.id, "width", (e.target as HTMLInputElement).value)}
-									/>
-								</label>
-								<label>
-									${this.localize("dimensions.height_cm")}
-									<input type="number" min="10" step="5" .value=${String(Math.round(selected.height / 10))}
-										@change=${(e: Event) => this._fireDimensionUpdate(selected.id, "height", (e.target as HTMLInputElement).value)}
-									/>
-								</label>
-								<label>
-									${this.localize("dimensions.rotation")}
-									<input type="number" step="5" .value=${String(
-										// Render the stored value (trimmed to one decimal place
-										// to avoid long floats from free-rotate drags) so what
-										// the user sees matches what's saved and emitted.
-										Math.round(selected.rotation * 10) / 10,
-									)}
-										@change=${(e: Event) => {
-											const v = parseFloat(
-												(e.target as HTMLInputElement).value,
-											);
-											if (!Number.isFinite(v)) return;
-											const wrapped = ((v % 360) + 360) % 360;
-											this._fireUpdate(selected.id, { rotation: wrapped });
-										}}
-									/>
-								</label>
-							</div>
-						</div>
-					`
-					: nothing
+						`
+						: nothing
 			}
 
 			<div class="furn-catalog">
@@ -281,6 +407,140 @@ export class EppFurnitureSidebar extends LitElement {
 						}}
 					>${this.localize("common.add")}</epp-button>
 			</epp-dialog>
+		`;
+	}
+
+	private _renderTextEditor(item: FurnitureItem) {
+		const fontOptions = TEXT_FONTS.map((f) => ({
+			value: f.key,
+			label: f.label,
+		}));
+		const useHaSelect = !!customElements.get("ha-select");
+		return html`
+			<div class="furn-text-editor">
+				<div class="sidebar-item-row">
+					<ha-icon icon="mdi:format-text" style="--mdc-icon-size: 20px;"></ha-icon>
+					<strong>${this.localize("text_label.label")}</strong>
+					<epp-icon-button icon="mdi:close" label=${this.localize("text_label.remove")} variant="danger" class="sidebar-remove-btn" @click=${() => this._fireRemove(item.id)}></epp-icon-button>
+				</div>
+
+				<textarea
+					class="furn-text-input"
+					aria-label=${this.localize("text_label.text")}
+					.value=${item.text ?? ""}
+					@input=${(e: Event) =>
+						this._fireUpdate(item.id, {
+							text: (e.target as HTMLTextAreaElement).value,
+						})}
+				></textarea>
+
+				<div class="furn-row">
+					${
+						useHaSelect
+							? html`<ha-select
+									class="furn-font"
+									.value=${item.fontFamily ?? "arial"}
+									.options=${fontOptions}
+									@selected=${(e: CustomEvent) => {
+										const v = (e.target as any).value;
+										if (v) this._fireUpdate(item.id, { fontFamily: v });
+									}}
+									@closed=${(e: Event) => e.stopPropagation()}
+								></ha-select>`
+							: html`<select
+									class="furn-font"
+									aria-label=${this.localize("text_label.font")}
+									@change=${(e: Event) =>
+										this._fireUpdate(item.id, {
+											fontFamily: (e.target as HTMLSelectElement).value,
+										})}
+								>
+									${fontOptions.map(
+										(o) =>
+											html`<option value=${o.value} ?selected=${o.value === (item.fontFamily ?? "arial")}>${o.label}</option>`,
+									)}
+								</select>`
+					}
+					<epp-field
+						class="furn-size"
+						type="number"
+						unit="cm"
+						min="3"
+						max="300"
+						step="1"
+						.label=${this.localize("text_label.size_cm")}
+						.value=${String(Math.round((item.fontSize ?? 200) / 10))}
+						@value-changed=${(e: CustomEvent) => {
+							const cm = parseFloat(e.detail?.value);
+							if (!Number.isFinite(cm)) return;
+							this._fireUpdate(item.id, { fontSize: clampTextSizeMm(cm * 10) });
+						}}
+					></epp-field>
+				</div>
+
+				<div class="furn-row">
+					<button
+						class="furn-seg-btn furn-bold"
+						type="button"
+						aria-pressed=${item.bold ? "true" : "false"}
+						style="font-weight:700"
+						@click=${() => this._fireUpdate(item.id, { bold: !item.bold })}
+					>${this.localize("text_label.bold")}</button>
+					<button
+						class="furn-seg-btn furn-italic"
+						type="button"
+						aria-pressed=${item.italic ? "true" : "false"}
+						style="font-style:italic"
+						@click=${() => this._fireUpdate(item.id, { italic: !item.italic })}
+					>${this.localize("text_label.italic")}</button>
+					<span class="furn-seg" role="group" aria-label=${this.localize("text_label.align")}>
+						${(["left", "center", "right"] as const).map(
+							(a) => html`<button
+								class="furn-align"
+								type="button"
+								data-align=${a}
+								aria-pressed=${(item.align ?? "center") === a ? "true" : "false"}
+								aria-label=${this.localize(`text_label.align_${a}`)}
+								@click=${() => this._fireUpdate(item.id, { align: a })}
+							><ha-icon icon="mdi:format-align-${a}" style="--mdc-icon-size:16px"></ha-icon></button>`,
+						)}
+					</span>
+				</div>
+
+				<div class="furn-row">
+					<span class="furn-color-label">${this.localize("text_label.text_color")}</span>
+					<epp-zone-color-picker
+						class="furn-text-color"
+						.value=${item.color ?? ""}
+						.presets=${TEXT_COLOR_PRESETS}
+						.localize=${this.localize}
+						@value-changed=${(e: CustomEvent) => {
+							e.stopPropagation();
+							this._fireUpdate(item.id, { color: e.detail.value });
+						}}
+					></epp-zone-color-picker>
+				</div>
+
+				<div class="furn-row">
+					<span class="furn-color-label">${this.localize("text_label.background")}</span>
+					<button
+						class="furn-seg-btn furn-bg-none"
+						type="button"
+						aria-pressed=${item.background ? "false" : "true"}
+						@click=${() => this._fireUpdate(item.id, { background: undefined })}
+					>${this.localize("text_label.no_background")}</button>
+					<epp-zone-color-picker
+						class="furn-bg-color"
+						.value=${item.background ?? "#ffffff"}
+						.presets=${TEXT_BG_PRESETS}
+						.localize=${this.localize}
+						@value-changed=${(e: CustomEvent) => {
+							e.stopPropagation();
+							this._fireUpdate(item.id, { background: e.detail.value });
+						}}
+					></epp-zone-color-picker>
+				</div>
+			</div>
 		`;
 	}
 

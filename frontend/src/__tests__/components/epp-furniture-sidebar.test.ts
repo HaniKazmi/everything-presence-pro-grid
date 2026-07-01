@@ -444,6 +444,24 @@ describe("epp-furniture-sidebar DOM events", () => {
 		expect(last2).toBe(90);
 		document.body.removeChild(c);
 	});
+
+	it("ignores a cleared/non-finite rotation field (NaN must not reach state)", () => {
+		const el = createSidebar({
+			furniture: [{ ...SAMPLE_FURNITURE, id: "f1", rotation: 0 }],
+			selectedFurnitureId: "f1",
+		});
+		const handler = vi.fn();
+		el.addEventListener("furniture-update", handler);
+		const tpl = (el as any)._renderFurnitureSidebar();
+		const c = renderTo(tpl);
+		const inputs = c.querySelectorAll(
+			".furn-dims input",
+		) as NodeListOf<HTMLInputElement>;
+		inputs[2].value = "";
+		inputs[2].dispatchEvent(new Event("change"));
+		expect(handler).not.toHaveBeenCalled();
+		document.body.removeChild(c);
+	});
 });
 
 describe("width/height input guards", () => {
@@ -500,5 +518,327 @@ describe("width/height input guards", () => {
 		inputs[1].value = "0";
 		inputs[1].dispatchEvent(new Event("change"));
 		expect(handler.mock.calls[1][0].detail.updates.height).toBe(100);
+	});
+});
+
+const SEL_TEXT = {
+	id: "t1",
+	type: "text" as const,
+	icon: "mdi:format-text",
+	label: "text_label.label",
+	x: 0,
+	y: 0,
+	width: 800,
+	height: 300,
+	rotation: 0,
+	lockAspect: false,
+	text: "Kids' corner",
+	fontFamily: "arial",
+	fontSize: 200,
+	align: "center" as const,
+	bold: false,
+	italic: false,
+};
+
+async function mountSidebar(overrides: Record<string, unknown> = {}) {
+	const el = document.createElement("epp-furniture-sidebar") as any;
+	Object.assign(el, overrides);
+	document.body.appendChild(el);
+	await el.updateComplete;
+	return el;
+}
+
+describe("epp-furniture-sidebar text label editor", () => {
+	it("dispatches furniture-add-text from the add-text button", async () => {
+		const el = await mountSidebar();
+		const spy = vi.fn();
+		el.addEventListener("furniture-add-text", spy);
+		const btn = el.shadowRoot.querySelector(".furn-add-text") as HTMLElement;
+		expect(btn).toBeTruthy();
+		btn.click();
+		expect(spy).toHaveBeenCalledTimes(1);
+	});
+
+	it("renders the text editor for a selected text item", async () => {
+		const el = await mountSidebar({
+			furniture: [SEL_TEXT],
+			selectedFurnitureId: "t1",
+		});
+		expect(el.shadowRoot.querySelector(".furn-text-editor")).toBeTruthy();
+		// Not the furniture dims box:
+		expect(el.shadowRoot.querySelector(".furn-dims")).toBeNull();
+	});
+
+	it("emits furniture-update when the text is edited", async () => {
+		const el = await mountSidebar({
+			furniture: [SEL_TEXT],
+			selectedFurnitureId: "t1",
+		});
+		const spy = vi.fn();
+		el.addEventListener("furniture-update", spy);
+		const ta = el.shadowRoot.querySelector(
+			".furn-text-input",
+		) as HTMLTextAreaElement;
+		ta.value = "New label";
+		ta.dispatchEvent(new Event("input", { bubbles: true }));
+		expect(spy).toHaveBeenCalled();
+		const detail = spy.mock.calls.at(-1)![0].detail;
+		expect(detail.id).toBe("t1");
+		expect(detail.updates.text).toBe("New label");
+	});
+
+	it("emits bold + align updates from the style controls", async () => {
+		const el = await mountSidebar({
+			furniture: [SEL_TEXT],
+			selectedFurnitureId: "t1",
+		});
+		const spy = vi.fn();
+		el.addEventListener("furniture-update", spy);
+		(el.shadowRoot.querySelector(".furn-bold") as HTMLElement).click();
+		(
+			el.shadowRoot.querySelector(
+				'.furn-align[data-align="right"]',
+			) as HTMLElement
+		).click();
+		const calls = spy.mock.calls.map((c) => c[0].detail.updates);
+		expect(calls).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ bold: true }),
+				expect.objectContaining({ align: "right" }),
+			]),
+		);
+	});
+
+	it("emits fontSize in mm when the size (cm) field changes", async () => {
+		const el = await mountSidebar({
+			furniture: [SEL_TEXT],
+			selectedFurnitureId: "t1",
+		});
+		const spy = vi.fn();
+		el.addEventListener("furniture-update", spy);
+		el.shadowRoot.querySelector(".furn-size").dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "30" },
+				bubbles: true,
+			}),
+		);
+		const detail = spy.mock.calls.at(-1)![0].detail;
+		expect(detail.updates.fontSize).toBe(300); // 30cm -> 300mm
+	});
+
+	it("ignores a non-finite size (cm) value", async () => {
+		const el = await mountSidebar({
+			furniture: [SEL_TEXT],
+			selectedFurnitureId: "t1",
+		});
+		const spy = vi.fn();
+		el.addEventListener("furniture-update", spy);
+		el.shadowRoot.querySelector(".furn-size").dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "" },
+				bubbles: true,
+			}),
+		);
+		expect(spy).not.toHaveBeenCalled();
+	});
+
+	it("emits italic + font updates from the remaining style controls", async () => {
+		const el = await mountSidebar({
+			furniture: [SEL_TEXT],
+			selectedFurnitureId: "t1",
+		});
+		const spy = vi.fn();
+		el.addEventListener("furniture-update", spy);
+		(el.shadowRoot.querySelector(".furn-italic") as HTMLElement).click();
+		(
+			el.shadowRoot.querySelector(
+				'.furn-align[data-align="left"]',
+			) as HTMLElement
+		).click();
+		const select = el.shadowRoot.querySelector(
+			".furn-font",
+		) as HTMLSelectElement;
+		select.value = "georgia";
+		select.dispatchEvent(new Event("change", { bubbles: true }));
+		const calls = spy.mock.calls.map((c) => c[0].detail.updates);
+		expect(calls).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ italic: true }),
+				expect.objectContaining({ align: "left" }),
+				expect.objectContaining({ fontFamily: "georgia" }),
+			]),
+		);
+	});
+
+	it("emits text colour and background updates from the colour pickers, stopping propagation", async () => {
+		const el = await mountSidebar({
+			furniture: [SEL_TEXT],
+			selectedFurnitureId: "t1",
+		});
+		const spy = vi.fn();
+		el.addEventListener("furniture-update", spy);
+		const outerSpy = vi.fn();
+		document.body.addEventListener("value-changed", outerSpy);
+
+		const textColor = el.shadowRoot.querySelector(
+			".furn-text-color",
+		) as HTMLElement;
+		textColor.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "#ff0000" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		const bgColor = el.shadowRoot.querySelector(
+			".furn-bg-color",
+		) as HTMLElement;
+		bgColor.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "#00ff00" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+
+		const calls = spy.mock.calls.map((c) => c[0].detail.updates);
+		expect(calls).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ color: "#ff0000" }),
+				expect.objectContaining({ background: "#00ff00" }),
+			]),
+		);
+		// stopPropagation() on the re-dispatched color-picker event means it
+		// never reaches a listener outside the sidebar's shadow tree.
+		expect(outerSpy).not.toHaveBeenCalled();
+		document.body.removeEventListener("value-changed", outerSpy);
+	});
+
+	it("clears the background via the 'No background' button", async () => {
+		const el = await mountSidebar({
+			furniture: [{ ...SEL_TEXT, background: "#00ff00" }],
+			selectedFurnitureId: "t1",
+		});
+		const spy = vi.fn();
+		el.addEventListener("furniture-update", spy);
+		(el.shadowRoot.querySelector(".furn-bg-none") as HTMLElement).click();
+		const detail = spy.mock.calls.at(-1)![0].detail;
+		expect(detail.updates.background).toBeUndefined();
+	});
+
+	it("removes a selected text item via the editor's remove button", async () => {
+		const el = await mountSidebar({
+			furniture: [SEL_TEXT],
+			selectedFurnitureId: "t1",
+		});
+		const spy = vi.fn();
+		el.addEventListener("furniture-remove", spy);
+		(
+			el.shadowRoot.querySelector(
+				".furn-text-editor .sidebar-remove-btn",
+			) as HTMLElement
+		).click();
+		expect(spy).toHaveBeenCalledTimes(1);
+		expect(spy.mock.calls[0][0].detail).toBe("t1");
+	});
+
+	it("uses the ha-select branch when ha-select is registered", async () => {
+		class FakeHaSelect extends HTMLElement {
+			value = "";
+			options: unknown[] = [];
+		}
+		if (!customElements.get("ha-select")) {
+			customElements.define("ha-select", FakeHaSelect);
+		}
+		try {
+			const el = await mountSidebar({
+				furniture: [SEL_TEXT],
+				selectedFurnitureId: "t1",
+			});
+			const select = el.shadowRoot.querySelector("ha-select.furn-font") as any;
+			expect(select).toBeTruthy();
+
+			const spy = vi.fn();
+			el.addEventListener("furniture-update", spy);
+			select.value = "verdana";
+			select.dispatchEvent(new CustomEvent("selected", { bubbles: true }));
+			expect(spy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					detail: { id: "t1", updates: { fontFamily: "verdana" } },
+				}),
+			);
+
+			const outerSpy = vi.fn();
+			document.body.addEventListener("closed", outerSpy);
+			select.dispatchEvent(
+				new CustomEvent("closed", { bubbles: true, composed: true }),
+			);
+			expect(outerSpy).not.toHaveBeenCalled();
+			document.body.removeEventListener("closed", outerSpy);
+		} finally {
+			// Custom element registrations can't be undone; harmless to leave
+			// defined; other tests re-check `customElements.get("ha-select")`.
+		}
+	});
+
+	it("ignores an empty ha-select selection (falsy value)", async () => {
+		class FakeHaSelectEmpty extends HTMLElement {
+			value = "";
+			options: unknown[] = [];
+		}
+		if (!customElements.get("ha-select")) {
+			customElements.define("ha-select", FakeHaSelectEmpty);
+		}
+		const el = await mountSidebar({
+			furniture: [SEL_TEXT],
+			selectedFurnitureId: "t1",
+		});
+		const select = el.shadowRoot.querySelector("ha-select.furn-font") as any;
+		if (!select) return; // ha-select already claimed by another define elsewhere
+		const spy = vi.fn();
+		el.addEventListener("furniture-update", spy);
+		select.value = "";
+		select.dispatchEvent(new CustomEvent("selected", { bubbles: true }));
+		expect(spy).not.toHaveBeenCalled();
+	});
+
+	it("falls back to defaults when optional text fields are unset", async () => {
+		const bare = {
+			id: "t2",
+			type: "text" as const,
+			icon: "mdi:format-text",
+			label: "text_label.label",
+			x: 0,
+			y: 0,
+			width: 800,
+			height: 300,
+			rotation: 0,
+			lockAspect: false,
+		};
+		const el = await mountSidebar({
+			furniture: [bare],
+			selectedFurnitureId: "t2",
+		});
+		const ta = el.shadowRoot.querySelector(
+			".furn-text-input",
+		) as HTMLTextAreaElement;
+		expect(ta.value).toBe("");
+		const size = el.shadowRoot.querySelector(".furn-size") as any;
+		expect(size.value).toBe("20"); // 200mm default -> 20cm
+		const centerAlign = el.shadowRoot.querySelector(
+			'.furn-align[data-align="center"]',
+		) as HTMLElement;
+		expect(centerAlign.getAttribute("aria-pressed")).toBe("true");
+	});
+
+	it("renders bold/italic controls as pressed when the item is bold+italic", async () => {
+		const el = await mountSidebar({
+			furniture: [{ ...SEL_TEXT, bold: true, italic: true }],
+			selectedFurnitureId: "t1",
+		});
+		const bold = el.shadowRoot.querySelector(".furn-bold") as HTMLElement;
+		const italic = el.shadowRoot.querySelector(".furn-italic") as HTMLElement;
+		expect(bold.getAttribute("aria-pressed")).toBe("true");
+		expect(italic.getAttribute("aria-pressed")).toBe("true");
 	});
 });
