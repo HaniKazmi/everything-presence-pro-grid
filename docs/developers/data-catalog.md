@@ -469,7 +469,8 @@ rejected) and the list's serialized JSON is capped at 64 KiB.
 Furniture item fields:
 
 - `type`: `"icon" | "svg" | "text"` — a text label is `"text"`.
-- Text-label fields (present only when `type == "text"`):
+- Text-label fields (used only when `type == "text"`; the backend schema
+    validates them as optional keys regardless of `type`):
     - `text` (string, ≤512 chars) — the label content.
     - `fontFamily` (enum key: arial | verdana | tahoma | georgia | times | courier
         | trebuchet | comic).

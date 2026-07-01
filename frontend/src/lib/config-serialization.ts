@@ -201,13 +201,18 @@ export function parseFurniture(rawFurniture: unknown): FurnitureItem[] {
 			fontSize: clampTextSizeMm(
 				toFiniteNumber(f?.fontSize, DEFAULT_TEXT_SIZE_MM),
 			),
-			color: HEX_COLOR_PATTERN.test(String(f?.color)) ? f.color : undefined,
+			color:
+				typeof f?.color === "string" && HEX_COLOR_PATTERN.test(f.color)
+					? f.color
+					: undefined,
 			bold: f?.bold === true,
 			italic: f?.italic === true,
 			align,
-			background: HEX_COLOR_PATTERN.test(String(f?.background))
-				? f.background
-				: undefined,
+			background:
+				typeof f?.background === "string" &&
+				HEX_COLOR_PATTERN.test(f.background)
+					? f.background
+					: undefined,
 		};
 	});
 }

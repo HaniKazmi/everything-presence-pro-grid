@@ -153,8 +153,10 @@ _FURNITURE_ITEM_SCHEMA = vol.Schema(
         vol.Optional("type"): vol.In(["icon", "svg", "text"]),
         vol.Optional("icon"): vol.All(str, vol.Length(max=128)),
         vol.Optional("label"): vol.All(str, vol.Length(max=128)),
-        # Text-label fields (type == "text"). All optional so icon/svg items
-        # are unaffected and PREVENT_EXTRA still bars arbitrary blobs.
+        # Text-label fields — meaningful only for type == "text", but (like the
+        # icon/label fields above) validated as flat vol.Optional keys rather
+        # than cross-checked against `type`. All optional so icon/svg items are
+        # unaffected and PREVENT_EXTRA still bars arbitrary blobs.
         vol.Optional("text"): vol.All(str, vol.Length(max=512)),
         vol.Optional("fontFamily"): vol.In(_FURNITURE_FONT_KEYS),
         vol.Optional("fontSize"): finite_float(min=30, max=3000),
