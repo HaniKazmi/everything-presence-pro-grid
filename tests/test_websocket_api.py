@@ -4422,6 +4422,43 @@ class TestSubscribeHeatmap:
         assert len(cells) == 400
         assert cells[5] == 200
 
+    async def test_subscribe_heatmap_emits_zeroed_cells_on_empty_state(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """An empty Heatmap state clears the overlay: emits an all-zero cells frame
+        rather than being dropped (which would leave the frontend showing stale
+        heat). `_decode_heatmap_b64` already maps empty -> all-zeros."""
+        from aioesphomeapi import TextSensorInfo
+        from aioesphomeapi import TextSensorState
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_device_conn = MagicMock()
+        mock_device_conn.entities = [
+            TextSensorInfo(object_id="heatmap", key=42, name="Heatmap"),
+        ]
+        mock_device_conn.subscribe_states = AsyncMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_heatmap
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 33, "type": "eppgrid/subscribe_heatmap", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_heatmap, connection, msg)
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+        connection.send_message.reset_mock()
+
+        on_state(TextSensorState(key=42, state="", missing_state=False))
+
+        connection.send_message.assert_called_once()
+        payload = connection.send_message.call_args[0][0]
+        cells = payload.get("event", {}).get("cells")
+        assert cells is not None
+        assert len(cells) == 400
+        assert all(c == 0 for c in cells)
+
     async def test_subscribe_heatmap_ignores_unrelated_state(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
