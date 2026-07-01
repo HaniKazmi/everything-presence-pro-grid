@@ -9,6 +9,7 @@ import {
 	mmToPx,
 	visibleHandles,
 } from "../lib/furniture.js";
+import type { FurnitureItemTone } from "../lib/furniture-tones.js";
 import { roomStartCol } from "../lib/grid.js";
 import type { SidebarTab } from "../lib/view-hash.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
@@ -24,6 +25,12 @@ export class EppFurnitureOverlay extends LitElement {
 	@property({ type: Number }) visRows = 20;
 	@property({ attribute: false }) sidebarTab: SidebarTab = "zones";
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
+	// Per-item auto-contrast styling, keyed by furniture id, derived by the grid
+	// from the cell under each item. Absent id → the item keeps the default grey.
+	@property({ attribute: false }) furnitureTones?: Map<
+		string,
+		FurnitureItemTone
+	>;
 
 	static styles = css`
 		:host {
@@ -60,7 +67,10 @@ export class EppFurnitureOverlay extends LitElement {
 			border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
 			border-radius: 4px;
 			background: transparent;
-			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
+			color: var(
+				--epp-furniture-color,
+				var(--epp-text-muted, var(--secondary-text-color, #757575))
+			);
 			pointer-events: auto;
 			cursor: grab;
 			transform-origin: center center;
@@ -78,6 +88,11 @@ export class EppFurnitureOverlay extends LitElement {
 			box-shadow: 0 0 8px
 				color-mix(in srgb, var(--epp-accent, #03a9f4) 40%, transparent);
 			z-index: 10;
+		}
+
+		.furniture-item.has-halo {
+			filter: drop-shadow(0 0 1.3px var(--epp-furniture-halo-color))
+				drop-shadow(0 0 1.3px var(--epp-furniture-halo-color));
 		}
 
 		.furniture-item ha-icon {
@@ -265,12 +280,16 @@ export class EppFurnitureOverlay extends LitElement {
 					const wPx = this._mmToPx(item.width);
 					const hPx = this._mmToPx(item.height);
 					const selected = this.selectedFurnitureId === item.id;
+					const tone = this.furnitureTones?.get(item.id);
 
 					return html`
 						<div
-							class="furniture-item ${selected ? "selected" : ""}"
+							class="furniture-item${selected ? " selected" : ""}${
+								tone ? " has-halo" : ""
+							}"
 							data-id="${item.id}"
 							style="
+								${tone ? `--epp-furniture-color:${tone.color};--epp-furniture-halo-color:${tone.halo};` : ""}
 								left: ${leftPx}px; top: ${topPx}px;
 								width: ${wPx}px; height: ${hPx}px;
 								transform: rotate(${item.rotation}deg);

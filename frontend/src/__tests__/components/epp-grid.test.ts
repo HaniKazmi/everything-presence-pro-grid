@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import "../../components/epp-grid.js";
 import type { EppGrid } from "../../components/epp-grid.js";
 import type { FurnitureItem } from "../../lib/furniture.js";
+import { FURNITURE_TONE_CSS } from "../../lib/furniture-contrast.js";
 import {
 	CELL_OVERLAY_INTERFERENCE,
 	CELL_OVERLAY_SUPPRESS,
@@ -1931,5 +1932,46 @@ describe("epp-grid cell sizing (measured available width)", () => {
 		measureSpy.mockClear();
 		window.dispatchEvent(new Event("resize"));
 		expect(measureSpy).not.toHaveBeenCalled();
+	});
+});
+
+describe("epp-grid furniture auto-contrast", () => {
+	it("passes a per-item tone from the cell under each item", async () => {
+		const el = createGrid();
+		el.furniture = [SAMPLE_FURNITURE];
+		el.roomWidth = 4200;
+		el.roomDepth = 5100;
+		// Stub the DOM read so the test is deterministic (getComputedStyle is
+		// not meaningful in happy-dom): every cell reads as dark navy.
+		vi.spyOn(el as any, "_readCellRgb").mockReturnValue([18, 48, 71]);
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const overlay = el.shadowRoot!.querySelector(
+			"epp-furniture-overlay",
+		) as any;
+		expect(overlay.furnitureTones.get(SAMPLE_FURNITURE.id)).toEqual(
+			FURNITURE_TONE_CSS.light,
+		);
+		document.body.removeChild(el);
+	});
+
+	it("does not recompute the tone map on a targets-only update", async () => {
+		const el = createGrid();
+		el.furniture = [SAMPLE_FURNITURE];
+		el.roomWidth = 4200;
+		el.roomDepth = 5100;
+		vi.spyOn(el as any, "_readCellRgb").mockReturnValue([18, 48, 71]);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const overlay = el.shadowRoot!.querySelector(
+			"epp-furniture-overlay",
+		) as any;
+		const firstMap = overlay.furnitureTones;
+
+		el.targets = [];
+		await el.updateComplete;
+		expect(overlay.furnitureTones).toBe(firstMap); // same ref = not recomputed
+		document.body.removeChild(el);
 	});
 });

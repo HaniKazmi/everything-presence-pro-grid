@@ -215,6 +215,10 @@ Pure-logic modules — no Lit, no HA, testable in isolation.
 - `heatmap.ts` — per-zone CSS colour resolution, hatched-cell backgrounds
     (`CELL_BG_OUT_OF_RANGE`, `CELL_BG_BEYOND_MAX_RANGE`), and the fixed
     activity-heatmap colour ramp (`heatCellColor`).
+- `furniture-contrast.ts` — WCAG luminance/contrast maths + light/dark tone
+    selection (`furnitureContrast`, `parseRgb`).
+- `furniture-tones.ts` — per-item furniture tone from the cell rendered under
+    each item (always on; `<epp-grid>` reads the cell background, memoised).
 - `zone-defaults.ts` — default thresholds per zone type, palette, threshold
     resolver.
 - `settings-defaults.ts` — `ENTITY_DEFAULTS` + `SETTINGS_DEFAULTS` tables
