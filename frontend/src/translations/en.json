@@ -57,6 +57,24 @@
 		"search_placeholder": "Search furniture...",
 		"remove": "Remove"
 	},
+	"text_label": {
+		"label": "Text label",
+		"add": "Add text label",
+		"default_text": "Label",
+		"text": "Text",
+		"font": "Font",
+		"size_cm": "Size (cm)",
+		"bold": "Bold",
+		"italic": "Italic",
+		"align": "Alignment",
+		"align_left": "Align left",
+		"align_center": "Align centre",
+		"align_right": "Align right",
+		"text_color": "Text colour",
+		"background": "Background",
+		"no_background": "None",
+		"remove": "Remove label"
+	},
 	"corners": {
 		"front_left": "Front-left",
 		"front_right": "Front-right",
