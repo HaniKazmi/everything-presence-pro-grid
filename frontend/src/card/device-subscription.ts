@@ -41,10 +41,7 @@ export class DeviceSubscription<TData> {
 			!!deviceId &&
 			(this._opts.enabled ? this._opts.enabled() : true);
 		if (!wanted) {
-			this._unsub?.();
-			this._unsub = null;
-			this._conn = null;
-			this._device = null;
+			this._teardown();
 			return;
 		}
 		if (
@@ -67,6 +64,10 @@ export class DeviceSubscription<TData> {
 
 	/** Unsubscribe and reset internal state. */
 	dispose(): void {
+		this._teardown();
+	}
+
+	private _teardown(): void {
 		this._unsub?.();
 		this._unsub = null;
 		this._conn = null;
