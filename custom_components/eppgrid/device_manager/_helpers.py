@@ -242,6 +242,28 @@ def _compare_firmware_version(device_version: str) -> str | None:
     return "firmware_ahead"
 
 
+HEATMAP_MIN_FIRMWARE = "1.3.0"
+
+
+def supports_heatmap(version: str | None) -> bool:
+    """True when firmware includes the Heatmap entity + pipeline field.
+
+    Compares against a fixed floor (``HEATMAP_MIN_FIRMWARE``), independent of
+    the integration's pinned ``FIRMWARE_VERSION`` — after a future bump to,
+    say, 1.4.0, a genuinely-heatmap-capable 1.3.0 device must still read as
+    supported rather than being judged against the (unrelated) exact-pin
+    compatibility check `_compare_firmware_version` performs.
+    """
+    if not version:
+        return False
+    try:
+        from packaging.version import Version
+
+        return Version(version) >= Version(HEATMAP_MIN_FIRMWARE)
+    except Exception:
+        return False
+
+
 def _sync_firmware_repair_issue(
     hass: HomeAssistant,
     *,

@@ -133,3 +133,13 @@ class TestComputePipeline:
         # heatmap alone must not turn on the display/zone-state streams
         assert on["display_interval"] == 0
         assert on["zone_state_interval"] == 0
+
+
+def test_supports_heatmap_version_gate() -> None:
+    from custom_components.eppgrid.device_manager._helpers import supports_heatmap
+
+    assert supports_heatmap("1.3.0") is True
+    assert supports_heatmap("1.4.0") is True
+    assert supports_heatmap("1.2.1") is False
+    assert supports_heatmap("") is False
+    assert supports_heatmap(None) is False  # type: ignore[arg-type]

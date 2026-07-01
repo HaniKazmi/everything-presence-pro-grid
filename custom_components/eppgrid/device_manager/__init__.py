@@ -44,6 +44,7 @@ from ._helpers import _raise_service_unavailable as _raise_service_unavailable  
 from ._helpers import _resolve_zone_name
 from ._helpers import _sync_firmware_repair_issue
 from ._helpers import is_valid_zone_slots_shape
+from ._helpers import supports_heatmap
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1520,7 +1521,7 @@ class DeviceManager:
         they survive connection replacement — the WS subscribe handler calls
         this instead of mutating the ephemeral connection.
         """
-        counts = self._target_subs.setdefault(mac, {"raw_target_subs": 0, "grid_target_subs": 0})
+        counts = self._target_subs.setdefault(mac, {"raw_target_subs": 0, "grid_target_subs": 0, "heatmap_subs": 0})
         counts[kind] += 1
 
     @callback
@@ -1550,8 +1551,16 @@ class DeviceManager:
         counts = self._target_subs.get(mac, {})
         raw_subs = counts.get("raw_target_subs", 0)
         grid_subs = counts.get("grid_target_subs", 0)
+        heatmap_subs = counts.get("heatmap_subs", 0)
 
-        pipeline = _compute_pipeline(config, raw_subs, grid_subs)
+        pipeline = _compute_pipeline(config, raw_subs, grid_subs, heatmap_subs)
+
+        dev = self.devices.get(mac)
+        fw_ver = self.read_firmware_version(dev.device_id if dev is not None else None)
+        if not supports_heatmap(fw_ver):
+            # BWC: pre-1.3.0 epp_set_pipeline has no heatmap_interval variable;
+            # pushing an unknown field to it could error.
+            pipeline.pop("heatmap_interval", None)
 
         # Push via session if available, otherwise skip (device will get it on next full push)
         if session is not None and session.connected:
@@ -1745,7 +1754,14 @@ class DeviceManager:
             async with self._temp_connection(mac) as conn:
                 await conn.async_push_config(config)
                 # Push pipeline directly (no subscribers on temp connections)
-                pipeline = _compute_pipeline(config, 0, 0)
+                pipeline = _compute_pipeline(config, 0, 0, 0)
+                if not supports_heatmap(fw_ver):
+                    # BWC: pre-1.3.0 epp_set_pipeline has no heatmap_interval
+                    # variable; pushing an unknown field to it could error.
+                    # (`fw_ver` is already known-"compatible" here, so this is
+                    # a no-op today — kept for defense if the gating above
+                    # ever changes.)
+                    pipeline.pop("heatmap_interval", None)
                 with contextlib.suppress(HomeAssistantError):
                     await conn.async_execute_service("epp_set_pipeline", pipeline)
                 # Reuse the open temp connection for the flags fetch — see
