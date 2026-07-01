@@ -140,6 +140,13 @@ class EPPComponent : public esphome::Component {
   #endif
   static constexpr const char* FIRMWARE_VERSION_STR = ESPHOME_PROJECT_VERSION;
 
+  // Heatmap feature gate. Default on; set to 0 in a variant that can't spare the
+  // ~1.6 KB accumulator, which both compiles it out and reports heatmap=false to
+  // the panel (so the UI can explain *why* the layer is unavailable).
+  #ifndef EPP_HEATMAP_ENABLED
+  #define EPP_HEATMAP_ENABLED 1
+  #endif
+
   // Target data from LD2450 — pushed by feed_targets() (UART lambda),
   // drained by loop(). The ring buffer protects against ESPHome scheduling
   // jitter: if loop() runs late and a second UART frame arrives before the
