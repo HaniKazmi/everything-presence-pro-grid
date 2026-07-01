@@ -106,3 +106,27 @@ export function overlayStripeGradient(kind: number, gapPx: number): string {
 			return "";
 	}
 }
+
+// Fixed domain colour ramp for the activity heatmap (reads the same in light/dark).
+const HEAT_STOPS: Array<[number, number, number]> = [
+	[255, 224, 130], // amber (low)
+	[255, 138, 0], // orange (mid)
+	[221, 44, 0], // red (high)
+];
+
+/** Map a 0..255 activity value to an rgba heat colour; transparent when empty. */
+export function heatCellColor(value: number): string {
+	if (value <= 0) return "transparent";
+	const t = Math.min(1, Math.max(0, value / 255));
+	// log-scaled so faint cells stay visible without swamping the peaks
+	const s = Math.log1p(t * 9) / Math.log(10); // 0..1
+	const seg = s >= 0.5 ? 1 : 0;
+	const f = seg === 1 ? (s - 0.5) * 2 : s * 2;
+	const [r0, g0, b0] = HEAT_STOPS[seg];
+	const [r1, g1, b1] = HEAT_STOPS[seg + 1];
+	const r = Math.round(r0 + (r1 - r0) * f);
+	const g = Math.round(g0 + (g1 - g0) * f);
+	const b = Math.round(b0 + (b1 - b0) * f);
+	const alpha = Math.min(1, 0.15 + s * 0.7);
+	return `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
+}

@@ -1,4 +1,4 @@
-import { css, html, LitElement, nothing, type PropertyValues } from "lit";
+import { css, html, LitElement, nothing, type PropertyValues, svg } from "lit";
 import { property, state } from "lit/decorators.js";
 import { MAX_TARGETS, TARGET_COLORS } from "../constants.js";
 import { mapTargetToGridCell, targetCellIndex } from "../lib/coordinates.js";
@@ -22,6 +22,7 @@ import {
 	CELL_BG_OUT_OF_RANGE,
 	fadedRoomColor,
 	getCellColor,
+	heatCellColor,
 	overlayStripeGradient,
 } from "../lib/heatmap.js";
 import {
@@ -128,6 +129,14 @@ export class EppGrid extends LitElement {
 		minRow: number;
 		maxRow: number;
 	} | null = null;
+	/** Dense 400-entry (20x20) activity heatmap, 0..255 per cell; 0 = no heat. */
+	@property({ attribute: false }) heatmapCells: number[] = [];
+	/** When true, renders the `.heatmap-overlay` (heat cells + live trails). */
+	@property({ type: Boolean }) showHeatmap = false;
+	/** Per-target trail point history (room-space mm), one array per target. */
+	@property({ attribute: false }) trails: Array<
+		Array<{ x: number; y: number }>
+	> = [];
 
 	/** Measured content width of the host (px); 0 = unmeasured (e.g. unit tests). */
 	@state() private _availPx = 0;
@@ -316,6 +325,24 @@ export class EppGrid extends LitElement {
 			background: #ff9800;
 		}
 
+		.heatmap-overlay {
+			position: absolute;
+			inset: 0;
+			pointer-events: none;
+			z-index: 15;
+		}
+
+		.heat-cell {
+			position: absolute;
+			transform: translate(-50%, -50%);
+		}
+
+		.trail {
+			position: absolute;
+			inset: 0;
+			overflow: visible;
+		}
+
 		.grid-dimensions {
 			text-align: center;
 			font-size: 12px;
@@ -438,6 +465,7 @@ export class EppGrid extends LitElement {
 				</div>
 				${this._renderFurnitureOverlay(cellPx, minCol, minRow, visCols, visRows)}
 				${this._renderTargetDots(minCol, maxCol, minRow, maxRow, visCols, visRows)}
+				${this._renderHeatmap(cellPx, minCol, minRow, visCols, visRows)}
 			</div>
 			${this.showDimensions ? this._renderGridDimensions(scan.metrics) : nothing}
 		`;
@@ -841,6 +869,78 @@ export class EppGrid extends LitElement {
 					: nothing
 			}
 		`;
+	}
+
+	private _renderHeatmap(
+		cellPx: number,
+		minCol: number,
+		minRow: number,
+		visCols: number,
+		visRows: number,
+	) {
+		if (!this.showHeatmap) return nothing;
+		const heat = this.heatmapCells;
+		const rects = [];
+		for (let i = 0; i < heat.length; i++) {
+			const v = heat[i];
+			if (!v) continue;
+			const col = (i % GRID_COLS) + 0.5;
+			const row = Math.floor(i / GRID_COLS) + 0.5;
+			const xPct = ((col - minCol) / visCols) * 100;
+			const yPct = ((row - minRow) / visRows) * 100;
+			if (xPct < 0 || xPct > 100 || yPct < 0 || yPct > 100) continue;
+			rects.push(html`<div
+				class="heat-cell"
+				style="left:${xPct}%;top:${yPct}%;width:${cellPx}px;height:${cellPx}px;background:${heatCellColor(v)};"
+			></div>`);
+		}
+		return html`<div class="heatmap-overlay">
+			${rects}
+			${this._renderTrails(minCol, minRow, visCols, visRows)}
+		</div>`;
+	}
+
+	private _renderTrails(
+		minCol: number,
+		minRow: number,
+		visCols: number,
+		visRows: number,
+	) {
+		const lines = this.trails
+			.map((pts) => this._trailPolyline(pts, minCol, minRow, visCols, visRows))
+			.filter((p) => p !== null);
+		if (lines.length === 0) return nothing;
+		return html`<svg class="trail" viewBox="0 0 100 100" preserveAspectRatio="none">${lines}</svg>`;
+	}
+
+	private _trailPolyline(
+		pts: Array<{ x: number; y: number }>,
+		minCol: number,
+		minRow: number,
+		visCols: number,
+		visRows: number,
+	) {
+		if (pts.length < 2) return null;
+		const coords = pts
+			.map((p) => {
+				const cell = mapTargetToGridCell(
+					p.x,
+					p.y,
+					this.roomWidth,
+					this.roomDepth,
+				);
+				if (!cell) return null;
+				const xPct = ((cell.col - minCol) / visCols) * 100;
+				const yPct = ((cell.row - minRow) / visRows) * 100;
+				return `${xPct},${yPct}`;
+			})
+			.filter((c): c is string => c !== null);
+		if (coords.length < 2) return null;
+		return svg`<polyline
+			points=${coords.join(" ")}
+			fill="none" stroke="rgba(3,169,244,0.7)" stroke-width="0.6"
+			stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"
+		/>`;
 	}
 
 	private _renderGridDimensions(
