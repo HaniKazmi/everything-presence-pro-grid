@@ -223,8 +223,8 @@ subscription increments the same per-MAC subscriber counter family as
 `subscribe_raw_targets` / `subscribe_grid_targets` (`heatmap_subs`, tracked
 alongside `raw_target_subs` / `grid_target_subs` — see *Pipeline intervals*
 below), which is what causes the firmware to start publishing the `Heatmap`
-sensor at all: see [Activity Heatmap](#activity-heatmap-firmware) for the
-full firmware-side accumulator and gating.
+sensor at all: see [Activity Heatmap](#activity-heatmap-firmware) for the full
+firmware-side accumulator and gating.
 
 ## 3. Commands
 
@@ -315,12 +315,11 @@ HA or ESPHome are reflected on the next call.
 
 The build flag fields (`bluetooth_enabled`, `co2_enabled`, `ethernet_enabled`,
 `heatmap`, `board_revision`, `sensor_variant`, `firmware_channel`, `model`) are
-optional — they are only present after the device has connected and build
-flags have been fetched via the `get_build_flags` API action. Build flags are
-merged without overriding the base fields above (`mac`, `name`, `host`,
-`available`, `configured`, `area`, `firmware_status`,
-`current_connection_count`) — flag data comes from the device and must not
-rewrite identity fields.
+optional — they are only present after the device has connected and build flags
+have been fetched via the `get_build_flags` API action. Build flags are merged
+without overriding the base fields above (`mac`, `name`, `host`, `available`,
+`configured`, `area`, `firmware_status`, `current_connection_count`) — flag data
+comes from the device and must not rewrite identity fields.
 
 `heatmap` reflects whether the connected firmware build compiled in the
 activity-heatmap accumulator (`EPP_HEATMAP_ENABLED`) — some variants omit it to
@@ -899,13 +898,13 @@ never included in the `ev` array or the `subscribe_grid_targets` payload.
 
 ### Activity Heatmap (firmware)
 
-`epp::Heatmap` (`firmware/lib/epp_component_helpers/include/epp_heatmap.h`) is
-a per-cell activity accumulator, one `float` per grid cell (400 cells). It is
+`epp::Heatmap` (`firmware/lib/epp_component_helpers/include/epp_heatmap.h`) is a
+per-cell activity accumulator, one `float` per grid cell (400 cells). It is
 always running — cheap to keep on, independent of whether any frontend is
 looking at it:
 
-- **Bump** — every frame, each detected target's grid cell is bumped
-    (`+1.0f`), gated on the cell being inside the room (`grid_.cell_is_room`).
+- **Bump** — every frame, each detected target's grid cell is bumped (`+1.0f`),
+    gated on the cell being inside the room (`grid_.cell_is_room`).
 - **Decay** — every 5 minutes, all cells are multiplied by a fixed factor
     (`HEATMAP_DECAY_INTERVAL_MS`), tuned so repeated bumps to the same cell
     decay with a ~14-day half-life (`HEATMAP_HALF_LIFE_TICKS = 4032` — the
@@ -915,20 +914,20 @@ looking at it:
     *Pipeline intervals* above; `0` = don't publish). When non-zero, every
     interval the accumulator is normalized to the peak cell
     (`encode_normalized`: each cell scaled to 0-255 against the current max) and
-    base64-encoded onto the `Heatmap` text sensor. Normalizing against the
-    live peak (rather than a fixed scale) keeps the colour ramp meaningful
-    whether the room has light or heavy traffic.
+    base64-encoded onto the `Heatmap` text sensor. Normalizing against the live
+    peak (rather than a fixed scale) keeps the colour ramp meaningful whether
+    the room has light or heavy traffic.
 - **Persist** — every hour, the raw (pre-normalization) float array is
     serialized (`serialize()`/`blob_size()`) and written to NVS under the key
     `"heatmap"` (schema/format version 3 — see the NVS layout notes in
     `epp_component_helpers`). Restored from NVS on boot
-    (`nvs_get_blob(handle, "heatmap", ...)`), so accumulated activity survives
-    a reboot/power-cycle; a length-mismatched blob (e.g. after a schema change)
-    is ignored rather than partially applied.
+    (`nvs_get_blob(handle, "heatmap", ...)`), so accumulated activity survives a
+    reboot/power-cycle; a length-mismatched blob (e.g. after a schema change) is
+    ignored rather than partially applied.
 - **Reset** — `reset_heatmap_()` zeroes the accumulator. Called wherever the
     grid geometry or calibration changes (new perspective calibration, new room
-    layout) — old cell activity has no meaning against a different room
-    mapping, so it doesn't carry over.
+    layout) — old cell activity has no meaning against a different room mapping,
+    so it doesn't carry over.
 
 **Build flag:** the accumulator (and the `Heatmap` sensor/`heatmap_interval`
 pipeline field) can be compiled out entirely via `EPP_HEATMAP_ENABLED` (default

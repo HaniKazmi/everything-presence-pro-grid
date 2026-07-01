@@ -182,12 +182,11 @@ All signal processing runs on-device in the C++ zone engine:
     target every frame, decays all cells on a 5-minute timer (~14-day
     half-life), and persists to NVS hourly so accumulated activity survives a
     reboot. Always running — cheap enough to leave on regardless of whether a
-    frontend is looking at it. It resets on calibration/room-layout change
-    (old activity has no meaning against a different room mapping) and
-    publishes only while a frontend has the heatmap layer open (see
-    `heatmap_interval` in data-catalog.md). Some variants compile it out via
-    `EPP_HEATMAP_ENABLED` to save the ~1.6 KB; the device reports this via the
-    `heatmap` build flag.
+    frontend is looking at it. It resets on calibration/room-layout change (old
+    activity has no meaning against a different room mapping) and publishes
+    only while a frontend has the heatmap layer open (see `heatmap_interval` in
+    data-catalog.md). Some variants compile it out via `EPP_HEATMAP_ENABLED` to
+    save the ~1.6 KB; the device reports this via the `heatmap` build flag.
 1. **Publishing**: raw targets (5Hz), grid targets (5Hz), zone state (1Hz). A
     composite `mmWave Presence` binary sensor combines static presence with
     target tracking (motion-independent), useful for follow-on automations.
@@ -547,8 +546,8 @@ compose `<epp-grid>` with the appropriate sidebars.
 **Heatmap layer toggle.** Live overview and the editor both render a per-device-
 persisted (`localStorage`, keyed by MAC) "Heatmap" toggle that flips
 `showHeatmap` on `<epp-grid>` and `DeviceController.setHeatmapEnabled`.
-`_heatmapAvailability()` on the orchestrator resolves a three-state gate for
-the selected device: `"available"` (subscription can be opened), `"needs_firmware"`
+`_heatmapAvailability()` on the orchestrator resolves a three-state gate for the
+selected device: `"available"` (subscription can be opened), `"needs_firmware"`
 (firmware predates 1.3.0 — via `firmware_status`, since older firmware never
 sends the `heatmap` build flag at all), or `"no_memory"` (connected firmware
 explicitly reports `heatmap: false` — a variant that compiled the accumulator
@@ -715,9 +714,9 @@ fills, furniture stickers, FOV-aware bounds) shown in the picker.
 (room-space ↔ overlay-space).
 
 **heatmap.ts** — Per-zone CSS color resolution used by both the grid component
-and the live sidebar, plus `heatCellColor(value)`: maps a 0-255 activity byte
-to the fixed (non-themed) amber→orange→red heat-ramp colour used by
-`<epp-grid>`'s `.heatmap-overlay`.
+and the live sidebar, plus `heatCellColor(value)`: maps a 0-255 activity byte to
+the fixed (non-themed) amber→orange→red heat-ramp colour used by `<epp-grid>`'s
+`.heatmap-overlay`.
 
 **view-hash.ts** — URL fragment ↔ `ViewState` (view + sidebar tab) encoding for
 per-tab view persistence.
