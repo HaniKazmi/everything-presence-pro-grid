@@ -15,7 +15,6 @@ import "../ui/epp-button.js";
 import "../ui/epp-dialog.js";
 import "../ui/epp-icon-button.js";
 import "../ui/epp-field.js";
-import "../ui/epp-toggle.js";
 import "./epp-zone-color-picker.js";
 
 // Fixed label palettes (domain colours — not themed). Text presets favour
@@ -253,13 +252,7 @@ export class EppFurnitureSidebar extends LitElement {
 			<button
 				class="furn-add-text"
 				type="button"
-				@click=${() =>
-					this.dispatchEvent(
-						new CustomEvent("furniture-add-text", {
-							bubbles: true,
-							composed: true,
-						}),
-					)}
+				@click=${() => this._fireAddText()}
 			>
 				<ha-icon icon="mdi:format-text" style="--mdc-icon-size: 20px;"></ha-icon>
 				<span>${this.localize("text_label.add")}</span>
@@ -564,6 +557,12 @@ export class EppFurnitureSidebar extends LitElement {
 			}),
 		);
 	};
+
+	private _fireAddText(): void {
+		this.dispatchEvent(
+			new CustomEvent("furniture-add-text", { bubbles: true, composed: true }),
+		);
+	}
 
 	private _fireAdd(sticker: FurnitureSticker): void {
 		this.dispatchEvent(
