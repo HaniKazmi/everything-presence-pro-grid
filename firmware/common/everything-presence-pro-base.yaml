@@ -584,7 +584,7 @@ api:
               root["sensor_variant"]    = "${ device_config.sensor_variant }";
               root["firmware_channel"]  = "${ device_config.firmware_channel }";
               root["model"]             = "${ device_config.model }";
-              root["heatmap"]           = EPP_HEATMAP_ENABLED ? "true" : "false";
+              root["heatmap"]           = EPP_HEATMAP_ENABLED != 0;
 
   on_client_connected:
     then:
