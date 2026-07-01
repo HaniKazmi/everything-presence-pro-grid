@@ -6,7 +6,7 @@ import {
 	determineOverlayPaintAction,
 	determinePaintAction,
 } from "../lib/cell-painting.js";
-import { HEX_COLOR_PATTERN } from "../lib/config-serialization.js";
+import { validHexColor } from "../lib/config-serialization.js";
 import {
 	clampFurnitureMove,
 	computeFurnitureResize,
@@ -129,13 +129,10 @@ export function serializeFurniture(f: FurnitureItem): Record<string, unknown> {
 		// (transient UI state, a future picker change) would otherwise be sent
 		// and rejected by the backend's COLOR_HEX_SCHEMA — failing the WHOLE
 		// set_room_layout save, not just this label. Validate at the boundary.
-		if (typeof f.color === "string" && HEX_COLOR_PATTERN.test(f.color))
-			out.color = f.color;
-		if (
-			typeof f.background === "string" &&
-			HEX_COLOR_PATTERN.test(f.background)
-		)
-			out.background = f.background;
+		const color = validHexColor(f.color);
+		if (color) out.color = color;
+		const background = validHexColor(f.background);
+		if (background) out.background = background;
 	}
 	return out;
 }
@@ -382,7 +379,6 @@ export class GridStateController implements ReactiveController {
 	}
 
 	updateFurniture(id: string, updates: Partial<FurnitureItem>): void {
-		let next = updateFurnitureItem(this.host._furniture, id, updates);
 		// A text label auto-hugs its text: when a field that estimateTextBox
 		// depends on changes, recompute the stored bounding box so drag-clamping
 		// / out-of-grid stay accurate. The gate mirrors estimateTextBox's inputs
@@ -390,20 +386,28 @@ export class GridStateController implements ReactiveController {
 		// included: the estimate is font- and style-agnostic by design (a coarse,
 		// conservative box), and the *visible* box always hugs the real glyphs via
 		// CSS width:max-content — so recomputing on those would be a no-op.
-		// Position-only edits (x/y/rotation) don't touch the box either.
-		const item = next.find((f) => f.id === id);
+		// Position-only edits (x/y/rotation) don't touch the box either. Fold the
+		// recomputed box into the same update so we map the array only once.
+		const current = this.host._furniture.find((f) => f.id === id);
+		let merged = updates;
 		if (
-			item?.type === "text" &&
+			current?.type === "text" &&
 			("text" in updates || "fontSize" in updates || "bold" in updates)
 		) {
 			const box = estimateTextBox(
-				item.text ?? "",
-				item.fontSize ?? DEFAULT_TEXT_SIZE_MM,
-				item.bold ?? false,
+				updates.text ?? current.text ?? "",
+				updates.fontSize ?? current.fontSize ?? DEFAULT_TEXT_SIZE_MM,
+				updates.bold ?? current.bold ?? false,
 			);
-			next = updateFurnitureItem(next, id, box);
+			// box wins over any width/height in updates (text labels auto-hug and
+			// have no resize handles, so callers never pass an explicit size here).
+			merged = { ...updates, ...box };
 		}
-		this.host._furniture = next;
+		this.host._furniture = updateFurnitureItem(
+			this.host._furniture,
+			id,
+			merged,
+		);
 		this.host._dirty = true;
 	}
 

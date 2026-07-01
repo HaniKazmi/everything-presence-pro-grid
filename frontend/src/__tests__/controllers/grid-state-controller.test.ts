@@ -3,6 +3,7 @@ import {
 	GridStateController,
 	serializeFurniture,
 } from "../../controllers/grid-state-controller.js";
+import { parseFurniture } from "../../lib/config-serialization.js";
 import type { FurnitureItem, FurnitureSticker } from "../../lib/furniture.js";
 import {
 	CELL_OVERLAY_ENTRY,
@@ -2481,5 +2482,33 @@ describe("serializeFurniture text labels", () => {
 		});
 		expect("color" in bad).toBe(false);
 		expect("background" in bad).toBe(false);
+	});
+
+	it("preserves the auto-hugged box geometry across a serialize → parse round-trip", () => {
+		// A text label's stored width/height come from estimateTextBox and must
+		// survive save/load so drag-clamping stays accurate after a reload.
+		const original: FurnitureItem = {
+			id: "t3",
+			type: "text",
+			icon: "mdi:format-text",
+			label: "text_label.label",
+			x: 123,
+			y: 456,
+			width: 789,
+			height: 321,
+			rotation: 0,
+			lockAspect: false,
+			text: "Reading nook",
+			fontFamily: "georgia",
+			fontSize: 250,
+			align: "left",
+			bold: true,
+			italic: false,
+		};
+		const [restored] = parseFurniture([serializeFurniture(original)]);
+		expect(restored.x).toBe(123);
+		expect(restored.y).toBe(456);
+		expect(restored.width).toBe(789);
+		expect(restored.height).toBe(321);
 	});
 });

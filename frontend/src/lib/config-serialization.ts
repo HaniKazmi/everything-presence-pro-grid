@@ -65,6 +65,19 @@ function normalizeColor(raw: unknown, slotIndex: number): string {
 }
 
 /**
+ * Return the value only when it is an exact `#RRGGBB` string, else undefined.
+ * Used to validate the optional text-label colour/background at every storage
+ * boundary (parse on load, serialize on save) so a stray empty/malformed value
+ * is never persisted or sent to the backend. Contrast {@link normalizeColor},
+ * which falls back to a palette default rather than undefined.
+ */
+export function validHexColor(raw: unknown): string | undefined {
+	return typeof raw === "string" && HEX_COLOR_PATTERN.test(raw)
+		? raw
+		: undefined;
+}
+
+/**
  * Parsed calibration data from config.
  */
 export interface ParsedCalibration {
@@ -202,18 +215,11 @@ export function parseFurniture(rawFurniture: unknown): FurnitureItem[] {
 			fontSize: clampTextSizeMm(
 				toFiniteNumber(f?.fontSize, DEFAULT_TEXT_SIZE_MM),
 			),
-			color:
-				typeof f?.color === "string" && HEX_COLOR_PATTERN.test(f.color)
-					? f.color
-					: undefined,
+			color: validHexColor(f?.color),
 			bold: f?.bold === true,
 			italic: f?.italic === true,
 			align,
-			background:
-				typeof f?.background === "string" &&
-				HEX_COLOR_PATTERN.test(f.background)
-					? f.background
-					: undefined,
+			background: validHexColor(f?.background),
 		};
 	});
 }
