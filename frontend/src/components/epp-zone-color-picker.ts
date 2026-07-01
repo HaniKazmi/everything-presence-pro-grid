@@ -14,9 +14,10 @@ const POPOVER_MARGIN_PX = 8;
  * Anchors under the trigger, but clamps to the viewport so a trigger near the
  * right/bottom edge (e.g. the text-label colour pickers in the far-right
  * sidebar) doesn't push the popover off-screen; flips above the trigger when it
- * would overflow the bottom. Falls back to the raw anchor when a dimension is
- * unmeasurable (0 — e.g. happy-dom, which computes no layout). Pure so it can be
- * unit-tested without a real layout engine.
+ * would overflow the bottom. When a dimension is unmeasurable (0 — e.g.
+ * happy-dom, which computes no layout) the viewport-edge clamps are skipped, but
+ * the minimum-margin floor still applies. Pure so it can be unit-tested without
+ * a real layout engine.
  */
 export function clampPopoverPosition(
 	rect: { left: number; top: number; bottom: number },

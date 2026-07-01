@@ -383,9 +383,14 @@ export class GridStateController implements ReactiveController {
 
 	updateFurniture(id: string, updates: Partial<FurnitureItem>): void {
 		let next = updateFurnitureItem(this.host._furniture, id, updates);
-		// A text label auto-hugs its text: when a size-affecting field changes,
-		// recompute the stored bounding box so drag-clamping / out-of-grid stay
-		// accurate. Position-only edits (x/y/rotation) don't touch the box.
+		// A text label auto-hugs its text: when a field that estimateTextBox
+		// depends on changes, recompute the stored bounding box so drag-clamping
+		// / out-of-grid stay accurate. The gate mirrors estimateTextBox's inputs
+		// exactly — text, fontSize, bold. italic/fontFamily are deliberately NOT
+		// included: the estimate is font- and style-agnostic by design (a coarse,
+		// conservative box), and the *visible* box always hugs the real glyphs via
+		// CSS width:max-content — so recomputing on those would be a no-op.
+		// Position-only edits (x/y/rotation) don't touch the box either.
 		const item = next.find((f) => f.id === id);
 		if (
 			item?.type === "text" &&
