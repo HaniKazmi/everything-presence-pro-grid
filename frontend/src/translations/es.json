@@ -57,6 +57,25 @@
 		"search_placeholder": "Buscar mobiliario...",
 		"remove": "Eliminar"
 	},
+	"text_label": {
+		"label": "Etiqueta de texto",
+		"add": "Añadir etiqueta de texto",
+		"default_text": "Etiqueta",
+		"text": "Texto",
+		"font": "Fuente",
+		"size_cm": "Tamaño (cm)",
+		"bold": "Negrita",
+		"italic": "Cursiva",
+		"align": "Alineación",
+		"align_left": "Alinear a la izquierda",
+		"align_center": "Centrar",
+		"align_right": "Alinear a la derecha",
+		"text_color": "Color del texto",
+		"auto_color": "Auto",
+		"background": "Fondo",
+		"no_background": "Ninguno",
+		"remove": "Eliminar etiqueta"
+	},
 	"corners": {
 		"front_left": "Frente-izquierda",
 		"front_right": "Frente-derecha",
@@ -527,6 +546,7 @@
 			"show_furniture": "Mostrar mobiliario",
 			"show_overlays": "Mostrar superposiciones",
 			"room_color": "Color del resto de la sala",
+			"reset_room_color": "Restablecer a automático",
 			"presence": "Presencia",
 			"zones": "Zonas",
 			"occupancy": "Ocupación",

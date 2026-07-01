@@ -123,6 +123,22 @@ CONFIGURATION_DICT_SCHEMA: Any = _bounded_dict
 # far above any legitimate layout.
 _MAX_FURNITURE_JSON_BYTES = 64 * 1024
 
+# Curated text-label font keys. MUST mirror TEXT_FONTS in
+# frontend/src/lib/furniture.ts (same keys), or a label saved by the panel
+# would be rejected here. The frontend maps each key to a CSS font stack.
+_FURNITURE_FONT_KEYS: frozenset[str] = frozenset(
+    {
+        "arial",
+        "verdana",
+        "tahoma",
+        "georgia",
+        "times",
+        "courier",
+        "trebuchet",
+        "comic",
+    }
+)
+
 # A furniture item as serialized by the frontend (`applyLayout` in
 # grid-state-controller.ts / the overlay one-shot save in eppgrid-panel.ts):
 # explicit known keys only. `id` is stripped by the frontend before saving
@@ -134,9 +150,21 @@ _MAX_FURNITURE_JSON_BYTES = 64 * 1024
 _FURNITURE_ITEM_SCHEMA = vol.Schema(
     {
         vol.Optional("id"): vol.All(str, vol.Length(max=64)),
-        vol.Optional("type"): vol.In(["icon", "svg"]),
+        vol.Optional("type"): vol.In(["icon", "svg", "text"]),
         vol.Optional("icon"): vol.All(str, vol.Length(max=128)),
         vol.Optional("label"): vol.All(str, vol.Length(max=128)),
+        # Text-label fields — meaningful only for type == "text", but (like the
+        # icon/label fields above) validated as flat vol.Optional keys rather
+        # than cross-checked against `type`. All optional so icon/svg items are
+        # unaffected and PREVENT_EXTRA still bars arbitrary blobs.
+        vol.Optional("text"): vol.All(str, vol.Length(max=512)),
+        vol.Optional("fontFamily"): vol.In(_FURNITURE_FONT_KEYS),
+        vol.Optional("fontSize"): finite_float(min=30, max=3000),
+        vol.Optional("color"): COLOR_HEX_SCHEMA,
+        vol.Optional("bold"): bool,
+        vol.Optional("italic"): bool,
+        vol.Optional("align"): vol.In(["left", "center", "right"]),
+        vol.Optional("background"): COLOR_HEX_SCHEMA,
         vol.Required("x"): FINITE_FLOAT_SCHEMA,
         vol.Required("y"): FINITE_FLOAT_SCHEMA,
         vol.Required("width"): FINITE_FLOAT_SCHEMA,

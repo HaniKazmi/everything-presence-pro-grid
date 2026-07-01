@@ -6,11 +6,17 @@ import {
 	determineOverlayPaintAction,
 	determinePaintAction,
 } from "../lib/cell-painting.js";
+import { validHexColor } from "../lib/config-serialization.js";
 import {
 	clampFurnitureMove,
 	computeFurnitureResize,
 	computeFurnitureRotation,
 	createFurnitureItem,
+	createTextItem,
+	DEFAULT_TEXT_ALIGN,
+	DEFAULT_TEXT_FONT,
+	DEFAULT_TEXT_SIZE_MM,
+	estimateTextBox,
 	type FurnitureItem,
 	type FurnitureSticker,
 	isFurnitureOutsideGrid,
@@ -94,11 +100,14 @@ export function serializeSlot(
 
 /**
  * Serialize a furniture item for the `set_room_layout` wire payload.
- * Exactly these nine fields — the local-only `id` is intentionally dropped
- * (the backend regenerates ids on load via parseFurniture).
+ * The local-only `id` is intentionally dropped; the frontend regenerates ids
+ * on load via parseFurniture (the backend only validates/stores the payload).
+ * Text items additionally emit their text
+ * fields; color/background are omitted when unset so render can fall back
+ * to themed ink / no background and the payload stays lean.
  */
 export function serializeFurniture(f: FurnitureItem): Record<string, unknown> {
-	return {
+	const out: Record<string, unknown> = {
 		type: f.type,
 		icon: f.icon,
 		label: f.label,
@@ -109,6 +118,23 @@ export function serializeFurniture(f: FurnitureItem): Record<string, unknown> {
 		rotation: f.rotation,
 		lockAspect: f.lockAspect,
 	};
+	if (f.type === "text") {
+		out.text = f.text ?? "";
+		out.fontFamily = f.fontFamily ?? DEFAULT_TEXT_FONT;
+		out.fontSize = f.fontSize ?? DEFAULT_TEXT_SIZE_MM;
+		out.align = f.align ?? DEFAULT_TEXT_ALIGN;
+		out.bold = f.bold ?? false;
+		out.italic = f.italic ?? false;
+		// Only emit colours matching #RRGGBB. A stray empty/malformed value
+		// (transient UI state, a future picker change) would otherwise be sent
+		// and rejected by the backend's COLOR_HEX_SCHEMA — failing the WHOLE
+		// set_room_layout save, not just this label. Validate at the boundary.
+		const color = validHexColor(f.color);
+		if (color) out.color = color;
+		const background = validHexColor(f.background);
+		if (background) out.background = background;
+	}
+	return out;
 }
 
 /** Operations that can fail and surface through {@link GridStateController.onError}. */
@@ -302,17 +328,25 @@ export class GridStateController implements ReactiveController {
 	// Furniture management
 	// =====================================================================
 
-	addFurniture(sticker: FurnitureSticker): void {
-		const id = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-		const item = createFurnitureItem(
-			sticker,
-			this.host._roomWidth,
-			this.host._roomDepth,
-			id,
-		);
+	private _newFurnitureId(): string {
+		return `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+	}
+
+	private _addAndSelectFurniture(item: FurnitureItem): void {
 		this.host._furniture = [...this.host._furniture, item];
 		this.host._selectedFurnitureId = item.id;
 		this.host._dirty = true;
+	}
+
+	addFurniture(sticker: FurnitureSticker): void {
+		this._addAndSelectFurniture(
+			createFurnitureItem(
+				sticker,
+				this.host._roomWidth,
+				this.host._roomDepth,
+				this._newFurnitureId(),
+			),
+		);
 	}
 
 	addCustomFurniture(icon: string): void {
@@ -326,6 +360,17 @@ export class GridStateController implements ReactiveController {
 		});
 	}
 
+	addTextFurniture(text: string): void {
+		this._addAndSelectFurniture(
+			createTextItem(
+				text,
+				this.host._roomWidth,
+				this.host._roomDepth,
+				this._newFurnitureId(),
+			),
+		);
+	}
+
 	removeFurniture(id: string): void {
 		this.host._furniture = removeFurnitureItem(this.host._furniture, id);
 		if (this.host._selectedFurnitureId === id)
@@ -334,10 +379,34 @@ export class GridStateController implements ReactiveController {
 	}
 
 	updateFurniture(id: string, updates: Partial<FurnitureItem>): void {
+		// A text label auto-hugs its text: when a field that estimateTextBox
+		// depends on changes, recompute the stored bounding box so drag-clamping
+		// / out-of-grid stay accurate. The gate mirrors estimateTextBox's inputs
+		// exactly — text, fontSize, bold. italic/fontFamily are deliberately NOT
+		// included: the estimate is font- and style-agnostic by design (a coarse,
+		// conservative box), and the *visible* box always hugs the real glyphs via
+		// CSS width:max-content — so recomputing on those would be a no-op.
+		// Position-only edits (x/y/rotation) don't touch the box either. Fold the
+		// recomputed box into the same update so we map the array only once.
+		const current = this.host._furniture.find((f) => f.id === id);
+		let merged = updates;
+		if (
+			current?.type === "text" &&
+			("text" in updates || "fontSize" in updates || "bold" in updates)
+		) {
+			const box = estimateTextBox(
+				updates.text ?? current.text ?? "",
+				updates.fontSize ?? current.fontSize ?? DEFAULT_TEXT_SIZE_MM,
+				updates.bold ?? current.bold ?? false,
+			);
+			// box wins over any width/height in updates (text labels auto-hug and
+			// have no resize handles, so callers never pass an explicit size here).
+			merged = { ...updates, ...box };
+		}
 		this.host._furniture = updateFurnitureItem(
 			this.host._furniture,
 			id,
-			updates,
+			merged,
 		);
 		this.host._dirty = true;
 	}

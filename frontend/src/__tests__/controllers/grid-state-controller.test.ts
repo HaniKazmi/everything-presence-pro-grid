@@ -3,6 +3,7 @@ import {
 	GridStateController,
 	serializeFurniture,
 } from "../../controllers/grid-state-controller.js";
+import { parseFurniture } from "../../lib/config-serialization.js";
 import type { FurnitureItem, FurnitureSticker } from "../../lib/furniture.js";
 import {
 	CELL_OVERLAY_ENTRY,
@@ -367,6 +368,42 @@ describe("GridStateController", () => {
 			// createFurnitureItem centers: x = (3000 - 600) / 2 = 1200
 			expect(item.x).toBe(1200);
 			expect(item.y).toBe(1300);
+		});
+	});
+
+	// =========================================================================
+	// addTextFurniture(text) / updateFurniture(id, updates) text auto-resize
+	// =========================================================================
+	describe("addTextFurniture(text)", () => {
+		it("addTextFurniture appends a selected, dirty text item", () => {
+			host._roomWidth = 4000;
+			host._roomDepth = 3000;
+			ctrl.addTextFurniture("Kids' corner");
+			expect(host._furniture).toHaveLength(1);
+			expect(host._furniture[0].type).toBe("text");
+			expect(host._furniture[0].text).toBe("Kids' corner");
+			expect(host._selectedFurnitureId).toBe(host._furniture[0].id);
+			expect(host._dirty).toBe(true);
+		});
+
+		it("updateFurniture recomputes text box when text changes", () => {
+			host._roomWidth = 4000;
+			host._roomDepth = 3000;
+			ctrl.addTextFurniture("Hi");
+			const id = host._furniture[0].id;
+			const before = host._furniture[0].width;
+			ctrl.updateFurniture(id, { text: "A much much longer label" });
+			expect(host._furniture[0].width).toBeGreaterThan(before);
+		});
+
+		it("updateFurniture does not resize text on a pure move", () => {
+			host._roomWidth = 4000;
+			host._roomDepth = 3000;
+			ctrl.addTextFurniture("Hi");
+			const id = host._furniture[0].id;
+			const before = host._furniture[0].width;
+			ctrl.updateFurniture(id, { x: 500 });
+			expect(host._furniture[0].width).toBe(before);
 		});
 	});
 
@@ -2358,5 +2395,120 @@ describe("serializeFurniture", () => {
 			rotation: 45,
 			lockAspect: true,
 		});
+	});
+});
+
+describe("serializeFurniture text labels", () => {
+	it("emits text fields for a text item, omitting undefined color/background", () => {
+		const out = serializeFurniture({
+			id: "t1",
+			type: "text",
+			icon: "mdi:format-text",
+			label: "text_label.label",
+			x: 1,
+			y: 2,
+			width: 3,
+			height: 4,
+			rotation: 0,
+			lockAspect: false,
+			text: "Hi",
+			fontFamily: "arial",
+			fontSize: 200,
+			align: "center",
+			bold: true,
+			italic: false,
+		});
+		expect(out.type).toBe("text");
+		expect(out.text).toBe("Hi");
+		expect(out.fontFamily).toBe("arial");
+		expect(out.fontSize).toBe(200);
+		expect(out.align).toBe("center");
+		expect(out.bold).toBe(true);
+		expect(out.italic).toBe(false);
+		expect("color" in out).toBe(false);
+		expect("background" in out).toBe(false);
+		expect("id" in out).toBe(false); // still dropped
+	});
+
+	it("does not emit text fields for an icon item", () => {
+		const out = serializeFurniture({
+			id: "f1",
+			type: "icon",
+			icon: "mdi:desk",
+			label: "furniture.desk",
+			x: 0,
+			y: 0,
+			width: 600,
+			height: 600,
+			rotation: 0,
+			lockAspect: true,
+		});
+		expect("text" in out).toBe(false);
+		expect("fontFamily" in out).toBe(false);
+	});
+
+	it("emits valid #RRGGBB colours but omits empty/malformed ones (backend would reject the whole save)", () => {
+		const base = {
+			id: "t2",
+			type: "text" as const,
+			icon: "mdi:format-text",
+			label: "text_label.label",
+			x: 0,
+			y: 0,
+			width: 3,
+			height: 4,
+			rotation: 0,
+			lockAspect: false,
+			text: "Hi",
+			fontFamily: "arial",
+			fontSize: 200,
+			align: "center" as const,
+			bold: false,
+			italic: false,
+		};
+		const valid = serializeFurniture({
+			...base,
+			color: "#112233",
+			background: "#ffffff",
+		});
+		expect(valid.color).toBe("#112233");
+		expect(valid.background).toBe("#ffffff");
+
+		// Empty string and non-hex must be dropped, not sent to the backend.
+		const bad = serializeFurniture({
+			...base,
+			color: "",
+			background: "red",
+		});
+		expect("color" in bad).toBe(false);
+		expect("background" in bad).toBe(false);
+	});
+
+	it("preserves the auto-hugged box geometry across a serialize → parse round-trip", () => {
+		// A text label's stored width/height come from estimateTextBox and must
+		// survive save/load so drag-clamping stays accurate after a reload.
+		const original: FurnitureItem = {
+			id: "t3",
+			type: "text",
+			icon: "mdi:format-text",
+			label: "text_label.label",
+			x: 123,
+			y: 456,
+			width: 789,
+			height: 321,
+			rotation: 0,
+			lockAspect: false,
+			text: "Reading nook",
+			fontFamily: "georgia",
+			fontSize: 250,
+			align: "left",
+			bold: true,
+			italic: false,
+		};
+		const [restored] = parseFurniture([serializeFurniture(original)]);
+		expect(restored.x).toBe(123);
+		expect(restored.y).toBe(456);
+		expect(restored.width).toBe(789);
+		expect(restored.height).toBe(321);
 	});
 });

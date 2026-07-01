@@ -4,11 +4,16 @@ import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 import { FLOOR_PLAN_SVGS } from "../constants.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import {
+	DEFAULT_TEXT_ALIGN,
+	DEFAULT_TEXT_FONT,
+	DEFAULT_TEXT_SIZE_MM,
 	EDGE_HANDLE_MIN_PX,
+	fontStack,
 	getResizeCursor,
 	mmToPx,
 	visibleHandles,
 } from "../lib/furniture.js";
+import { furnitureContrast, hexToRgb } from "../lib/furniture-contrast.js";
 import type { FurnitureItemTone } from "../lib/furniture-tones.js";
 import { roomStartCol } from "../lib/grid.js";
 import type { SidebarTab } from "../lib/view-hash.js";
@@ -93,6 +98,26 @@ export class EppFurnitureOverlay extends LitElement {
 		.furniture-item.has-halo {
 			filter: drop-shadow(0 0 1.3px var(--epp-furniture-halo-color))
 				drop-shadow(0 0 1.3px var(--epp-furniture-halo-color));
+		}
+
+		.furniture-item--text {
+			border: none;
+			background: transparent;
+			width: max-content;
+			height: auto;
+			padding: 0;
+		}
+		.furniture-item--text.selected {
+			outline: 2px solid var(--epp-accent, var(--primary-color, #03a9f4));
+			outline-offset: 3px;
+		}
+		.furniture-text-content {
+			display: inline-block;
+			white-space: pre;
+			line-height: 1.2;
+			pointer-events: none;
+			padding: 2px 4px;
+			border-radius: var(--epp-radius-sm, 6px);
 		}
 
 		.furniture-item ha-icon {
@@ -265,6 +290,18 @@ export class EppFurnitureOverlay extends LitElement {
 		this._fireEvent("furniture-delete", id);
 	}
 
+	private _renderSelectionControls(item: FurnitureItem) {
+		return html`
+			<div class="furn-rotate-stem"></div>
+			<div class="furn-rotate-handle" @pointerdown=${(e: PointerEvent) => this._onRotatePointerDown(e, item.id)}>
+				<ha-icon icon="mdi:rotate-right" style="--mdc-icon-size: 14px;"></ha-icon>
+			</div>
+			<div class="furn-delete-btn" @pointerdown=${(e: PointerEvent) => this._onDeletePointerDown(e, item.id)}>
+				<ha-icon icon="mdi:close" style="--mdc-icon-size: 14px;"></ha-icon>
+			</div>
+		`;
+	}
+
 	render() {
 		if (!this.furniture.length) return nothing;
 
@@ -277,11 +314,64 @@ export class EppFurnitureOverlay extends LitElement {
 				${this.furniture.map((item) => {
 					const leftPx = (startCol - this.minCol) * step + this._mmToPx(item.x);
 					const topPx = (0 - this.minRow) * step + this._mmToPx(item.y);
-					const wPx = this._mmToPx(item.width);
-					const hPx = this._mmToPx(item.height);
 					const selected = this.selectedFurnitureId === item.id;
 					const tone = this.furnitureTones?.get(item.id);
 
+					if (item.type === "text") {
+						const fontPx = this._mmToPx(item.fontSize ?? DEFAULT_TEXT_SIZE_MM);
+						// Validate colours before they reach the inline style string
+						// (defense-in-depth): only a real #RRGGBB is spliced into CSS;
+						// anything else is treated as unset. hexToRgb doubles as the
+						// validator and as the RGB source for box auto-contrast.
+						const boxRgb = item.background ? hexToRgb(item.background) : null;
+						const bg = boxRgb
+							? `background: color-mix(in srgb, ${item.background} 85%, transparent);`
+							: "";
+						const explicitColor =
+							item.color && hexToRgb(item.color) ? item.color : null;
+						// Colour: an explicit user colour always wins. Otherwise auto-
+						// contrast (like furniture) — against the background box if one
+						// is set (the text sits on it), else against the cell underneath
+						// (the tone map), adding a halo there for legibility over busy
+						// cells. Falls back to themed ink when nothing is measurable.
+						const DEFAULT_INK =
+							"var(--epp-text, var(--primary-text-color, #212121))";
+						let textColor: string;
+						let haloVar: string | null = null;
+						if (explicitColor) {
+							textColor = explicitColor;
+						} else if (boxRgb) {
+							textColor = furnitureContrast(boxRgb).color;
+						} else if (tone) {
+							textColor = tone.color;
+							haloVar = tone.halo;
+						} else {
+							textColor = DEFAULT_INK;
+						}
+						const contentStyle = [
+							`font-family: ${fontStack(item.fontFamily ?? DEFAULT_TEXT_FONT)};`,
+							`font-size: ${fontPx}px;`,
+							`font-weight: ${item.bold ? 700 : 400};`,
+							`font-style: ${item.italic ? "italic" : "normal"};`,
+							`color: ${textColor};`,
+							`text-align: ${item.align ?? DEFAULT_TEXT_ALIGN};`,
+							bg,
+						].join(" ");
+						return html`
+							<div
+								class="furniture-item furniture-item--text${selected ? " selected" : ""}${haloVar ? " has-halo" : ""}"
+								data-id="${item.id}"
+								style="${haloVar ? `--epp-furniture-halo-color:${haloVar};` : ""}left: ${leftPx}px; top: ${topPx}px; transform: rotate(${item.rotation}deg);"
+								@pointerdown=${(e: PointerEvent) => this._onItemPointerDown(e, item.id)}
+							>
+								<span class="furniture-text-content" style="${contentStyle}">${item.text ?? ""}</span>
+								${selected ? this._renderSelectionControls(item) : nothing}
+							</div>
+						`;
+					}
+
+					const wPx = this._mmToPx(item.width);
+					const hPx = this._mmToPx(item.height);
 					return html`
 						<div
 							class="furniture-item${selected ? " selected" : ""}${
@@ -321,15 +411,7 @@ export class EppFurnitureOverlay extends LitElement {
 												></div>
 											`,
 										)}
-										<!-- Rotate handle with stem -->
-										<div class="furn-rotate-stem"></div>
-										<div class="furn-rotate-handle" @pointerdown=${(e: PointerEvent) => this._onRotatePointerDown(e, item.id)}>
-											<ha-icon icon="mdi:rotate-right" style="--mdc-icon-size: 14px;"></ha-icon>
-										</div>
-										<!-- Delete button -->
-										<div class="furn-delete-btn" @pointerdown=${(e: PointerEvent) => this._onDeletePointerDown(e, item.id)}>
-											<ha-icon icon="mdi:close" style="--mdc-icon-size: 14px;"></ha-icon>
-										</div>
+										${this._renderSelectionControls(item)}
 									`
 									: nothing
 							}

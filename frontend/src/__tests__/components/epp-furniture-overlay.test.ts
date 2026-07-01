@@ -629,3 +629,254 @@ describe("epp-furniture-overlay auto-contrast", () => {
 		document.body.removeChild(c);
 	});
 });
+
+const TEXT_ITEM = {
+	id: "t1",
+	type: "text" as const,
+	icon: "mdi:format-text",
+	label: "text_label.label",
+	x: 100,
+	y: 100,
+	width: 800,
+	height: 300,
+	rotation: 0,
+	lockAspect: false,
+	text: "Kids' corner",
+	fontFamily: "georgia",
+	fontSize: 200,
+	align: "left" as const,
+	bold: true,
+	italic: true,
+	color: "#112233",
+	background: "#ffffff",
+};
+
+async function mountOverlay(overrides: Record<string, unknown> = {}) {
+	const el = document.createElement("epp-furniture-overlay") as any;
+	el.cellPx = 28;
+	el.sidebarTab = "furniture";
+	Object.assign(el, overrides);
+	document.body.appendChild(el);
+	await el.updateComplete;
+	return el;
+}
+
+describe("epp-furniture-overlay text items", () => {
+	it("renders a text item with its text and styles", async () => {
+		const el = await mountOverlay({ furniture: [TEXT_ITEM] });
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		expect(node).toBeTruthy();
+		const content = node.querySelector(
+			".furniture-text-content",
+		) as HTMLElement;
+		expect(content.textContent).toContain("Kids' corner");
+		expect(content.getAttribute("style")).toContain("Georgia");
+		expect(content.getAttribute("style")).toContain("font-weight: 700");
+		expect(content.getAttribute("style")).toContain("font-style: italic");
+		expect(content.getAttribute("style")).toContain("#112233");
+		expect(content.getAttribute("style")).toContain("left");
+	});
+
+	it("renders the text, never the item's icon, for a text item (regression: no mdi:format-text glyph)", async () => {
+		const el = await mountOverlay({ furniture: [TEXT_ITEM] });
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		expect(node).toBeTruthy();
+		// Unselected: the icon branch (<ha-icon icon="...">) must not render at
+		// all — the label content is the text span, not the item's icon glyph.
+		expect(node.querySelector("ha-icon")).toBeNull();
+		expect(
+			el.shadowRoot.querySelector('ha-icon[icon="mdi:format-text"]'),
+		).toBeNull();
+		expect(
+			node.querySelector(".furniture-text-content")?.textContent,
+		).toContain("Kids' corner");
+	});
+
+	it("shows rotate + delete but NO resize handles for a selected text item", async () => {
+		const el = await mountOverlay({
+			furniture: [TEXT_ITEM],
+			selectedFurnitureId: "t1",
+		});
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		expect(node.querySelector(".furn-rotate-handle")).toBeTruthy();
+		expect(node.querySelector(".furn-delete-btn")).toBeTruthy();
+		expect(node.querySelector(".furn-handle")).toBeNull();
+	});
+
+	it("still shows resize handles for a selected icon/svg item", async () => {
+		const iconItem = { ...TEXT_ITEM, id: "i1", type: "icon" as const };
+		const el = await mountOverlay({
+			furniture: [iconItem],
+			selectedFurnitureId: "i1",
+		});
+		const node = el.shadowRoot.querySelector(".furniture-item");
+		expect(node.querySelector(".furn-handle")).toBeTruthy();
+	});
+
+	it("applies default styling when optional text fields are unset", async () => {
+		const bareItem = {
+			id: "t2",
+			type: "text" as const,
+			icon: "mdi:format-text",
+			label: "text_label.label",
+			x: 100,
+			y: 100,
+			width: 800,
+			height: 300,
+			rotation: 0,
+			lockAspect: false,
+			text: undefined,
+			fontFamily: undefined,
+			fontSize: undefined,
+			align: undefined,
+			bold: false,
+			italic: false,
+			color: undefined,
+			background: undefined,
+		};
+		const el = await mountOverlay({ furniture: [bareItem] });
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		const content = node.querySelector(
+			".furniture-text-content",
+		) as HTMLElement;
+		expect(content.textContent).toBe("");
+		const style = content.getAttribute("style");
+		expect(style).toContain("font-weight: 400");
+		expect(style).toContain("font-style: normal");
+		expect(style).toContain("var(--epp-text");
+		expect(style).toContain("text-align: center");
+		expect(style).not.toContain("color-mix");
+	});
+
+	it("fires move/rotate/delete events for a selected text item", async () => {
+		const el = await mountOverlay({
+			furniture: [TEXT_ITEM],
+			selectedFurnitureId: "t1",
+		});
+		const moveHandler = vi.fn();
+		const rotateHandler = vi.fn();
+		const deleteHandler = vi.fn();
+		el.addEventListener("furniture-pointer-down", (e: any) => {
+			if (e.detail.type === "move") moveHandler(e.detail);
+			if (e.detail.type === "rotate") rotateHandler(e.detail);
+		});
+		el.addEventListener("furniture-delete", deleteHandler);
+
+		const node = el.shadowRoot.querySelector(
+			".furniture-item--text",
+		) as HTMLElement;
+		node.dispatchEvent(
+			new PointerEvent("pointerdown", { bubbles: true, composed: true }),
+		);
+		expect(moveHandler).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "t1", type: "move" }),
+		);
+
+		const rotateHandle = node.querySelector(
+			".furn-rotate-handle",
+		) as HTMLElement;
+		rotateHandle.dispatchEvent(
+			new PointerEvent("pointerdown", { bubbles: true, composed: true }),
+		);
+		expect(rotateHandler).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "t1", type: "rotate" }),
+		);
+
+		const deleteBtn = node.querySelector(".furn-delete-btn") as HTMLElement;
+		deleteBtn.dispatchEvent(
+			new PointerEvent("pointerdown", { bubbles: true, composed: true }),
+		);
+		expect(deleteHandler).toHaveBeenCalledTimes(1);
+		expect(deleteHandler.mock.calls[0][0].detail).toBe("t1");
+	});
+});
+
+describe("epp-furniture-overlay text auto-contrast", () => {
+	const AUTO_TEXT = {
+		id: "t1",
+		type: "text" as const,
+		icon: "mdi:format-text",
+		label: "text_label.label",
+		x: 100,
+		y: 100,
+		width: 800,
+		height: 300,
+		rotation: 0,
+		lockAspect: false,
+		text: "Hi",
+		fontFamily: "arial",
+		fontSize: 200,
+		align: "center" as const,
+		bold: false,
+		italic: false,
+		// no color, no background → auto
+	};
+
+	it("uses an explicit colour (no auto halo) when color is set", async () => {
+		const el = await mountOverlay({
+			furniture: [{ ...AUTO_TEXT, color: "#112233" }],
+			furnitureTones: new Map([
+				["t1", { color: "rgb(238, 242, 247)", halo: "rgba(0, 0, 0, 0.85)" }],
+			]),
+		});
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		const span = node.querySelector(".furniture-text-content");
+		expect(span.getAttribute("style")).toContain("#112233");
+		expect(node.classList.contains("has-halo")).toBe(false);
+	});
+
+	it("auto-contrasts against the cell tone (colour + halo) when color is unset", async () => {
+		const el = await mountOverlay({
+			furniture: [AUTO_TEXT],
+			furnitureTones: new Map([
+				["t1", { color: "rgb(238, 242, 247)", halo: "rgba(0, 0, 0, 0.85)" }],
+			]),
+		});
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		const span = node.querySelector(".furniture-text-content");
+		expect(span.getAttribute("style")).toContain("rgb(238, 242, 247)");
+		expect(node.classList.contains("has-halo")).toBe(true);
+		expect(node.getAttribute("style")).toContain("--epp-furniture-halo-color");
+	});
+
+	it("auto-contrasts against the background box (no halo) when a box is set", async () => {
+		const el = await mountOverlay({
+			furniture: [{ ...AUTO_TEXT, background: "#000000" }],
+			furnitureTones: new Map(),
+		});
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		const span = node.querySelector(".furniture-text-content");
+		// black box → light ink
+		expect(span.getAttribute("style")).toContain("--epp-furniture-on-dark");
+		expect(node.classList.contains("has-halo")).toBe(false);
+	});
+
+	it("ignores a non-hex colour/background (defence-in-depth) and falls back to auto", async () => {
+		const el = await mountOverlay({
+			furniture: [{ ...AUTO_TEXT, color: "red)", background: "url(evil)" }],
+			furnitureTones: new Map([
+				["t1", { color: "rgb(1, 2, 3)", halo: "rgba(0, 0, 0, 0.85)" }],
+			]),
+		});
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		const style = node
+			.querySelector(".furniture-text-content")
+			.getAttribute("style");
+		// The malformed values must never reach the CSS string.
+		expect(style).not.toContain("red)");
+		expect(style).not.toContain("url(evil)");
+		// Falls back to the cell tone (both explicit colour and box are invalid).
+		expect(style).toContain("rgb(1, 2, 3)");
+	});
+
+	it("falls back to themed ink (no halo) when color, tone and box are all absent", async () => {
+		const el = await mountOverlay({
+			furniture: [AUTO_TEXT],
+			furnitureTones: new Map(),
+		});
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		const span = node.querySelector(".furniture-text-content");
+		expect(span.getAttribute("style")).toContain("var(--epp-text");
+		expect(node.classList.contains("has-halo")).toBe(false);
+	});
+});

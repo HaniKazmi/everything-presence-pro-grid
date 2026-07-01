@@ -3,10 +3,26 @@ import {
 	contrastRatio,
 	FURNITURE_TONE_CSS,
 	furnitureContrast,
+	hexToRgb,
 	isRgbTriple,
 	parseRgb,
 	relativeLuminance,
 } from "../furniture-contrast.js";
+
+describe("hexToRgb", () => {
+	it("parses a #RRGGBB string to an [r, g, b] triple", () => {
+		expect(hexToRgb("#000000")).toEqual([0, 0, 0]);
+		expect(hexToRgb("#ffffff")).toEqual([255, 255, 255]);
+		expect(hexToRgb("#112233")).toEqual([17, 34, 51]);
+	});
+
+	it("returns null for a non-#RRGGBB value", () => {
+		expect(hexToRgb("")).toBeNull();
+		expect(hexToRgb("red")).toBeNull();
+		expect(hexToRgb("#abc")).toBeNull();
+		expect(hexToRgb("rgb(0,0,0)")).toBeNull();
+	});
+});
 
 describe("relativeLuminance", () => {
 	it("is 0 for black and 1 for white", () => {

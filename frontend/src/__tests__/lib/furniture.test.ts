@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { isFurnitureOutsideGrid } from "../../lib/furniture.js";
+import {
+	clampTextSizeMm,
+	createTextItem,
+	DEFAULT_TEXT_FONT,
+	DEFAULT_TEXT_SIZE_MM,
+	estimateTextBox,
+	fontStack,
+	isFurnitureOutsideGrid,
+	TEXT_FONTS,
+	TEXT_SIZE_MAX_MM,
+	TEXT_SIZE_MIN_MM,
+} from "../../lib/furniture.js";
 
 describe("isFurnitureOutsideGrid", () => {
 	it("returns false when item is fully inside bounds", () => {
@@ -134,5 +145,57 @@ describe("isFurnitureOutsideGrid", () => {
 				),
 			).toBe(true);
 		});
+	});
+});
+
+describe("text label helpers", () => {
+	it("fontStack returns the stack for a known key", () => {
+		expect(fontStack("georgia")).toContain("Georgia");
+	});
+
+	it("fontStack falls back to the first font for an unknown key", () => {
+		expect(fontStack("nope")).toBe(TEXT_FONTS[0].stack);
+	});
+
+	it("clampTextSizeMm clamps to the allowed range", () => {
+		expect(clampTextSizeMm(5)).toBe(TEXT_SIZE_MIN_MM);
+		expect(clampTextSizeMm(99999)).toBe(TEXT_SIZE_MAX_MM);
+		expect(clampTextSizeMm(200)).toBe(200);
+	});
+
+	it("clampTextSizeMm returns the default for non-finite input", () => {
+		expect(clampTextSizeMm(Number.NaN)).toBe(DEFAULT_TEXT_SIZE_MM);
+	});
+
+	it("estimateTextBox grows with line count and character count", () => {
+		const one = estimateTextBox("Hi", 200, false);
+		const wide = estimateTextBox("A much longer line", 200, false);
+		const tall = estimateTextBox("a\nb\nc", 200, false);
+		expect(wide.width).toBeGreaterThan(one.width);
+		expect(tall.height).toBeGreaterThan(one.height);
+		expect(one.width).toBeGreaterThanOrEqual(200);
+		expect(one.height).toBeGreaterThanOrEqual(200);
+	});
+
+	it("estimateTextBox makes bold text wider", () => {
+		expect(estimateTextBox("Hello", 200, true).width).toBeGreaterThan(
+			estimateTextBox("Hello", 200, false).width,
+		);
+	});
+
+	it("createTextItem centers a text item with defaults", () => {
+		const item = createTextItem("Label", 4000, 3000, "t1");
+		expect(item.type).toBe("text");
+		expect(item.text).toBe("Label");
+		expect(item.fontFamily).toBe(DEFAULT_TEXT_FONT);
+		expect(item.fontSize).toBe(DEFAULT_TEXT_SIZE_MM);
+		expect(item.align).toBe("center");
+		expect(item.bold).toBe(false);
+		expect(item.rotation).toBe(0);
+		// centered: x/y are the room center minus half the estimated box
+		expect(item.x).toBeGreaterThan(0);
+		expect(item.y).toBeGreaterThan(0);
+		expect(item.width).toBeGreaterThan(0);
+		expect(item.height).toBeGreaterThan(0);
 	});
 });
