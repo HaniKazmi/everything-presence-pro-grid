@@ -313,4 +313,47 @@ describe("eppgrid-card-editor", () => {
 
 		spy.mockRestore();
 	});
+
+	it("shows a reset-room-colour control only when room_color is set", async () => {
+		const callWS = vi.fn(async () => []);
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "d1" } as any);
+		el.hass = { callWS, locale: { language: "en" } } as any;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el.shadowRoot!.querySelector(".reset-room-color")).toBeNull();
+
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "d1",
+			room_color: [10, 20, 30],
+		} as any);
+		el.requestUpdate();
+		await el.updateComplete;
+		expect(el.shadowRoot!.querySelector(".reset-room-color")).not.toBeNull();
+	});
+
+	it("reset-room-colour clears room_color back to auto (keeping other keys)", async () => {
+		const callWS = vi.fn(async () => []);
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "d1",
+			room_color: [10, 20, 30],
+			primary: "X",
+		} as any);
+		el.hass = { callWS, locale: { language: "en" } } as any;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const got = vi.fn();
+		el.addEventListener("config-changed", (e: any) => got(e.detail.config));
+		(el.shadowRoot!.querySelector(".reset-room-color") as HTMLElement).click();
+		const cfg = got.mock.calls.at(-1)?.[0];
+		expect("room_color" in cfg).toBe(false);
+		expect(cfg.primary).toBe("X");
+	});
 });

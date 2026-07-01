@@ -13,6 +13,7 @@ import {
 	mmToPx,
 	visibleHandles,
 } from "../lib/furniture.js";
+import { furnitureContrast, hexToRgb } from "../lib/furniture-contrast.js";
 import type { FurnitureItemTone } from "../lib/furniture-tones.js";
 import { roomStartCol } from "../lib/grid.js";
 import type { SidebarTab } from "../lib/view-hash.js";
@@ -321,20 +322,40 @@ export class EppFurnitureOverlay extends LitElement {
 						const bg = item.background
 							? `background: color-mix(in srgb, ${item.background} 85%, transparent);`
 							: "";
+						// Colour: an explicit user colour always wins. Otherwise auto-
+						// contrast (like furniture) — against the background box if one
+						// is set (the text sits on it), else against the cell underneath
+						// (the tone map), adding a halo there for legibility over busy
+						// cells. Falls back to themed ink when nothing is measurable.
+						const DEFAULT_INK =
+							"var(--epp-text, var(--primary-text-color, #212121))";
+						let textColor: string;
+						let haloVar: string | null = null;
+						if (item.color) {
+							textColor = item.color;
+						} else if (item.background) {
+							const rgb = hexToRgb(item.background);
+							textColor = rgb ? furnitureContrast(rgb).color : DEFAULT_INK;
+						} else if (tone) {
+							textColor = tone.color;
+							haloVar = tone.halo;
+						} else {
+							textColor = DEFAULT_INK;
+						}
 						const contentStyle = [
 							`font-family: ${fontStack(item.fontFamily ?? DEFAULT_TEXT_FONT)};`,
 							`font-size: ${fontPx}px;`,
 							`font-weight: ${item.bold ? 700 : 400};`,
 							`font-style: ${item.italic ? "italic" : "normal"};`,
-							`color: ${item.color ?? "var(--epp-text, var(--primary-text-color, #212121))"};`,
+							`color: ${textColor};`,
 							`text-align: ${item.align ?? DEFAULT_TEXT_ALIGN};`,
 							bg,
 						].join(" ");
 						return html`
 							<div
-								class="furniture-item furniture-item--text ${selected ? "selected" : ""}"
+								class="furniture-item furniture-item--text${selected ? " selected" : ""}${haloVar ? " has-halo" : ""}"
 								data-id="${item.id}"
-								style="left: ${leftPx}px; top: ${topPx}px; transform: rotate(${item.rotation}deg);"
+								style="${haloVar ? `--epp-furniture-halo-color:${haloVar};` : ""}left: ${leftPx}px; top: ${topPx}px; transform: rotate(${item.rotation}deg);"
 								@pointerdown=${(e: PointerEvent) => this._onItemPointerDown(e, item.id)}
 							>
 								<span class="furniture-text-content" style="${contentStyle}">${item.text ?? ""}</span>

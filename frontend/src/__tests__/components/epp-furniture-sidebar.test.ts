@@ -731,6 +731,36 @@ describe("epp-furniture-sidebar text label editor", () => {
 		expect(detail.updates.background).toBeUndefined();
 	});
 
+	it("Auto button is pressed when the text colour is unset", async () => {
+		const el = await mountSidebar({
+			furniture: [SEL_TEXT],
+			selectedFurnitureId: "t1",
+		});
+		const autoBtn = el.shadowRoot.querySelector(
+			".furn-color-auto",
+		) as HTMLElement;
+		expect(autoBtn).toBeTruthy();
+		expect(autoBtn.getAttribute("aria-pressed")).toBe("true");
+	});
+
+	it("Auto button resets an explicit text colour back to auto (undefined)", async () => {
+		const el = await mountSidebar({
+			furniture: [{ ...SEL_TEXT, color: "#112233" }],
+			selectedFurnitureId: "t1",
+		});
+		const spy = vi.fn();
+		el.addEventListener("furniture-update", spy);
+		const autoBtn = el.shadowRoot.querySelector(
+			".furn-color-auto",
+		) as HTMLElement;
+		expect(autoBtn.getAttribute("aria-pressed")).toBe("false");
+		autoBtn.click();
+		const detail = spy.mock.calls.at(-1)![0].detail;
+		expect(detail.id).toBe("t1");
+		expect(detail.updates.color).toBeUndefined();
+		expect("color" in detail.updates).toBe(true);
+	});
+
 	it("removes a selected text item via the editor's remove button", async () => {
 		const el = await mountSidebar({
 			furniture: [SEL_TEXT],

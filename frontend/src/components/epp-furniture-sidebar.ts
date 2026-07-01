@@ -520,6 +520,12 @@ export class EppFurnitureSidebar extends LitElement {
 
 				<div class="furn-row">
 					<span class="furn-color-label">${this.localize("text_label.text_color")}</span>
+					<button
+						class="furn-seg-btn furn-color-auto"
+						type="button"
+						aria-pressed=${item.color ? "false" : "true"}
+						@click=${() => this._fireUpdate(item.id, { color: undefined })}
+					>${this.localize("text_label.auto_color")}</button>
 					<epp-zone-color-picker
 						class="furn-text-color"
 						.value=${item.color ?? ""}

@@ -71,6 +71,7 @@
 		"align_center": "Align centre",
 		"align_right": "Align right",
 		"text_color": "Text colour",
+		"auto_color": "Auto",
 		"background": "Background",
 		"no_background": "None",
 		"remove": "Remove label"
@@ -545,6 +546,7 @@
 			"show_furniture": "Show furniture",
 			"show_overlays": "Show overlays",
 			"room_color": "Rest-of-room colour",
+			"reset_room_color": "Reset to auto",
 			"presence": "Presence",
 			"zones": "Zones",
 			"occupancy": "Occupancy",

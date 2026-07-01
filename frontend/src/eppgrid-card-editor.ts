@@ -1,4 +1,4 @@
-import { html, LitElement, nothing } from "lit";
+import { css, html, LitElement, nothing } from "lit";
 import { state } from "lit/decorators.js";
 import { applyCardDefaults, type EppGridCardConfig } from "./eppgrid-card.js";
 import { defaultLocalize, type LocalizeFn, setupLocalize } from "./localize.js";
@@ -76,6 +76,19 @@ export function buildSchema(devices: DeviceOption[]): unknown[] {
 }
 
 export class EppGridCardEditor extends LitElement {
+	static styles = css`
+		.reset-room-color {
+			margin-top: var(--epp-space-2, 8px);
+			background: none;
+			border: none;
+			padding: 0;
+			color: var(--primary-color, #03a9f4);
+			cursor: pointer;
+			font: inherit;
+			text-decoration: underline;
+		}
+	`;
+
 	private __hass?: {
 		callWS: (msg: unknown) => Promise<unknown>;
 		locale?: { language?: string };
@@ -176,6 +189,23 @@ export class EppGridCardEditor extends LitElement {
 		);
 	}
 
+	// Reset the room colour back to "auto" (the theme default). HA's color_rgb
+	// selector has no clear affordance, so this is the only way back once a
+	// colour is picked. Drops room_color from the config, preserving all other
+	// keys (including HA-managed passthroughs).
+	private _resetRoomColor = (): void => {
+		if (!this._config) return;
+		const config = { ...this._config };
+		delete config.room_color;
+		this.dispatchEvent(
+			new CustomEvent("config-changed", {
+				detail: { config },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	};
+
 	render() {
 		if (!this.__hass || !this._config) return nothing;
 		return html`
@@ -186,6 +216,17 @@ export class EppGridCardEditor extends LitElement {
 				.computeLabel=${this._computeLabel}
 				@value-changed=${this._valueChanged}
 			></ha-form>
+			${
+				this._config.room_color
+					? html`<button
+							type="button"
+							class="reset-room-color"
+							@click=${this._resetRoomColor}
+						>
+							${this._localize("card.editor.reset_room_color")}
+						</button>`
+					: nothing
+			}
 		`;
 	}
 }

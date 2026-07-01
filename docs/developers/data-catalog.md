@@ -476,7 +476,8 @@ Furniture item fields:
         | trebuchet | comic).
     - `fontSize` (number, mm; clamped 30–3000) — real-world text height; scales
         with the room.
-    - `color` (`#RRGGBB`, optional) — text colour; omitted ⇒ themed default ink.
+    - `color` (`#RRGGBB`, optional) — text colour; omitted ⇒ auto-contrast against
+        the background (the box if set, else the cell underneath), like furniture.
     - `bold` / `italic` (bool).
     - `align` (`"left" | "center" | "right"`).
     - `background` (`#RRGGBB`, optional) — box fill (rendered ~85% opacity);

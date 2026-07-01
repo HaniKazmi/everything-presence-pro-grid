@@ -79,6 +79,16 @@ export function parseRgb(css: string): [number, number, number] | null {
 	return isRgbTriple(rgb) ? rgb : null;
 }
 
+/** Parse a `#RRGGBB` hex string to an `[r, g, b]` triple; null for anything
+ *  else. Complements `parseRgb` (which handles computed `rgb()` strings) for
+ *  callers that hold a stored hex colour (e.g. a text label's background). */
+export function hexToRgb(hex: string): [number, number, number] | null {
+	const m = /^#([0-9a-fA-F]{6})$/.exec(hex);
+	if (!m) return null;
+	const n = Number.parseInt(m[1], 16);
+	return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
 /** Precomputed luminance of the two fixed tones — they never change, so there's
  *  no need to recompute them on every call. */
 const LIGHT_TONE_LUM = relativeLuminance(LIGHT_TONE);

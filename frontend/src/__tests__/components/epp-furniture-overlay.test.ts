@@ -790,3 +790,75 @@ describe("epp-furniture-overlay text items", () => {
 		expect(deleteHandler.mock.calls[0][0].detail).toBe("t1");
 	});
 });
+
+describe("epp-furniture-overlay text auto-contrast", () => {
+	const AUTO_TEXT = {
+		id: "t1",
+		type: "text" as const,
+		icon: "mdi:format-text",
+		label: "text_label.label",
+		x: 100,
+		y: 100,
+		width: 800,
+		height: 300,
+		rotation: 0,
+		lockAspect: false,
+		text: "Hi",
+		fontFamily: "arial",
+		fontSize: 200,
+		align: "center" as const,
+		bold: false,
+		italic: false,
+		// no color, no background → auto
+	};
+
+	it("uses an explicit colour (no auto halo) when color is set", async () => {
+		const el = await mountOverlay({
+			furniture: [{ ...AUTO_TEXT, color: "#112233" }],
+			furnitureTones: new Map([
+				["t1", { color: "rgb(238, 242, 247)", halo: "rgba(0, 0, 0, 0.85)" }],
+			]),
+		});
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		const span = node.querySelector(".furniture-text-content");
+		expect(span.getAttribute("style")).toContain("#112233");
+		expect(node.classList.contains("has-halo")).toBe(false);
+	});
+
+	it("auto-contrasts against the cell tone (colour + halo) when color is unset", async () => {
+		const el = await mountOverlay({
+			furniture: [AUTO_TEXT],
+			furnitureTones: new Map([
+				["t1", { color: "rgb(238, 242, 247)", halo: "rgba(0, 0, 0, 0.85)" }],
+			]),
+		});
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		const span = node.querySelector(".furniture-text-content");
+		expect(span.getAttribute("style")).toContain("rgb(238, 242, 247)");
+		expect(node.classList.contains("has-halo")).toBe(true);
+		expect(node.getAttribute("style")).toContain("--epp-furniture-halo-color");
+	});
+
+	it("auto-contrasts against the background box (no halo) when a box is set", async () => {
+		const el = await mountOverlay({
+			furniture: [{ ...AUTO_TEXT, background: "#000000" }],
+			furnitureTones: new Map(),
+		});
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		const span = node.querySelector(".furniture-text-content");
+		// black box → light ink
+		expect(span.getAttribute("style")).toContain("--epp-furniture-on-dark");
+		expect(node.classList.contains("has-halo")).toBe(false);
+	});
+
+	it("falls back to themed ink (no halo) when color, tone and box are all absent", async () => {
+		const el = await mountOverlay({
+			furniture: [AUTO_TEXT],
+			furnitureTones: new Map(),
+		});
+		const node = el.shadowRoot.querySelector(".furniture-item--text");
+		const span = node.querySelector(".furniture-text-content");
+		expect(span.getAttribute("style")).toContain("var(--epp-text");
+		expect(node.classList.contains("has-halo")).toBe(false);
+	});
+});
