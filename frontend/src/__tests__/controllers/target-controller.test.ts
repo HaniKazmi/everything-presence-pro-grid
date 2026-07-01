@@ -27,6 +27,8 @@ function mockHost() {
 		// Target / raw-target state
 		_targets: [] as any[],
 		_rawTargets: [] as any[],
+		// Live movement-trail ring buffers — one polyline per target index.
+		_targetTrails: [[], [], []] as Array<Array<{ x: number; y: number }>>,
 		_sensorState: {} as any,
 		_zoneState: {
 			occupancy: {} as Record<number, boolean>,
@@ -291,6 +293,27 @@ describe("TargetController", () => {
 			const targets = [{ x: 100, y: 200, status: "active", signal: 50 }];
 			ctrl.handleTargetData(makeTargetData({ targets: targets as any }));
 			expect(host._targets).toBe(targets);
+		});
+
+		it("appends active target positions to per-target trails and caps length", () => {
+			const INACTIVE_2 = [
+				{ x: null, y: null, status: "inactive", signal: 0 },
+				{ x: null, y: null, status: "inactive", signal: 0 },
+			];
+			host._targetTrails = [[], [], []];
+			for (let i = 0; i < 80; i++) {
+				ctrl.handleTargetData(
+					makeTargetData({
+						targets: [
+							{ x: i * 10, y: 100, status: "active", signal: 5 },
+							...INACTIVE_2,
+						] as any,
+					}),
+				);
+			}
+			expect(host._targetTrails[0].length).toBe(60); // capped at TRAIL_MAX
+			expect(host._targetTrails[0].at(-1)).toEqual({ x: 790, y: 100 });
+			expect(host._targetTrails[1].length).toBe(0); // inactive target has no trail
 		});
 
 		it("stores sensor data on host._sensorState", () => {

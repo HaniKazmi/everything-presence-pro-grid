@@ -718,6 +718,11 @@ export class EPPGridPanel extends LitElement {
 	} | null = null;
 	@state() _targets: Target[] = [];
 	@state() _rawTargets: RawTarget[] = [];
+	// Live movement-trail ring buffers (frontend-only, ephemeral) — one
+	// polyline per target index, cleared alongside _targets/targetPrevXY on
+	// device switch / session close. Not @state: consumed by the overlay
+	// render loop, not a Lit-reactive trigger on its own.
+	_targetTrails: Array<Array<{ x: number; y: number }>> = [[], [], []];
 	@state() _sensorState: SensorState = createInitialSensorState();
 	@state() _zoneState: ZoneStateSummary = createInitialZoneState();
 	@state() _showDebugLog = false;
@@ -1275,6 +1280,7 @@ export class EPPGridPanel extends LitElement {
 			const prev = this._sensorState;
 			this._targets = [];
 			this._rawTargets = [];
+			this._targetTrails = [[], [], []];
 			this._sensorState = {
 				...createInitialSensorState(),
 				temperature: prev.temperature,
@@ -1524,6 +1530,7 @@ export class EPPGridPanel extends LitElement {
 		this._deviceCtrl.closeDeviceSession();
 		this._targets = [];
 		this._rawTargets = [];
+		this._targetTrails = [[], [], []];
 		this._sensorState = createInitialSensorState();
 		this._zoneState = createInitialZoneState();
 		this._targetCtrl.resetZoneEngineState();

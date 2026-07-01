@@ -20,6 +20,10 @@ import type { PanelHost } from "./panel-host.js";
 // TargetHost re-export kept so existing test imports keep working without churn.
 export type { PanelHost as TargetHost } from "./panel-host.js";
 
+// Max points kept per target's live movement-trail polyline (frontend-only,
+// ephemeral — see host._targetTrails).
+const TRAIL_MAX = 60;
+
 /**
  * TargetController manages target data, sensor state, zone state, zone engine,
  * and debug logging.  It receives data from DeviceController callbacks and
@@ -164,6 +168,18 @@ export class TargetController implements ReactiveController {
 			return;
 		}
 		this.host._targets = data.targets;
+		// Live movement trails (frontend-only, ephemeral).
+		if (this.host._view === "live" || this.host._view === "editor") {
+			const trails = this.host._targetTrails;
+			for (let i = 0; i < data.targets.length && i < trails.length; i++) {
+				const t = data.targets[i];
+				if (t.x != null && t.y != null && t.status === "active") {
+					const line = trails[i];
+					line.push({ x: t.x, y: t.y });
+					if (line.length > TRAIL_MAX) line.splice(0, line.length - TRAIL_MAX);
+				}
+			}
+		}
 		this.host._sensorState = data.sensors;
 		if (data.zones) {
 			this.host._zoneState = {
