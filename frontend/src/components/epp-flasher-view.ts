@@ -80,6 +80,10 @@ const flasherStyles = css`
   .device-row {
     display: flex;
     align-items: center;
+    /* Let the OTA error detail (flex-basis: 100%) wrap onto its own full-width
+       line below the row, in normal flow — so it can't be clipped by the
+       scrolling .device-list the way an absolute popover was. */
+    flex-wrap: wrap;
     gap: var(--epp-space-3, 12px);
     padding: var(--epp-space-3, 12px) var(--epp-space-4, 16px);
     min-height: 60px;
@@ -209,19 +213,16 @@ const flasherStyles = css`
     color: var(--epp-danger, var(--error-color, #f44336));
     cursor: pointer;
   }
-  .ota-error-popover {
-    position: absolute;
-    bottom: 100%;
-    right: 0;
+  .ota-error-detail {
+    /* Full-width line below the row content (wraps via the row's flex-wrap),
+       so the message flows in-document and is never clipped. */
+    flex-basis: 100%;
     background: var(--epp-danger, var(--error-color, #f44336));
     color: white;
     padding: var(--epp-space-2, 8px) var(--epp-space-3, 12px);
     border-radius: var(--epp-radius-sm, 6px);
     font-size: var(--epp-font-xs, 12px);
-    white-space: nowrap;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    z-index: 10;
-    margin-bottom: var(--epp-space-1, 4px);
+    line-height: 1.4;
   }
 
   .integration-version {
@@ -545,13 +546,16 @@ export class EppFlasherView extends LitElement {
 	};
 
 	private _onPopoverPointerDown = (e: Event): void => {
-		// Pointerdowns inside the error indicator (icon/popover/retry) are
-		// owned by the click toggle — dismissing here too would make the
-		// subsequent toggle click re-open the popover instead of closing it.
+		// Pointerdowns inside the error indicator (icon/retry) or on its detail
+		// message are owned by the click toggle — dismissing here too would make
+		// the subsequent toggle click re-open the popover instead of closing it.
 		const insideIndicator = e
 			.composedPath()
 			.some(
-				(el) => el instanceof HTMLElement && el.classList.contains("ota-error"),
+				(el) =>
+					el instanceof HTMLElement &&
+					(el.classList.contains("ota-error") ||
+						el.classList.contains("ota-error-detail")),
 			);
 		if (!insideIndicator) this._closeErrorPopover();
 	};
@@ -641,14 +645,23 @@ export class EppFlasherView extends LitElement {
 								</epp-button>`
 								: nothing
 						}
-						${
-							this._errorPopoverMac === device.mac
-								? html`<div class="ota-error-popover">${ota.errorKey ? this.localize(ota.errorKey, ota.errorParams) : ""}</div>`
-								: nothing
-						}
 					</div>`;
 			}
 		}
+	}
+
+	// The OTA error message renders in the device row's flow (below its main
+	// line, via the row's flex-wrap), toggled by the error icon. Kept OUT of
+	// `.ota-error`: an absolute popover there was clipped by the scrolling
+	// `.device-list` for a device at the top of the list.
+	private _renderOtaErrorDetail(
+		device: FlashableDevice,
+	): typeof nothing | ReturnType<typeof html> {
+		const ota = this.otaStates[device.mac];
+		if (!ota || ota.state !== "error" || this._errorPopoverMac !== device.mac) {
+			return nothing;
+		}
+		return html`<div class="ota-error-detail" role="alert">${ota.errorKey ? this.localize(ota.errorKey, ota.errorParams) : ""}</div>`;
 	}
 
 	private _onUsbConnect(): void {
@@ -1005,6 +1018,7 @@ export class EppFlasherView extends LitElement {
 														html`<span class="firmware-badge ${b.cls}">${this.localize(b.labelKey)}</span>`,
 												)}
                         ${action}
+                        ${this._renderOtaErrorDetail(device)}
                       </div>
                     `;
 										})}
