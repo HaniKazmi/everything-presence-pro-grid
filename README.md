@@ -85,19 +85,16 @@ for worked examples.
 
 ### HACS (recommended)
 
-Everything Presence Pro Grid is a HACS **custom repository** — it isn't in
-HACS's default list. Add the repository once and HACS handles installs and
-updates from there.
+Everything Presence Pro Grid is in the **HACS** default list — search for it and
+install it directly.
 
 [![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=clintongormley&repository=everything-presence-pro-grid&category=integration)
 
-Or add it manually:
+Or install it from the HACS list:
 
-1. Open **HACS** in Home Assistant → kebab menu (⋮) → **Custom repositories**.
-1. Paste `https://github.com/clintongormley/everything-presence-pro-grid`, set
-    **Type** to **Integration**, and click **Add**.
-1. Find **Everything Presence Pro Grid** in HACS, click **Download**, then
-    restart Home Assistant.
+1. Open **HACS** in Home Assistant and search for **Everything Presence Pro
+    Grid**.
+1. Click **Download**, then restart Home Assistant.
 1. Go to **Settings → Devices & Services → Add Integration** and choose
     **Everything Presence Pro Grid**.
 
