@@ -1714,9 +1714,37 @@ describe("OTA inline rendering", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const popover = c.querySelector(".ota-error-popover");
-		expect(popover).not.toBeNull();
-		expect(popover!.textContent).toContain("flasher.errors.connection_lost");
+		const detail = c.querySelector(".ota-error-detail");
+		expect(detail).not.toBeNull();
+		expect(detail!.textContent).toContain("flasher.errors.connection_lost");
+	});
+
+	it("renders the OTA error message in the device-row flow, not a clipped popover", () => {
+		// Regression: the error text used to be an absolutely-positioned popover
+		// (bottom: 100%) that the scrolling .device-list (overflow-y: auto)
+		// clipped for a device at the top of the list. It now renders in normal
+		// flow inside the row, so it can never be clipped.
+		const el = createView({
+			flashableDevices: [updatableDevice],
+			otaStates: {
+				[updatableDevice.mac]: {
+					state: "error",
+					progress: null,
+					errorKey: "flasher.errors.connection_lost",
+				},
+			},
+		});
+		(el as any)._errorPopoverMac = updatableDevice.mac;
+		const c = renderTo((el as any).render());
+
+		const detail = c.querySelector(".ota-error-detail");
+		expect(detail).not.toBeNull();
+		// The old clipped absolute popover is gone.
+		expect(c.querySelector(".ota-error-popover")).toBeNull();
+		// The detail lives in the row flow, not inside the narrow right-aligned
+		// .ota-error action cluster it would overflow out of.
+		expect(detail!.closest(".ota-error")).toBeNull();
+		expect(detail!.closest(".device-row")).not.toBeNull();
 	});
 
 	it("does not render error popover when _errorPopoverMac does not match", () => {
@@ -1734,7 +1762,7 @@ describe("OTA inline rendering", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".ota-error-popover")).toBeNull();
+		expect(c.querySelector(".ota-error-detail")).toBeNull();
 	});
 
 	it("_dispatchRetryOta dispatches retry-ota event and clears popover", () => {
@@ -1811,7 +1839,7 @@ describe("OTA inline rendering", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".ota-error-popover")!.textContent).toContain(
+		expect(c.querySelector(".ota-error-detail")!.textContent).toContain(
 			"Update failed: ESP_ERR_HTTP_CONNECT",
 		);
 	});

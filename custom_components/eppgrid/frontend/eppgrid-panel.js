@@ -1019,6 +1019,10 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
   .device-row {
     display: flex;
     align-items: center;
+    /* Let the OTA error detail (flex-basis: 100%) wrap onto its own full-width
+       line below the row, in normal flow — so it can't be clipped by the
+       scrolling .device-list the way an absolute popover was. */
+    flex-wrap: wrap;
     gap: var(--epp-space-3, 12px);
     padding: var(--epp-space-3, 12px) var(--epp-space-4, 16px);
     min-height: 60px;
@@ -1148,19 +1152,16 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
     color: var(--epp-danger, var(--error-color, #f44336));
     cursor: pointer;
   }
-  .ota-error-popover {
-    position: absolute;
-    bottom: 100%;
-    right: 0;
+  .ota-error-detail {
+    /* Full-width line below the row content (wraps via the row's flex-wrap),
+       so the message flows in-document and is never clipped. */
+    flex-basis: 100%;
     background: var(--epp-danger, var(--error-color, #f44336));
     color: white;
     padding: var(--epp-space-2, 8px) var(--epp-space-3, 12px);
     border-radius: var(--epp-radius-sm, 6px);
     font-size: var(--epp-font-xs, 12px);
-    white-space: nowrap;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-    z-index: 10;
-    margin-bottom: var(--epp-space-1, 4px);
+    line-height: 1.4;
   }
 
   .integration-version {
@@ -1422,7 +1423,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
     font-size: 0.9em;
   }
 
-`;class us extends ce{constructor(){super(...arguments),this.flashableDevices=[],this.loading=!1,this.localize=Wt,this._selectedVariant="wifi",this.firmwareVersion="",this.integrationVersion="",this.usbFlashState=null,this.wifiNetworks=[],this.otaStates={},this.cancelledDeviceIpHint=null,this._hasWebSerial="undefined"!=typeof navigator&&"serial"in navigator,this._isSecureContext="undefined"==typeof window||window.isSecureContext,this._showUsbFlash=!1,this._cancelling=!1,this._selectedSsid="",this._manualSsid=!1,this._wifiPassword="",this._showPassword=!1,this._errorPopoverMac=null,this._closeErrorPopover=()=>{null!==this._errorPopoverMac&&(this._errorPopoverMac=null),this._popoverListeners.detach()},this._onPopoverKeydown=e=>{"Escape"===e.key&&this._closeErrorPopover()},this._onPopoverPointerDown=e=>{e.composedPath().some(e=>e instanceof HTMLElement&&e.classList.contains("ota-error"))||this._closeErrorPopover()},this._popoverListeners=new rs([{target:document,type:"keydown",listener:this._onPopoverKeydown},{target:document,type:"pointerdown",listener:this._onPopoverPointerDown,options:!0},{target:window,type:"scroll",listener:this._closeErrorPopover,options:!0}])}_dispatchUpdateFirmware(e){this.dispatchEvent(new CustomEvent("update-firmware",{detail:{mac:e.mac},bubbles:!0,composed:!0}))}disconnectedCallback(){super.disconnectedCallback(),this._popoverListeners.detach()}_toggleErrorPopover(e,t){e.stopPropagation(),this._errorPopoverMac===t?this._closeErrorPopover():(this._errorPopoverMac=t,this._popoverListeners.attach())}_dispatchRetryOta(e){this._closeErrorPopover(),this.dispatchEvent(new CustomEvent("retry-ota",{detail:{mac:e.mac},bubbles:!0,composed:!0}))}_renderOtaIndicator(e){const t=this.otaStates[e.mac];if(!t)return W;switch(t.state){case"updating":{if(null==t.progress)return N`<div class="ota-spinner"></div>`;const e=14,i=2*Math.PI*e,s=i-t.progress/100*i;return N`
+`;class us extends ce{constructor(){super(...arguments),this.flashableDevices=[],this.loading=!1,this.localize=Wt,this._selectedVariant="wifi",this.firmwareVersion="",this.integrationVersion="",this.usbFlashState=null,this.wifiNetworks=[],this.otaStates={},this.cancelledDeviceIpHint=null,this._hasWebSerial="undefined"!=typeof navigator&&"serial"in navigator,this._isSecureContext="undefined"==typeof window||window.isSecureContext,this._showUsbFlash=!1,this._cancelling=!1,this._selectedSsid="",this._manualSsid=!1,this._wifiPassword="",this._showPassword=!1,this._errorPopoverMac=null,this._closeErrorPopover=()=>{null!==this._errorPopoverMac&&(this._errorPopoverMac=null),this._popoverListeners.detach()},this._onPopoverKeydown=e=>{"Escape"===e.key&&this._closeErrorPopover()},this._onPopoverPointerDown=e=>{e.composedPath().some(e=>e instanceof HTMLElement&&(e.classList.contains("ota-error")||e.classList.contains("ota-error-detail")))||this._closeErrorPopover()},this._popoverListeners=new rs([{target:document,type:"keydown",listener:this._onPopoverKeydown},{target:document,type:"pointerdown",listener:this._onPopoverPointerDown,options:!0},{target:window,type:"scroll",listener:this._closeErrorPopover,options:!0}])}_dispatchUpdateFirmware(e){this.dispatchEvent(new CustomEvent("update-firmware",{detail:{mac:e.mac},bubbles:!0,composed:!0}))}disconnectedCallback(){super.disconnectedCallback(),this._popoverListeners.detach()}_toggleErrorPopover(e,t){e.stopPropagation(),this._errorPopoverMac===t?this._closeErrorPopover():(this._errorPopoverMac=t,this._popoverListeners.attach())}_dispatchRetryOta(e){this._closeErrorPopover(),this.dispatchEvent(new CustomEvent("retry-ota",{detail:{mac:e.mac},bubbles:!0,composed:!0}))}_renderOtaIndicator(e){const t=this.otaStates[e.mac];if(!t)return W;switch(t.state){case"updating":{if(null==t.progress)return N`<div class="ota-spinner"></div>`;const e=14,i=2*Math.PI*e,s=i-t.progress/100*i;return N`
 					<div class="ota-progress">
 						<svg width="36" height="36" viewBox="0 0 36 36">
 							<circle class="ota-track" cx="18" cy="18" r="${e}" />
@@ -1442,8 +1443,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 									@click=${()=>this._dispatchRetryOta(e)}>
 									${this.localize("flasher.ota_retry")}
 								</epp-button>`:W}
-						${this._errorPopoverMac===e.mac?N`<div class="ota-error-popover">${t.errorKey?this.localize(t.errorKey,t.errorParams):""}</div>`:W}
-					</div>`}}_onUsbConnect(){this._hasWebSerial&&(this._showUsbFlash=!0)}_dispatchFlashComplete(){this.dispatchEvent(new CustomEvent("flash-complete",{bubbles:!0,composed:!0}))}_dispatchUsbFlash(){this.dispatchEvent(new CustomEvent("usb-flash",{detail:{variant:this._getFirmwareVariant()},bubbles:!0,composed:!0}))}_dispatchUsbRetry(){this.dispatchEvent(new CustomEvent("usb-retry",{bubbles:!0,composed:!0}))}_dispatchRetryHaAdd(){this.dispatchEvent(new CustomEvent("retry-ha-add",{bubbles:!0,composed:!0}))}_dispatchCancel(){null==this.usbFlashState?this._showUsbFlash=!1:this._cancelling=!0,this._wifiPassword="",this.dispatchEvent(new CustomEvent("flasher-cancel",{bubbles:!0,composed:!0}))}updated(e){e.has("usbFlashState")&&null==this.usbFlashState&&(this._cancelling=!1)}_renderCancelButton(e){const t=this._cancelling?this.localize("flasher.cancelling"):this.localize("flasher.cancel");return N`<epp-button
+					</div>`}}_renderOtaErrorDetail(e){const t=this.otaStates[e.mac];return t&&"error"===t.state&&this._errorPopoverMac===e.mac?N`<div class="ota-error-detail" role="alert">${t.errorKey?this.localize(t.errorKey,t.errorParams):""}</div>`:W}_onUsbConnect(){this._hasWebSerial&&(this._showUsbFlash=!0)}_dispatchFlashComplete(){this.dispatchEvent(new CustomEvent("flash-complete",{bubbles:!0,composed:!0}))}_dispatchUsbFlash(){this.dispatchEvent(new CustomEvent("usb-flash",{detail:{variant:this._getFirmwareVariant()},bubbles:!0,composed:!0}))}_dispatchUsbRetry(){this.dispatchEvent(new CustomEvent("usb-retry",{bubbles:!0,composed:!0}))}_dispatchRetryHaAdd(){this.dispatchEvent(new CustomEvent("retry-ha-add",{bubbles:!0,composed:!0}))}_dispatchCancel(){null==this.usbFlashState?this._showUsbFlash=!1:this._cancelling=!0,this._wifiPassword="",this.dispatchEvent(new CustomEvent("flasher-cancel",{bubbles:!0,composed:!0}))}updated(e){e.has("usbFlashState")&&null==this.usbFlashState&&(this._cancelling=!1)}_renderCancelButton(e){const t=this._cancelling?this.localize("flasher.cancelling"):this.localize("flasher.cancel");return N`<epp-button
 			variant="neutral"
 			class=${e??""}
 			@click=${this._dispatchCancel}
@@ -1551,6 +1551,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
                         </div>
                         ${i.map(e=>N`<span class="firmware-badge ${e.cls}">${this.localize(e.labelKey)}</span>`)}
                         ${s}
+                        ${this._renderOtaErrorDetail(e)}
                       </div>
                     `})}
                 </div>
