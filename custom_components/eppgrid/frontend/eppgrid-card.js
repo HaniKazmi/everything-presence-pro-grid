@@ -380,6 +380,14 @@ class tt extends et{}tt.directiveName="unsafeSVG",tt.resultType=2;const ot=(e=>(
 			/* Reset text-align inside the wrapper so the centred host doesn't
 			   leak into the grid-dimensions caption / cell content. */
 			text-align: left;
+			/* Own the overlay z-indexes. The targets (z-index 20), furniture (15)
+			   and heatmap (15) overlays are absolutely positioned with positive
+			   z-indexes; without a stacking context here those values leak to the
+			   page root and outrank HA's sticky dashboard header (a small z-index),
+			   so a tall card scrolled under the header paints its furniture over the
+			   toolbar. container-type on the card host does NOT create a stacking
+			   context (verified), so isolate here. */
+			isolation: isolate;
 		}
 
 		:host(:not([editable])) .grid-targets-wrapper {
