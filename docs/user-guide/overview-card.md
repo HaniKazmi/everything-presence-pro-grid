@@ -51,7 +51,7 @@ Grid device.
 | **Secondary**    | *(empty)*    | Smaller subtitle shown below the Primary line. Also supports Jinja templates.                                                                                                                                       |
 | **Show map**     | on           | Show the live grid map.                                                                                                                                                                                             |
 | **Show sensors** | off          | Show the sensor and zone sidebar. Cards added from the dashboard start map-only; existing cards, and hand-written YAML that omits `show_sensors`, keep the sidebar.                                                 |
-| **Layout**       | Horizontal   | When both map and sensors are shown: `Horizontal` places the sensors alongside the map; `Vertical` stacks them. On narrow screens the card switches to vertical regardless of this setting.                         |
+| **Layout**       | Vertical     | When both map and sensors are shown: `Horizontal` places the sensors alongside the map; `Vertical` stacks them. On narrow screens the card switches to vertical regardless of this setting.                         |
 
 ### Sensors
 
