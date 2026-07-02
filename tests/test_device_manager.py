@@ -6820,6 +6820,149 @@ class TestRequestPush:
         assert not cancelled
 
 
+class TestRequestPipelinePush:
+    """Tests for DeviceManager._request_pipeline_push — the trailing-debounce
+    wrapper around the pipeline push.
+
+    A card mounting with `show_heatmap: true` opens `overview/subscribe` AND
+    `overview/subscribe_heatmap` back-to-back; each handler used to fire a
+    fire-and-forget `async_push_pipeline_to_device`, so the ESP32 got
+    `epp_set_pipeline` twice per mount. _request_pipeline_push collapses these
+    into a single trailing-debounced push. It mirrors _request_push's
+    trailing-edge machinery exactly, but awaits _push_pipeline_to_device and
+    never touches `_failed_pushes` (that recovery bookkeeping is config-only).
+    """
+
+    async def test_coalesces_rapid_fire_calls(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Two calls inside the debounce window collapse into one pipeline push."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        with patch.object(manager, "_push_pipeline_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_pipeline_push(mac, delay=0.05)
+            manager._request_pipeline_push(mac, delay=0.05)
+            # Wait past the debounce window for the trailing fire.
+            await asyncio.sleep(0.1)
+            await hass.async_block_till_done()
+
+        mock_push.assert_awaited_once_with(mac)
+
+    async def test_separate_macs_each_push(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Debounce is per-mac — calls for different devices don't collapse."""
+        with patch.object(manager, "_push_pipeline_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_pipeline_push("AA:BB:CC:DD:EE:01", delay=0.05)
+            manager._request_pipeline_push("AA:BB:CC:DD:EE:02", delay=0.05)
+            await asyncio.sleep(0.1)
+            await hass.async_block_till_done()
+
+        assert mock_push.await_count == 2
+        called_macs = {call.args[0] for call in mock_push.await_args_list}
+        assert called_macs == {"AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:02"}
+
+    async def test_calls_separated_by_more_than_delay_each_push(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Calls for the same mac with a gap larger than `delay` produce two pushes."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        with patch.object(manager, "_push_pipeline_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_pipeline_push(mac, delay=0.03)
+            await asyncio.sleep(0.08)  # well past the first window
+            await hass.async_block_till_done()
+            manager._request_pipeline_push(mac, delay=0.03)
+            await asyncio.sleep(0.08)
+            await hass.async_block_till_done()
+
+        assert mock_push.await_count == 2
+
+    async def test_request_pipeline_push_does_not_schedule_after_stop(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """async_stop sets _stopping; subsequent _request_pipeline_push calls are no-ops."""
+        manager._stopping = True
+        with patch.object(manager, "_push_pipeline_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_pipeline_push("AA:BB:CC:DD:EE:FF", delay=0.05)
+            await asyncio.sleep(0.1)
+            await hass.async_block_till_done()
+
+        mock_push.assert_not_awaited()
+
+    async def test_async_stop_drains_pending_pipeline_pushes(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A pipeline push pending in the debounce window is cancelled on async_stop.
+
+        Without this, the timer task would outlive the config entry and HA
+        2026.4+ pytest fixtures fail the test for leaked tasks.
+        """
+        with patch.object(manager, "_push_pipeline_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_pipeline_push("AA:BB:CC:DD:EE:FF", delay=0.5)  # long delay
+            # Don't wait — call async_stop while the timer is still pending.
+            await manager.async_stop()
+
+        mock_push.assert_not_awaited()
+        # Pending tracking dict empty after stop.
+        assert not manager._pending_pipeline_pushes
+
+    async def test_does_not_cancel_in_flight_pipeline_push(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A new _request_pipeline_push during an in-flight push must not cancel it.
+
+        Regression mirror of _request_push: _pending_pipeline_pushes[mac] must
+        stop tracking the task once it transitions from the debounce-sleep into
+        the actual push, so a concurrent request schedules a follow-up timer
+        instead of cancelling the in-flight push (which would interrupt a
+        network write and leave the device unsynced).
+        """
+        mac = "AA:BB:CC:DD:EE:FF"
+        push_started = asyncio.Event()
+        push_can_finish = asyncio.Event()
+        cancelled = False
+
+        async def slow_push(_mac: str) -> None:
+            nonlocal cancelled
+            push_started.set()
+            try:
+                await push_can_finish.wait()
+            except asyncio.CancelledError:
+                cancelled = True
+                raise
+
+        with patch.object(manager, "_push_pipeline_to_device", side_effect=slow_push) as mock_push:
+            manager._request_pipeline_push(mac, delay=0.02)
+            # Wait until the first push is actually running (past the sleep).
+            await asyncio.wait_for(push_started.wait(), timeout=1.0)
+            # The task has removed itself from _pending_pipeline_pushes during
+            # its sync transition between sleep-end and the push await.
+            assert mac not in manager._pending_pipeline_pushes
+
+            # Issue a second request while the first is in-flight.
+            manager._request_pipeline_push(mac, delay=0.02)
+            # Yield once so the new timer task gets registered.
+            await asyncio.sleep(0)
+            # New timer is registered; first push is still running.
+            assert mac in manager._pending_pipeline_pushes
+            assert not cancelled
+
+            # Let the first push finish.
+            push_can_finish.set()
+            # Give the second timer time to elapse and push to fire.
+            await asyncio.sleep(0.1)
+            await hass.async_block_till_done()
+
+        assert mock_push.await_count == 2
+        assert not cancelled
+
+    async def test_cancelled_pending_push_drops_from_dict(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Cancelling a still-pending timer runs `_drop`, which removes the
+        task from `_pending_pipeline_pushes` (the cancel-before-fire path)."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        with patch.object(manager, "_push_pipeline_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_pipeline_push(mac, delay=0.5)  # long delay, stays pending
+            pending = manager._pending_pipeline_pushes[mac]
+            pending.cancel()
+            # Let the cancellation settle so the done-callback (`_drop`) runs.
+            await asyncio.sleep(0)
+            await hass.async_block_till_done()
+
+        mock_push.assert_not_awaited()
+        assert mac not in manager._pending_pipeline_pushes
+
+
 # ---------------------------------------------------------------------------
 # Stale connection and start/stop tests
 # ---------------------------------------------------------------------------

@@ -71,6 +71,12 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         # was scheduled. The trailing-debounce semantics are tested
         # directly in TestRequestPush.
         mock_dm.request_push = MagicMock()
+        # request_pipeline_push is the debounced fire-and-forget wrapper the
+        # subscribe/unsubscribe target-stream handlers call instead of
+        # scheduling `async_push_pipeline_to_device` — a sync MagicMock so
+        # handler tests can assert the push was requested. Debounce semantics
+        # are covered by TestRequestPipelinePush.
+        mock_dm.request_pipeline_push = MagicMock()
         # Plain call-assertion mock — no side_effect mirroring the real
         # method's guard-set behavior, which would silently go stale if the
         # real contract changed. WS tests assert the CALL was made; the real
@@ -6927,8 +6933,8 @@ class TestOverviewSubscribe:
         assert snapshot_events, "expected a snapshot event"
         device_conn.subscribe_states.assert_awaited_once()
         mock_dm.note_target_subscribe.assert_called_once_with("AA:BB:CC:DD:EE:01", "grid_target_subs")
-        # the pipeline push is scheduled on subscribe (via hass.async_create_task)
-        mock_dm.async_push_pipeline_to_device.assert_called_with("AA:BB:CC:DD:EE:01")
+        # the pipeline push is requested (debounced) on subscribe
+        mock_dm.request_pipeline_push.assert_called_with("AA:BB:CC:DD:EE:01")
         # unsubscribe releases the session + decrements the counter
         assert 12 in connection.subscriptions
         connection.subscriptions[12]()
@@ -7158,6 +7164,8 @@ class TestOverviewSubscribeHeatmap:
         assert not snapshot_events, "heatmap subscribe must never send a snapshot event"
         device_conn.subscribe_states.assert_awaited_once()
         mock_dm.note_target_subscribe.assert_called_once_with(mac, "heatmap_subs")
+        # the pipeline push is requested (debounced) on heatmap subscribe
+        mock_dm.request_pipeline_push.assert_called_with(mac)
 
         on_state = device_conn.subscribe_states.await_args[0][0]
         connection.send_message.reset_mock()

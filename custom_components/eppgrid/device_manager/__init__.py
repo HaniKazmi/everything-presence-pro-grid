@@ -238,6 +238,12 @@ class DeviceManager:
         # `_pending_tasks` (via _spawn) so async_stop's drain catches any
         # that escape the Phase 1 cancel loop.
         self._pending_pushes: dict[str, asyncio.Task] = {}
+        # Pending debounce timer per mac for `_request_pipeline_push`. Same
+        # lifecycle discipline as `_pending_pushes` (cancel-prev-on-new-request,
+        # tracked via _spawn, cancelled in async_stop Phase 1) but debounces the
+        # pipeline push — a card mounting with heatmap opens two subscribe
+        # commands back-to-back, each of which kicks a pipeline push.
+        self._pending_pipeline_pushes: dict[str, asyncio.Task] = {}
         # Pending debounce timer for `_request_discover` — same lifecycle
         # discipline as `_pending_pushes` (cancel-prev-on-new-request,
         # tracked via _spawn, cancelled in async_stop Phase 1). One slot,
@@ -284,6 +290,11 @@ class DeviceManager:
     def request_push(self, mac: str) -> None:
         """Request a debounced config push for `mac` — see `_request_push`."""
         self._request_push(mac)
+
+    @callback
+    def request_pipeline_push(self, mac: str) -> None:
+        """Request a debounced pipeline push for `mac` — see `_request_pipeline_push`."""
+        self._request_pipeline_push(mac)
 
     @callback
     def fire_device_list_changed(self) -> None:
@@ -515,6 +526,14 @@ class DeviceManager:
             for task in push_tasks:
                 task.cancel()
             await asyncio.gather(*push_tasks, return_exceptions=True)
+        # Same treatment for pending debounced pipeline pushes — a trailing-edge
+        # pipeline push must not fire against a manager that's shutting down.
+        if self._pending_pipeline_pushes:
+            pipeline_push_tasks = list(self._pending_pipeline_pushes.values())
+            self._pending_pipeline_pushes.clear()
+            for task in pipeline_push_tasks:
+                task.cancel()
+            await asyncio.gather(*pipeline_push_tasks, return_exceptions=True)
         # Same treatment for a pending debounced discovery — it must not
         # fire a full-registry scan against a manager that's shutting down.
         if (pending_discover := self._pending_discover) is not None:
@@ -1504,6 +1523,57 @@ class DeviceManager:
             # against a newer task taking our slot before we settle.
             if self._pending_pushes.get(mac) is task:
                 self._pending_pushes.pop(mac, None)
+
+        task.add_done_callback(_drop)
+
+    def _request_pipeline_push(self, mac: str, delay: float = _PUSH_DEBOUNCE_DEFAULT) -> None:
+        """Request a debounced pipeline push for `mac` (trailing-edge).
+
+        Mirrors `_request_push` exactly, but the delayed body awaits
+        `_push_pipeline_to_device` instead of `_push_config_to_device` and
+        does NOT touch `_failed_pushes` (that recovery bookkeeping is
+        config-push-only). A card mounting with heatmap opens two subscribe
+        commands back-to-back, each of which requests a pipeline push;
+        coalescing collapses the pair into a single push that reads the final
+        subscriber counts at fire time.
+
+        Fire-and-forget. If you need the push to complete before returning,
+        call `async_push_pipeline_to_device` directly.
+        """
+        if self._stopping:
+            return
+        # _pending_pipeline_pushes only tracks the debounce-sleep phase. Once a
+        # task transitions into the actual push (post-sleep), it removes itself
+        # from the dict so this cancel path can't interrupt an in-flight
+        # network write — a concurrent _request_pipeline_push schedules a
+        # follow-up instead.
+        if (existing := self._pending_pipeline_pushes.get(mac)) is not None and not existing.done():
+            existing.cancel()
+
+        task: asyncio.Task
+
+        async def _delayed_push() -> None:
+            try:
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                return
+            # Sync section between sleep-end and the next await: atomic vs.
+            # concurrent _request_pipeline_push calls (no event-loop yields here).
+            if self._pending_pipeline_pushes.get(mac) is task:
+                del self._pending_pipeline_pushes[mac]
+            await self._push_pipeline_to_device(mac)
+
+        # _spawn tracks the task in `_pending_tasks` so async_stop's Phase 2
+        # drain catches it as a backstop.
+        task = self._spawn(_delayed_push())
+        self._pending_pipeline_pushes[mac] = task
+
+        def _drop(_: asyncio.Task) -> None:
+            # Cancellation path: task didn't reach the in-flight removal,
+            # so the dict still points at us. Identity check protects
+            # against a newer task taking our slot before we settle.
+            if self._pending_pipeline_pushes.get(mac) is task:
+                self._pending_pipeline_pushes.pop(mac, None)
 
         task.add_done_callback(_drop)
 

@@ -2,6 +2,7 @@ import { css, html, LitElement, nothing } from "lit";
 import { state } from "lit/decorators.js";
 import "./components/epp-grid.js";
 import "./components/epp-live-sidebar.js";
+import { DeviceSubscription } from "./card/device-subscription.js";
 import { subscribeHeatmap } from "./card/heatmap-store.js";
 import {
 	type OverviewState,
@@ -235,15 +236,40 @@ export class EppGridCard extends LitElement {
 
 	private __hass?: { connection: unknown; locale?: { language?: string } };
 	private _localize: LocalizeFn = defaultLocalize;
-	private _unsub: (() => void) | null = null;
-	private _subConn: unknown = null;
-	private _subDevice: string | null = null;
 
 	private _heatmapCells: number[] = [];
 	private _targetTrails = createTrails();
-	private _unsubHeatmap: (() => void) | null = null;
-	private _heatSubConn: unknown = null;
-	private _heatSubDevice: string | null = null;
+
+	private _overviewSub = new DeviceSubscription<OverviewState>({
+		getHass: () => this.__hass,
+		getDeviceId: () => this._config?.device_id,
+		subscribeFn: subscribeOverview,
+		onResubscribe: () => {
+			this._targetTrails = createTrails();
+		},
+		onData: (s) => {
+			if (s.snapshot !== this._lastSnapshot) {
+				this._lastSnapshot = s.snapshot;
+				this._parsedSnapshot = s.snapshot ? parseConfig(s.snapshot) : null;
+			}
+			this._data = s;
+			updateTrails(this._targetTrails, (s.data?.targets ?? []) as never);
+			this.requestUpdate();
+		},
+	});
+
+	private _heatmapSub = new DeviceSubscription<number[]>({
+		getHass: () => this.__hass,
+		getDeviceId: () => this._config?.device_id,
+		enabled: () =>
+			this._resolved?.show_heatmap === true &&
+			this._resolved?.show_map === true,
+		subscribeFn: subscribeHeatmap,
+		onData: (cells) => {
+			this._heatmapCells = cells;
+			this.requestUpdate();
+		},
+	});
 
 	private _resolved?: ResolvedCardConfig;
 	private _presenceKeys: PresenceKey[] | null = null;
@@ -292,88 +318,15 @@ export class EppGridCard extends LitElement {
 
 	disconnectedCallback(): void {
 		super.disconnectedCallback();
-		this._unsub?.();
-		this._unsub = null;
-		this._subConn = null;
-		this._subDevice = null;
-		this._unsubHeatmap?.();
-		this._unsubHeatmap = null;
-		this._heatSubConn = null;
-		this._heatSubDevice = null;
+		this._overviewSub.dispose();
+		this._heatmapSub.dispose();
 		this._primaryField.dispose();
 		this._secondaryField.dispose();
 	}
 
 	private _maybeResubscribe(): void {
-		const hass = this.__hass;
-		const deviceId = this._config?.device_id;
-		if (!hass || !deviceId) {
-			this._unsub?.();
-			this._unsub = null;
-			this._subConn = null;
-			this._subDevice = null;
-			this._ensureHeatmapSub();
-			return;
-		}
-		if (
-			this._unsub &&
-			this._subConn === hass.connection &&
-			this._subDevice === deviceId
-		) {
-			this._ensureHeatmapSub();
-			return;
-		}
-		this._unsub?.();
-		this._subConn = hass.connection;
-		this._subDevice = deviceId;
-		this._targetTrails = createTrails();
-		this._unsub = subscribeOverview(hass, deviceId, (s) => {
-			if (s.snapshot !== this._lastSnapshot) {
-				this._lastSnapshot = s.snapshot;
-				this._parsedSnapshot = s.snapshot ? parseConfig(s.snapshot) : null;
-			}
-			this._data = s;
-			updateTrails(this._targetTrails, (s.data?.targets ?? []) as never);
-			this.requestUpdate();
-		});
-		this._ensureHeatmapSub();
-	}
-
-	/**
-	 * (Re)subscribes to the heatmap stream when `show_heatmap` and `show_map`
-	 * are both on and a device is selected; tears down otherwise. Mirrors the
-	 * overview subscription's connection/device identity guard above so a
-	 * `hass`/config re-evaluation doesn't reopen a live subscription.
-	 */
-	private _ensureHeatmapSub(): void {
-		const hass = this.__hass;
-		const deviceId = this._config?.device_id;
-		const wantSub =
-			!!hass &&
-			!!deviceId &&
-			this._resolved?.show_heatmap === true &&
-			this._resolved?.show_map === true;
-		if (!wantSub) {
-			this._unsubHeatmap?.();
-			this._unsubHeatmap = null;
-			this._heatSubConn = null;
-			this._heatSubDevice = null;
-			return;
-		}
-		if (
-			this._unsubHeatmap &&
-			this._heatSubConn === hass.connection &&
-			this._heatSubDevice === deviceId
-		) {
-			return;
-		}
-		this._unsubHeatmap?.();
-		this._heatSubConn = hass.connection;
-		this._heatSubDevice = deviceId;
-		this._unsubHeatmap = subscribeHeatmap(hass, deviceId, (cells) => {
-			this._heatmapCells = cells;
-			this.requestUpdate();
-		});
+		this._overviewSub.ensure();
+		this._heatmapSub.ensure();
 	}
 
 	private _updateTemplates(): void {
