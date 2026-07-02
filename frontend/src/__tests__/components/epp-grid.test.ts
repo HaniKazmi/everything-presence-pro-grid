@@ -337,6 +337,26 @@ describe("epp-grid cell events", () => {
 		);
 	});
 
+	it("isolates the grid wrapper so overlay z-indexes can't paint over the dashboard header", () => {
+		// The targets (z-index 20), furniture (15) and heatmap (15) overlays are
+		// absolutely positioned with positive z-indexes. Without a stacking
+		// context on the wrapper, those z-indexes leak into the page's root
+		// stacking context and beat HA's sticky dashboard header (a small
+		// z-index), so a tall card scrolled under the header paints its furniture
+		// over the toolbar chrome. `isolation: isolate` scopes them to the grid.
+		const cssText = (
+			(customElements.get("epp-grid") as any).styles as { cssText: string }
+		).cssText;
+		// Match `isolation: isolate` inside a `.grid-targets-wrapper { ... }`
+		// block. Anchoring on the whole block (rather than indexOf on the base
+		// rule) is robust to source-order changes: the compound
+		// `:host(:not([editable])) .grid-targets-wrapper {` rule also contains the
+		// selector substring, and [^}]* backtracks to whichever block holds it.
+		expect(cssText).toMatch(
+			/\.grid-targets-wrapper\s*{[^}]*isolation:\s*isolate/,
+		);
+	});
+
 	it("releases pointer capture when the cell already holds it (touch-drag fix)", async () => {
 		const el = createGrid({ editable: true });
 		document.body.appendChild(el);
