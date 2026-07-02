@@ -468,6 +468,10 @@ describe("eppgrid-card rendering", () => {
 		expect(editor.tagName.toLowerCase()).toBe("eppgrid-card-editor");
 		const stub = CardClass.getStubConfig();
 		expect(stub).toHaveProperty("device_id", "");
+		// New cards default to "map only" — sensors off. Set explicitly on the
+		// stub (not via applyCardDefaults) so existing cards, which omit the key,
+		// keep their sensors-on default and are unaffected on upgrade.
+		expect(stub).toHaveProperty("show_sensors", false);
 	});
 
 	it("hass getter returns the assigned hass object", () => {

@@ -361,7 +361,10 @@ export class EppGridCard extends LitElement {
 	}
 
 	static getStubConfig(): Partial<EppGridCardConfig> {
-		return { device_id: "" };
+		// New cards default to "map only": sensors off. Set here (not in
+		// applyCardDefaults) so this only affects freshly-added cards — existing
+		// cards that omit show_sensors keep the sensors-on default on upgrade.
+		return { device_id: "", show_sensors: false };
 	}
 
 	render() {

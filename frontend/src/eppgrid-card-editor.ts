@@ -36,11 +36,12 @@ export function buildSchema(devices: DeviceOption[]): unknown[] {
 			},
 		},
 		{ name: "show_map", selector: { boolean: {} } },
-		{ name: "show_sensors", selector: { boolean: {} } },
 		{ name: "show_grid", selector: { boolean: {} } },
 		{ name: "show_furniture", selector: { boolean: {} } },
 		{ name: "show_overlays", selector: { boolean: {} } },
 		{ name: "show_heatmap", selector: { boolean: {} } },
+		// show_sensors sits directly above the sensors config dropdown it gates.
+		{ name: "show_sensors", selector: { boolean: {} } },
 		{
 			name: "sensors",
 			type: "expandable",

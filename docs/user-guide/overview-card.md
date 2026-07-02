@@ -21,7 +21,9 @@ household user — not just admins — can see a dashboard that includes this ca
 
 ![Card showing map and sensors.](../images/overview-card/map-and-sensors.png "Card showing map and sensors.")
 
-You can show the map only, the sensors only, or both together.
+You can show the map only, the sensors only, or both together. Cards you add
+from the dashboard start as map only — switch on **Show sensors** to add the
+sidebar.
 
 ![Card showing just the map.](../images/overview-card/map.png "Card showing just the map.")
 
@@ -48,7 +50,7 @@ Grid device.
 | **Primary**      | *(empty)*    | Heading text shown above the map/sensors. Supports [Jinja templates](https://www.home-assistant.io/docs/configuration/templating/) — e.g. `{{ states('sensor.lounge_temperature') }}°C`. Plain text is shown as-is. |
 | **Secondary**    | *(empty)*    | Smaller subtitle shown below the Primary line. Also supports Jinja templates.                                                                                                                                       |
 | **Show map**     | on           | Show the live grid map.                                                                                                                                                                                             |
-| **Show sensors** | on           | Show the sensor and zone sidebar.                                                                                                                                                                                   |
+| **Show sensors** | off          | Show the sensor and zone sidebar. Cards added from the dashboard start map-only; existing cards, and hand-written YAML that omits `show_sensors`, keep the sidebar.                                                 |
 | **Layout**       | Horizontal   | When both map and sensors are shown: `Horizontal` places the sensors alongside the map; `Vertical` stacks them. On narrow screens the card switches to vertical regardless of this setting.                         |
 
 ### Sensors
