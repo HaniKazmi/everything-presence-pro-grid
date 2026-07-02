@@ -263,6 +263,15 @@ describe("eppgrid-card-editor", () => {
 		expect(result).toBe("Show heatmap");
 	});
 
+	it("buildSchema places show_sensors immediately before the sensors dropdown", () => {
+		const schema = buildSchema([]) as any[];
+		const names = schema.map((s) => s.name);
+		const sensorsIdx = names.indexOf("sensors");
+		expect(sensorsIdx).toBeGreaterThan(0);
+		// The show_sensors toggle sits directly above the sensors config dropdown.
+		expect(names[sensorsIdx - 1]).toBe("show_sensors");
+	});
+
 	it("buildSchema has a room_color color picker", () => {
 		const schema = buildSchema([]) as any[];
 		const entry = schema.find((s) => s.name === "room_color");
