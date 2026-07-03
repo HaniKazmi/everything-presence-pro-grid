@@ -148,3 +148,40 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
+      # A "successful" deploy doesn't guarantee the OTA manifests actually
+      # serve: the Fastly CDN can 404 a just-published path or keep serving a
+      # stale one, silently shipping a broken OTA that a user only hits when
+      # their firmware upgrade fails. Poll the live manifest URLs — the panel's
+      # fw/v{FIRMWARE_VERSION}/{variant}.json (Path B) and ESPHome's
+      # fw/latest/{variant}.json — and fail the run if any isn't live+current,
+      # so a bad deploy is caught here (re-run this workflow to redeploy+purge)
+      # instead of by a user. Skips the no-release bootstrap (nothing staged).
+      - name: Verify deployed firmware manifests are reachable
+        # Interpolated context values go through env (not directly into run:),
+        # the injection-safe pattern for workflow scripts.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: |
+          LATEST=$(gh api "/repos/$REPO/releases/latest" --jq '.tag_name // ""' 2>/dev/null || true)
+          if [ -z "$LATEST" ]; then
+            echo "No latest release — no firmware staged, nothing to verify."
+            exit 0
+          fi
+          # FIRMWARE_VERSION is the version the integration's OTA button pins to
+          # (fw/v{PINNED}/). Same awk as the staging step above and
+          # validate-release.sh — keep in sync if const.py's line format changes.
+          # `2>/dev/null || true` so an unreadable const.py can't hard-fail the
+          # step at the assignment under `set -e`; the guard below then emits a
+          # clear, actionable error instead of running the verifier with an
+          # empty --version (which would build bogus fw/v//… URLs).
+          PINNED=$(awk -F'"' '/^FIRMWARE_VERSION[ \t]*=/{print $2; exit}' custom_components/eppgrid/const.py 2>/dev/null || true)
+          if [ -z "$PINNED" ]; then
+            echo "::error::could not parse FIRMWARE_VERSION from custom_components/eppgrid/const.py — cannot verify the pinned OTA manifests"
+            exit 1
+          fi
+          python3 .github/scripts/verify_deployed_firmware.py \
+            --base-url "$PAGE_URL" \
+            --version "$PINNED" \
+            --latest-version "${LATEST#v}"
