@@ -37,7 +37,7 @@ an on-device **activity heatmap**, and **text labels** for your room layout.
     a text colour (with an auto-contrast option), and an optional background
     box.
 - **Request a translation.** If Everything Presence Pro Grid isn't translated
-    into your Home Assistant language yet, the panel now shows a dismissable
+    into your Home Assistant language yet, the panel now shows a dismissible
     banner that opens a pre-filled translation request on GitHub — naming your
     language so you can ask for it, and offer to help review it
     ([#301](https://github.com/clintongormley/everything-presence-pro-grid/pull/301)).
@@ -137,7 +137,7 @@ an on-device **activity heatmap**, and **text labels** for your room layout.
     needing admin access. Feature requested by @tuckerdude
     ([#295](https://github.com/clintongormley/everything-presence-pro-grid/issues/295)).
 - **Request a translation.** If Everything Presence Pro Grid isn't translated
-    into your Home Assistant language yet, the panel now shows a dismissable
+    into your Home Assistant language yet, the panel now shows a dismissible
     banner that opens a pre-filled translation request on GitHub — naming your
     language so you can ask for it, and offer to help review it
     ([#301](https://github.com/clintongormley/everything-presence-pro-grid/pull/301)).
