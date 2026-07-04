@@ -1090,3 +1090,217 @@ describe("getEntitySuggestion", () => {
 		expect(getEntitySuggestion(hass, "binary_sensor.epp_occupancy")).toBeNull();
 	});
 });
+
+describe("card stale-bundle auto-reload", () => {
+	beforeEach(() => {
+		sessionStorage.clear();
+	});
+
+	async function flush() {
+		for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
+	}
+
+	// A device-configured card wired with a callWS that answers the version
+	// check with `serverCardHash`. `_currentBundleHash` is overridden per test
+	// (in production it comes from the card bundle's own hashed URL).
+	async function mountForBundleCheck(serverCardHash: string | null) {
+		let cb: ((msg: unknown) => void) | undefined;
+		const subscribeMessage = vi.fn(async (c: (msg: unknown) => void) => {
+			cb = c;
+			return vi.fn();
+		});
+		const callWS = vi.fn(async (msg: { type: string }) => {
+			if (msg.type === "eppgrid/frontend_version") {
+				return { hash: "PANEL", card_hash: serverCardHash };
+			}
+			return { devices: [] };
+		});
+		const hass = {
+			connection: { subscribeMessage },
+			callWS,
+			locale: { language: "en" },
+		};
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "dev-vc" });
+		el.hass = hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		cb?.({ snapshot: CALIBRATED });
+		return { el, hass, callWS, a: el as any };
+	}
+
+	it("reloads the page when the server reports a newer card bundle", async () => {
+		const { callWS, a } = await mountForBundleCheck("new");
+		a._bundleCheckPending = true;
+		a._currentBundleHash = "old";
+		const reload = vi.fn();
+		a._reloadPage = reload;
+
+		await a._maybeCheckForNewBundle();
+		await flush();
+
+		expect(callWS).toHaveBeenCalledWith({ type: "eppgrid/frontend_version" });
+		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not reload when the running card hash matches the server", async () => {
+		const { a } = await mountForBundleCheck("same");
+		a._bundleCheckPending = true;
+		a._currentBundleHash = "same";
+		const reload = vi.fn();
+		a._reloadPage = reload;
+
+		await a._maybeCheckForNewBundle();
+		await flush();
+
+		expect(reload).not.toHaveBeenCalled();
+	});
+
+	it("compares against card_hash, not the panel hash", async () => {
+		// The command returns both hashes; the card bundle has its own hash. If
+		// the card compared its own hash against the panel's `hash`, it would
+		// reload forever. Here the card matches card_hash, so no reload.
+		const { a } = await mountForBundleCheck("cardY");
+		a._bundleCheckPending = true;
+		a._currentBundleHash = "cardY"; // equals card_hash, differs from "PANEL"
+		const reload = vi.fn();
+		a._reloadPage = reload;
+
+		await a._maybeCheckForNewBundle();
+		await flush();
+
+		expect(reload).not.toHaveBeenCalled();
+	});
+
+	it("re-checks and reloads on a reconnect (connection swap)", async () => {
+		let serverHash = "same";
+		const subscribeMessage = vi.fn(async () => vi.fn());
+		const callWS = vi.fn(async (msg: { type: string }) => {
+			if (msg.type === "eppgrid/frontend_version") {
+				return { hash: "PANEL", card_hash: serverHash };
+			}
+			return { devices: [] };
+		});
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "dev-rc" });
+		el.hass = {
+			connection: { subscribeMessage },
+			callWS,
+			locale: { language: "en" },
+		} as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const a = el as any;
+		a._currentBundleHash = "same"; // initially matches → no reload
+		const reload = vi.fn();
+		a._reloadPage = reload;
+		await flush();
+		expect(reload).not.toHaveBeenCalled();
+
+		// Server upgraded; a reconnect hands the card a NEW connection object.
+		serverHash = "new";
+		el.hass = {
+			connection: { subscribeMessage: vi.fn(async () => vi.fn()) },
+			callWS,
+			locale: { language: "en" },
+		} as never;
+		await flush();
+
+		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it("retries until the integration answers, then reloads", async () => {
+		let attempt = 0;
+		const callWS = vi.fn(async (msg: { type: string }) => {
+			if (msg.type === "eppgrid/frontend_version") {
+				attempt += 1;
+				if (attempt === 1) throw new Error("unknown_command");
+				return { hash: "PANEL", card_hash: "new" };
+			}
+			return { devices: [] };
+		});
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "dev-retry" });
+		const hass = {
+			connection: { subscribeMessage: vi.fn(async () => vi.fn()) },
+			callWS,
+			locale: { language: "en" },
+		};
+		el.hass = hass as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const a = el as any;
+		a._currentBundleHash = "old";
+		// Re-arm: the mount-time check already ran (and resolved) with the default
+		// null hash; arm again now that we've set a real running hash.
+		a._bundleCheckPending = true;
+		const reload = vi.fn();
+		a._reloadPage = reload;
+
+		await a._maybeCheckForNewBundle(); // #1 errors → still pending
+		await flush();
+		expect(reload).not.toHaveBeenCalled();
+
+		await a._maybeCheckForNewBundle(); // retry → integration answers → reload
+		await flush();
+		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not issue concurrent version queries while one is in flight", async () => {
+		let resolveFetch!: (v: unknown) => void;
+		const callWS = vi.fn((msg: { type: string }) => {
+			if (msg.type === "eppgrid/frontend_version") {
+				return new Promise((r) => {
+					resolveFetch = r;
+				});
+			}
+			return Promise.resolve({ devices: [] });
+		});
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "dev-flight" });
+		el.hass = {
+			connection: { subscribeMessage: vi.fn(async () => vi.fn()) },
+			callWS,
+			locale: { language: "en" },
+		} as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const a = el as any;
+		a._currentBundleHash = "old";
+		a._bundleCheckPending = true;
+		const reload = vi.fn();
+		a._reloadPage = reload;
+
+		void a._maybeCheckForNewBundle();
+		void a._maybeCheckForNewBundle();
+		await flush();
+
+		const versionCalls = (callWS as any).mock.calls.filter(
+			(c: any[]) => c[0]?.type === "eppgrid/frontend_version",
+		);
+		expect(versionCalls).toHaveLength(1);
+
+		resolveFetch({ hash: "PANEL", card_hash: "new" });
+		await flush();
+		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it("reloads the page via location.reload by default", () => {
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		const original = window.location.reload;
+		const reload = vi.fn();
+		Object.defineProperty(window.location, "reload", {
+			configurable: true,
+			value: reload,
+		});
+		try {
+			(el as any)._reloadPage();
+			expect(reload).toHaveBeenCalledTimes(1);
+		} finally {
+			Object.defineProperty(window.location, "reload", {
+				configurable: true,
+				value: original,
+			});
+		}
+	});
+});

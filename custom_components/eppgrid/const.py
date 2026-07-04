@@ -7,6 +7,12 @@ DOMAIN = "eppgrid"
 # command so an open panel can detect a newer bundle and reload itself.
 CURRENT_BUNDLE_HASH_KEY = f"{DOMAIN}_current_bundle_hash"
 
+# hass.data key holding the current dashboard-card bundle content hash. The card
+# is a separate bundle from the panel (its own content hash), so it needs its
+# own stashed value: the eppgrid/frontend_version WS command hands it back so an
+# open card can detect a newer bundle and reload itself, just like the panel.
+CARD_BUNDLE_HASH_KEY = f"{DOMAIN}_current_card_hash"
+
 # Grid
 GRID_COLS = 20
 GRID_ROWS = 20

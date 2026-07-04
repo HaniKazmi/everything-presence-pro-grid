@@ -347,18 +347,24 @@ save RAM. The panel gates the heatmap overlay toggle on this flag (plus
 
 ### `frontend_version`
 
-Returns the content hash of the currently-served panel bundle. The panel reads
-its own hash from `import.meta.url` (the bundle loads from the content-hashed
-path `/eppgrid_static/<hash>/eppgrid-panel.js`) and, on websocket reconnect,
-compares it against this value; if they differ — i.e. an upgrade swapped the
-bundle while the tab stayed open — it reloads the page so the new version is
-picked up automatically. Admin only. See `frontend/src/lib/version-check.ts`.
+Returns the content hashes of the currently-served panel and dashboard-card
+bundles. Each frontend (panel or card) reads its own hash from `import.meta.url`
+(bundles load from the content-hashed paths
+`/eppgrid_static/<hash>/eppgrid-panel.js` and `.../eppgrid-card.js`) and
+compares it against the matching value here; if they differ — i.e. an upgrade
+swapped the bundle while the tab stayed open — it reloads the page so the new
+version is picked up automatically. The panel checks `hash` on websocket
+reconnect; the card checks `card_hash` on mount and on reconnect (the card is a
+separate bundle with its own hash). **Not admin-gated** — the dashboard card
+renders for non-admin viewers, and the payload is just non-sensitive content
+hashes. See `frontend/src/lib/version-check.ts`.
 
 **Request:** `{ "type": "eppgrid/frontend_version" }` **Response:**
-`{ "hash": str | null }` — `null` until the bundle has been hashed (e.g. before
-the panel is first registered). On a bundle read error the hash is the string
-`"0"` (the same sentinel `_register_frontend_resources` puts in the static-path
-URL); the panel treats `"0"` as "unhashable — never reload to it".
+`{ "hash": str | null, "card_hash": str | null }` — each is `null` until that
+bundle has been hashed (e.g. before the panel/card resources are first
+registered). On a bundle read error the hash is the string `"0"` (the same
+sentinel `_register_frontend_resources` puts in the static-path URL); the
+frontend treats `"0"` as "unhashable — never reload to it".
 
 ### `get_config`
 

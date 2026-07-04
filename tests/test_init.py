@@ -438,6 +438,25 @@ async def test_register_frontend_resources_stores_current_hash(hass: HomeAssista
     assert hass.data[CURRENT_BUNDLE_HASH_KEY] == "abcd1234"
 
 
+async def test_register_card_resource_stores_card_hash(hass: HomeAssistant) -> None:
+    """The card bundle hash is stashed in hass.data so the frontend_version WS command
+    can hand it to an open dashboard card, which reloads itself when its own hash differs.
+    The card is a separate bundle from the panel, so it has its own content hash."""
+    from custom_components.eppgrid import _register_card_resource
+    from custom_components.eppgrid.const import CARD_BUNDLE_HASH_KEY
+
+    hass.http = MagicMock()
+    hass.http.async_register_static_paths = AsyncMock()
+
+    with (
+        patch("custom_components.eppgrid._hash_file", return_value="card9999"),
+        patch("custom_components.eppgrid._ha_frontend.add_extra_js_url"),
+    ):
+        await _register_card_resource(hass)
+
+    assert hass.data[CARD_BUNDLE_HASH_KEY] == "card9999"
+
+
 async def test_register_frontend_resources_hash_oserror(hass: HomeAssistant) -> None:
     """_register_frontend_resources falls back to '0' hash on OSError."""
     from custom_components.eppgrid import _register_frontend_resources

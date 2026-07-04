@@ -14,6 +14,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
+from .const import CARD_BUNDLE_HASH_KEY
 from .const import CARD_RESOURCE_ID_KEY
 from .const import CURRENT_BUNDLE_HASH_KEY
 from .const import DOMAIN
@@ -228,6 +229,11 @@ async def _register_card_resource(hass: HomeAssistant) -> None:
     mutable resource store, so fall back to add_extra_js_url there.
     """
     card_url = await _ensure_static_hash_path(hass, CARD_JS)
+
+    # Stash the card bundle hash so the eppgrid/frontend_version WS command can
+    # hand it back to an open dashboard card, which reloads itself when its own
+    # hash differs (mirrors the panel; the card is a separate bundle/hash).
+    hass.data[CARD_BUNDLE_HASH_KEY] = card_url.split("/")[2]
 
     lovelace = hass.data.get("lovelace")
     resources = getattr(lovelace, "resources", None)
