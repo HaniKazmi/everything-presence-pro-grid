@@ -63,6 +63,10 @@ export class EppFurnitureOverlay extends LitElement {
 		.furniture-overlay.non-interactive .furniture-item {
 			pointer-events: none !important;
 			opacity: 0.6;
+			/* The grey box is an editing affordance — hide it outside the
+			   furniture tab. Transparent (not border: none) keeps the 1px
+			   border reserving layout so the icon doesn't shift on tab switch. */
+			border-color: transparent;
 		}
 
 		/* touch-action: none on every draggable surface — otherwise the
@@ -318,7 +322,12 @@ export class EppFurnitureOverlay extends LitElement {
 				${this.furniture.map((item) => {
 					const leftPx = (startCol - this.minCol) * step + this._mmToPx(item.x);
 					const topPx = (0 - this.minRow) * step + this._mmToPx(item.y);
-					const selected = this.selectedFurnitureId === item.id;
+					// An item only *displays* as selected while editing: the
+					// selection outline/glow and the resize/rotate/delete handles are
+					// editing affordances, so a still-selected item carried to a
+					// non-furniture tab renders as a plain icon (and exposes no
+					// clickable handles). Selection state itself is untouched.
+					const selected = interactive && this.selectedFurnitureId === item.id;
 					const tone = this.furnitureTones?.get(item.id);
 
 					if (item.type === "text") {
