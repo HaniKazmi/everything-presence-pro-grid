@@ -498,6 +498,13 @@ export const layoutStyles = css`
     flex-direction: column;
   }
 
+  /* Space the heatmap toggle off the bottom of the grid card. The grid column is
+     a flex column with no gap, so without this the toggle row touches the card's
+     bounding box. Token-driven so it follows the spacing scale. */
+  .heatmap-toggle {
+    margin-top: var(--epp-space-3, 12px);
+  }
+
   .editor-shell > .editor-controls,
   .editor-shell > .live-controls {
     /* Pin the controls panel to a fixed width so the grid column reliably gets
