@@ -10,6 +10,7 @@ import {
 	fontStack,
 	isFurnitureOutsideGrid,
 	scaleSvgStrokeWidths,
+	svgStrokeScale,
 	TEXT_FONTS,
 	TEXT_SIZE_MAX_MM,
 	TEXT_SIZE_MIN_MM,
@@ -300,6 +301,25 @@ describe("scaleSvgStrokeWidths", () => {
 		// 2 * sqrt(2) ≈ 2.828
 		expect(scaleSvgStrokeWidths('<path stroke-width="2"/>', Math.SQRT2)).toBe(
 			'<path stroke-width="2.828"/>',
+		);
+	});
+});
+
+describe("svgStrokeScale", () => {
+	it("equals the uniform scale for a native-aspect item (sx === sy)", () => {
+		// viewBox 92×82 rendered at its own aspect → k === s (BWC invariant).
+		expect(svgStrokeScale("4 4 92 82", 92, 82)).toBeCloseTo(1, 10);
+		expect(svgStrokeScale("4 4 92 82", 46, 41)).toBeCloseTo(0.5, 10);
+	});
+
+	it("returns the geometric mean of the two axis scales when stretched", () => {
+		// sx = 100/25 = 4, sy = 10/10 = 1 → sqrt(4 * 1) = 2
+		expect(svgStrokeScale("0 0 25 10", 100, 10)).toBeCloseTo(2, 10);
+	});
+
+	it("uses only the width/height tokens, ignoring minX/minY", () => {
+		expect(svgStrokeScale("0 0 50 50", 100, 100)).toBe(
+			svgStrokeScale("99 99 50 50", 100, 100),
 		);
 	});
 });

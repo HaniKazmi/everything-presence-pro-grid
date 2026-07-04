@@ -67,7 +67,7 @@ class tt extends et{}tt.directiveName="unsafeSVG",tt.resultType=2;const ot=(e=>(
 								<span class="furniture-text-content" style="${p}">${r.text??""}</span>
 								${s?this._renderSelectionControls(r):V}
 							</div>
-						`}var l;const c=this._mmToPx(r.width),h=this._mmToPx(r.height),d="svg"===r.type&&Object.hasOwn(He,r.icon)?He[r.icon]:null;let u="";if(d){const[,,e,t]=d.viewBox.split(" ").map(Number),o=Math.sqrt(c/e*(h/t));u=function(e,t){return e.replace(/stroke-width="([\d.]+)"/g,(e,o)=>`stroke-width="${Math.round(Number(o)*t*1e3)/1e3}"`)}(d.content,o)}return W`
+						`}var l;const c=this._mmToPx(r.width),h=this._mmToPx(r.height),d="svg"===r.type&&Object.hasOwn(He,r.icon)?He[r.icon]:null;let u="";return d&&(u=function(e,t){return e.replace(/stroke-width="([\d.]+)"/g,(e,o)=>`stroke-width="${Math.round(Number(o)*t*1e3)/1e3}"`)}(d.content,function(e,t,o){const[,,r,i]=e.split(" ").map(Number);return Math.sqrt(t/r*(o/i))}(d.viewBox,c,h))),W`
 						<div
 							class="furniture-item${s?" selected":""}${a?" has-halo":""}"
 							data-id="${r.id}"

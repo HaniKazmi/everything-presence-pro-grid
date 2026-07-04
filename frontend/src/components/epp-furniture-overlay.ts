@@ -13,6 +13,7 @@ import {
 	getResizeCursor,
 	mmToPx,
 	scaleSvgStrokeWidths,
+	svgStrokeScale,
 	visibleHandles,
 } from "../lib/furniture.js";
 import { furnitureContrast, hexToRgb } from "../lib/furniture-contrast.js";
@@ -431,9 +432,10 @@ export class EppFurnitureOverlay extends LitElement {
 							: null;
 					let svgMarkup = "";
 					if (svgPlan) {
-						const [, , vbW, vbH] = svgPlan.viewBox.split(" ").map(Number);
-						const k = Math.sqrt((wPx / vbW) * (hPx / vbH));
-						svgMarkup = scaleSvgStrokeWidths(svgPlan.content, k);
+						svgMarkup = scaleSvgStrokeWidths(
+							svgPlan.content,
+							svgStrokeScale(svgPlan.viewBox, wPx, hPx),
+						);
 					}
 					return html`
 						<div

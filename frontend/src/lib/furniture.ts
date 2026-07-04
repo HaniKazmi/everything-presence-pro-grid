@@ -497,6 +497,33 @@ export function scaleSvgStrokeWidths(content: string, k: number): string {
 }
 
 /**
+ * Geometric-mean stroke-scale factor for an SVG furniture item rendered at
+ * `wPx`×`hPx`.
+ *
+ * With `preserveAspectRatio="none"` the item stretches to fill `wPx`×`hPx`,
+ * giving per-axis scales `sx = wPx/viewBoxW` and `sy = hPx/viewBoxH`. The
+ * geometric mean `sqrt(sx·sy)` is the balanced factor to pass to
+ * `scaleSvgStrokeWidths` (paired with `vector-effect: non-scaling-stroke`): for
+ * a native-aspect item `sx === sy`, so it equals the uniform scale and stroke
+ * widths render exactly as before; for a stretched item it grows with overall
+ * size without favouring either axis. The viewBox is `"minX minY width
+ * height"`; only the width/height tokens matter here.
+ *
+ * @param viewBox The SVG viewBox string (`"minX minY width height"`)
+ * @param wPx On-screen width in px
+ * @param hPx On-screen height in px
+ * @returns The geometric-mean scale `sqrt(sx·sy)`
+ */
+export function svgStrokeScale(
+	viewBox: string,
+	wPx: number,
+	hPx: number,
+): number {
+	const [, , vbW, vbH] = viewBox.split(" ").map(Number);
+	return Math.sqrt((wPx / vbW) * (hPx / vbH));
+}
+
+/**
  * Compute the new rotation angle for a furniture item being rotated.
  *
  * @param origRotation Original rotation in degrees

@@ -2230,7 +2230,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 								<span class="furniture-text-content" style="${u}">${s.text??""}</span>
 								${a?this._renderSelectionControls(s):W}
 							</div>
-						`}var l;const c=this._mmToPx(s.width),h=this._mmToPx(s.height),d="svg"===s.type&&Object.hasOwn(Di,s.icon)?Di[s.icon]:null;let p="";if(d){const[,,e,t]=d.viewBox.split(" ").map(Number),i=Math.sqrt(c/e*(h/t));p=function(e,t){return e.replace(/stroke-width="([\d.]+)"/g,(e,i)=>`stroke-width="${Math.round(Number(i)*t*1e3)/1e3}"`)}(d.content,i)}return N`
+						`}var l;const c=this._mmToPx(s.width),h=this._mmToPx(s.height),d="svg"===s.type&&Object.hasOwn(Di,s.icon)?Di[s.icon]:null;let p="";return d&&(p=function(e,t){return e.replace(/stroke-width="([\d.]+)"/g,(e,i)=>`stroke-width="${Math.round(Number(i)*t*1e3)/1e3}"`)}(d.content,function(e,t,i){const[,,s,r]=e.split(" ").map(Number);return Math.sqrt(t/s*(i/r))}(d.viewBox,c,h))),N`
 						<div
 							class="furniture-item${a?" selected":""}${n?" has-halo":""}"
 							data-id="${s.id}"
