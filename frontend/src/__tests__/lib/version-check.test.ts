@@ -16,8 +16,25 @@ describe("parseBundleHash", () => {
 		);
 	});
 
+	it("extracts the hash from the hashed CARD bundle URL", () => {
+		// The dashboard card is a separate bundle; its own import.meta.url ends in
+		// eppgrid-card.js, so the same parser must handle it too.
+		expect(parseBundleHash("/eppgrid_static/card9999/eppgrid-card.js")).toBe(
+			"card9999",
+		);
+		expect(
+			parseBundleHash("/eppgrid_static/card9999/eppgrid-card.js?fe=1"),
+		).toBe("card9999");
+	});
+
 	it("returns null for a URL that is not the hashed bundle path", () => {
 		expect(parseBundleHash("https://ha.local/local/some-other.js")).toBeNull();
+	});
+
+	it("returns null for an unrelated hashed .js under the static path", () => {
+		// Only the panel/card bundles carry the reload hash; a stray chunk name
+		// must not be mistaken for the bundle.
+		expect(parseBundleHash("/eppgrid_static/abc/eppgrid-other.js")).toBeNull();
 	});
 
 	it('returns null for the "0" read-error sentinel hash', () => {
@@ -245,5 +262,31 @@ describe("checkForNewBundle", () => {
 			storage: null,
 		});
 		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps separate loop guards per guardKey (panel vs card share storage)", async () => {
+		// The panel and the card run in the same SPA tab and share sessionStorage.
+		// They compare against different server hashes, so a shared guard key could
+		// let one bundle's reload clobber the other's loop protection. A distinct
+		// guardKey isolates them: reloading under one key must not suppress a
+		// genuine reload under another, even for the identical server hash.
+		const reloadA = vi.fn();
+		await checkForNewBundle({
+			currentHash: "old",
+			fetchServerHash: async () => "new",
+			reload: reloadA,
+			storage,
+			guardKey: "eppgrid_reload_for_panel",
+		});
+		const reloadB = vi.fn();
+		await checkForNewBundle({
+			currentHash: "old",
+			fetchServerHash: async () => "new",
+			reload: reloadB,
+			storage,
+			guardKey: "eppgrid_reload_for_card",
+		});
+		expect(reloadA).toHaveBeenCalledTimes(1);
+		expect(reloadB).toHaveBeenCalledTimes(1);
 	});
 });

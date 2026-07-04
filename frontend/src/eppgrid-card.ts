@@ -14,8 +14,25 @@ import { parseConfig } from "./lib/config-serialization.js";
 import { isRgbTriple } from "./lib/furniture-contrast.js";
 import { MAX_RANGE } from "./lib/grid.js";
 import { createTrails, updateTrails } from "./lib/target-trails.js";
+import {
+	checkForNewBundle,
+	parseBundleHash,
+	safeSessionStorage,
+} from "./lib/version-check.js";
 import { defaultLocalize, type LocalizeFn, setupLocalize } from "./localize.js";
 import { tokens } from "./ui/tokens.js";
+
+// Content hash of the running card bundle, read from its own content-hashed URL
+// (`/eppgrid_static/<hash>/eppgrid-card.js`). Compared against the server's
+// current card hash so an open dashboard card reloads itself after an upgrade.
+// null when the URL isn't the hashed bundle path (e.g. in tests) — the check
+// then no-ops. The card is a separate bundle from the panel (its own hash), and
+// they share the SPA's sessionStorage, so it uses its own loop-guard key.
+const CARD_CURRENT_BUNDLE_HASH = parseBundleHash(import.meta.url);
+const CARD_RELOAD_GUARD_KEY = "eppgrid_reload_for_card_hash";
+// How long to wait before re-checking the served bundle when the integration
+// hasn't answered yet (still starting up after an upgrade+restart).
+const BUNDLE_CHECK_RETRY_MS = 2000;
 
 type EnvKey = "temperature" | "humidity" | "illuminance" | "co2";
 type PresenceKey =
@@ -237,6 +254,23 @@ export class EppGridCard extends LitElement {
 	private __hass?: { connection: unknown; locale?: { language?: string } };
 	private _localize: LocalizeFn = defaultLocalize;
 
+	// Stale-bundle self-reload (mirrors the panel; see lib/version-check.ts).
+	// Overridable in tests. Defaults read the running card bundle's own hash and
+	// reload the whole dashboard.
+	private _currentBundleHash: string | null = CARD_CURRENT_BUNDLE_HASH;
+	private _reloadPage: () => void = () => location.reload();
+	// Armed on mount and re-armed on each reconnect (connection swap); stays set
+	// until a version check gets a definitive answer.
+	private _bundleCheckPending = true;
+	private _bundleCheckInFlight = false;
+	// While the integration is still coming up (its WS command isn't registered
+	// yet, or the hash isn't stored), the check can't resolve. Retry on a timer
+	// rather than off `set hass` — that setter fires on every state update, so
+	// hanging retries on it would spam `frontend_version` on a busy dashboard,
+	// multiplied by every card. Overridable interval for tests.
+	private _bundleRetryTimer?: ReturnType<typeof setTimeout>;
+	private _bundleRetryMs = BUNDLE_CHECK_RETRY_MS;
+
 	private _heatmapCells: number[] = [];
 	private _targetTrails = createTrails();
 
@@ -246,6 +280,10 @@ export class EppGridCard extends LitElement {
 		subscribeFn: subscribeOverview,
 		onResubscribe: () => {
 			this._targetTrails = createTrails();
+			// A reconnect (connection swap after an upgrade+restart) bumps the
+			// served card hash — re-arm so we re-verify once the stream is back.
+			this._bundleCheckPending = true;
+			void this._maybeCheckForNewBundle();
 		},
 		onData: (s) => {
 			if (s.snapshot !== this._lastSnapshot) {
@@ -303,6 +341,9 @@ export class EppGridCard extends LitElement {
 		this._maybeResubscribe();
 		this._updateTemplates();
 		this.requestUpdate();
+		// No bundle check here: `set hass` fires on every state update. The check
+		// runs from connectedCallback / onResubscribe and self-schedules its own
+		// retry (see _maybeCheckForNewBundle).
 	}
 
 	get hass():
@@ -314,10 +355,12 @@ export class EppGridCard extends LitElement {
 	connectedCallback(): void {
 		super.connectedCallback();
 		this._maybeResubscribe();
+		void this._maybeCheckForNewBundle();
 	}
 
 	disconnectedCallback(): void {
 		super.disconnectedCallback();
+		this._clearBundleRetry();
 		this._overviewSub.dispose();
 		this._heatmapSub.dispose();
 		this._primaryField.dispose();
@@ -327,6 +370,70 @@ export class EppGridCard extends LitElement {
 	private _maybeResubscribe(): void {
 		this._overviewSub.ensure();
 		this._heatmapSub.ensure();
+	}
+
+	/**
+	 * Reload the dashboard once the served card bundle is newer than the one this
+	 * card is running (an upgrade the open tab never re-fetched — a custom
+	 * element can't be redefined for the page's lifetime). Runs from
+	 * connectedCallback and on reconnect (onResubscribe re-arms it), so unlike
+	 * the panel it also checks on the initial mount and a stale tab that
+	 * navigates to the dashboard self-corrects; the loop guard keeps that to one
+	 * reload per server hash. When the integration hasn't answered yet the check
+	 * schedules a timed retry (never off the hot `set hass` path). The card is a
+	 * separate bundle from the panel, so it compares its own hash against the
+	 * server's `card_hash` (not the panel `hash`). Fail-open: any WS/network
+	 * error leaves the page as-is (checkForNewBundle swallows it).
+	 */
+	private async _maybeCheckForNewBundle(): Promise<void> {
+		if (!this._bundleCheckPending || this._bundleCheckInFlight) return;
+		this._bundleCheckInFlight = true;
+		try {
+			const resolved = await checkForNewBundle({
+				currentHash: this._currentBundleHash,
+				fetchServerHash: async () => {
+					const hass = this.__hass as
+						| {
+								callWS?: (
+									msg: unknown,
+								) => Promise<{ card_hash?: string | null }>;
+						  }
+						| undefined;
+					const res = await hass?.callWS?.({
+						type: "eppgrid/frontend_version",
+					});
+					return res?.card_hash ?? null;
+				},
+				reload: this._reloadPage,
+				storage: safeSessionStorage(),
+				guardKey: CARD_RELOAD_GUARD_KEY,
+			});
+			if (resolved) {
+				this._bundleCheckPending = false;
+				this._clearBundleRetry();
+			} else {
+				// Backend still coming up — poll on a timer, not on hass updates.
+				this._scheduleBundleRetry();
+			}
+		} finally {
+			this._bundleCheckInFlight = false;
+		}
+	}
+
+	private _scheduleBundleRetry(): void {
+		// One timer at a time; don't pin a detached card in memory.
+		if (this._bundleRetryTimer !== undefined || !this.isConnected) return;
+		this._bundleRetryTimer = setTimeout(() => {
+			this._bundleRetryTimer = undefined;
+			void this._maybeCheckForNewBundle();
+		}, this._bundleRetryMs);
+	}
+
+	private _clearBundleRetry(): void {
+		if (this._bundleRetryTimer !== undefined) {
+			clearTimeout(this._bundleRetryTimer);
+			this._bundleRetryTimer = undefined;
+		}
 	}
 
 	private _updateTemplates(): void {

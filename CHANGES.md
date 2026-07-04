@@ -4,6 +4,17 @@ User-facing changes to Everything Presence Pro Grid. For full release assets and
 firmware downloads, see the
 [GitHub releases page](https://github.com/clintongormley/everything-presence-pro-grid/releases).
 
+## v1.5.1 — 2026-07-04
+
+### Fixes
+
+- **Dashboard cards refresh themselves after an update.** The overview card now
+    reloads on its own once you update the integration, so it shows the new
+    version instead of the old one until you manually refresh the browser — the
+    settings panel already did this. It takes effect from the next update
+    onward, so updating *to* this version may still need one hard refresh of the
+    browser tab.
+
 ## v1.5.0 — 2026-07-02
 
 **Everything Presence Pro Grid is now available directly in HACS.** The headline

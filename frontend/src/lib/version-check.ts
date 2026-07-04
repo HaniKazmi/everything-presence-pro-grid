@@ -9,14 +9,34 @@
 // hash, and reloads the page when they differ (triggered on websocket
 // reconnect, which an upgrade+restart always causes).
 
-// Anchor the `.js` to the path end (or a `?query`/`#fragment`) so a sourcemap
-// (`…eppgrid-panel.js.map`) or other suffix can't be mistaken for the bundle.
-const BUNDLE_PATH_RE = /\/eppgrid_static\/([^/]+)\/eppgrid-panel\.js(?:[?#]|$)/;
+// Both the panel and the dashboard card are content-hashed bundles served from
+// `/eppgrid_static/<hash>/eppgrid-(panel|card).js`; each reads its own hash from
+// `import.meta.url`. Anchor the `.js` to the path end (or a `?query`/`#fragment`)
+// so a sourcemap (`…eppgrid-panel.js.map`) or an unrelated chunk can't be
+// mistaken for the bundle.
+const BUNDLE_PATH_RE =
+	/\/eppgrid_static\/([^/]+)\/eppgrid-(?:panel|card)\.js(?:[?#]|$)/;
 
-// sessionStorage key recording the server hash we last reloaded for, so a
-// single mismatch cannot cause an endless reload loop if a reload somehow
-// fails to land on the new bundle.
+// Default sessionStorage key recording the server hash we last reloaded for, so
+// a single mismatch cannot cause an endless reload loop if a reload somehow
+// fails to land on the new bundle. Callers that share storage with another
+// bundle (panel vs card in the same SPA tab) pass their own `guardKey` so their
+// guards can't clobber each other.
 const RELOAD_GUARD_KEY = "eppgrid_reload_for_hash";
+
+// Resolve sessionStorage without throwing: in some browsers the property
+// *getter* itself throws (blocked storage / private mode), not just its
+// methods, so a bare `sessionStorage` reference would reject the fire-and-forget
+// version check and defeat the reload in exactly the case the loop guard is
+// meant to tolerate. Returns null when unavailable; the check then runs without
+// a loop guard. Shared by the panel and the card.
+export function safeSessionStorage(): Storage | null {
+	try {
+		return typeof sessionStorage !== "undefined" ? sessionStorage : null;
+	} catch {
+		return null;
+	}
+}
 
 /**
  * Extract the bundle content hash from a module URL. Returns null when the URL
@@ -35,9 +55,12 @@ type GuardStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 // The loop guard is best-effort: a blocked or quota-limited store (private mode,
 // etc.) must never throw out of the version check and swallow the reload.
-function readGuard(storage: GuardStorage | null | undefined): string | null {
+function readGuard(
+	storage: GuardStorage | null | undefined,
+	key: string,
+): string | null {
 	try {
-		return storage?.getItem(RELOAD_GUARD_KEY) ?? null;
+		return storage?.getItem(key) ?? null;
 	} catch {
 		return null;
 	}
@@ -45,11 +68,12 @@ function readGuard(storage: GuardStorage | null | undefined): string | null {
 
 function writeGuard(
 	storage: GuardStorage | null | undefined,
+	key: string,
 	value: string | null,
 ): void {
 	try {
-		if (value === null) storage?.removeItem(RELOAD_GUARD_KEY);
-		else storage?.setItem(RELOAD_GUARD_KEY, value);
+		if (value === null) storage?.removeItem(key);
+		else storage?.setItem(key, value);
 	} catch {
 		// ignore — see readGuard.
 	}
@@ -64,6 +88,9 @@ export interface VersionCheckDeps {
 	reload: () => void;
 	/** sessionStorage-like store for the loop guard; optional. */
 	storage?: GuardStorage | null;
+	/** Loop-guard storage key. Defaults to the panel's key; the card passes its
+	 *  own so the two don't clobber each other's guard in a shared SPA tab. */
+	guardKey?: string;
 }
 
 /**
@@ -83,6 +110,7 @@ export async function checkForNewBundle(
 	deps: VersionCheckDeps,
 ): Promise<boolean> {
 	const { currentHash, fetchServerHash, reload, storage } = deps;
+	const guardKey = deps.guardKey ?? RELOAD_GUARD_KEY;
 	// We can never compare without our own hash (e.g. served from a non-hashed
 	// URL, or in tests) — resolved, nothing to retry.
 	if (!currentHash) return true;
@@ -106,13 +134,13 @@ export async function checkForNewBundle(
 	if (currentHash === serverHash) {
 		// Versions match — clear any armed guard so a future genuine upgrade
 		// isn't suppressed.
-		writeGuard(storage, null);
+		writeGuard(storage, guardKey, null);
 		return true;
 	}
 
 	// serverHash is a real, differing hash here.
-	if (readGuard(storage) === serverHash) return true;
-	writeGuard(storage, serverHash);
+	if (readGuard(storage, guardKey) === serverHash) return true;
+	writeGuard(storage, guardKey, serverHash);
 	reload();
 	return true;
 }

@@ -6043,6 +6043,9 @@ class TestAdminGateAllCommands:
             "websocket_overview_subscribe",
             # card heatmap stream — read-only, non-admin shared dashboard
             "websocket_overview_subscribe_heatmap",
+            # frontend bundle-version check — read-only content hashes so an open
+            # panel or (non-admin) dashboard card can self-reload on a stale bundle
+            "websocket_frontend_version",
         }
     )
 
@@ -6789,23 +6792,26 @@ class TestConfigureDevice:
 
 
 class TestWebSocketFrontendVersion:
-    """Tests for eppgrid/frontend_version (panel self-reload check)."""
+    """Tests for eppgrid/frontend_version (panel + card self-reload check)."""
 
-    async def test_returns_stored_bundle_hash(self, hass: HomeAssistant) -> None:
-        """Returns the current bundle hash stashed in hass.data."""
+    async def test_returns_stored_bundle_hashes(self, hass: HomeAssistant) -> None:
+        """Returns both the panel and the card bundle hashes stashed in hass.data.
+        The card is a separate bundle (own content hash), so it needs its own value."""
+        from custom_components.eppgrid.const import CARD_BUNDLE_HASH_KEY
         from custom_components.eppgrid.const import CURRENT_BUNDLE_HASH_KEY
         from custom_components.eppgrid.websocket_api import websocket_frontend_version
 
         hass.data[CURRENT_BUNDLE_HASH_KEY] = "abcd1234"
+        hass.data[CARD_BUNDLE_HASH_KEY] = "card9999"
         connection = MagicMock()
         msg = {"id": 7, "type": "eppgrid/frontend_version"}
 
         websocket_frontend_version(hass, connection, msg)
 
-        connection.send_result.assert_called_once_with(7, {"hash": "abcd1234"})
+        connection.send_result.assert_called_once_with(7, {"hash": "abcd1234", "card_hash": "card9999"})
 
     async def test_returns_none_hash_when_unset(self, hass: HomeAssistant) -> None:
-        """Returns a null hash (not an error) when no hash has been stored yet."""
+        """Returns null hashes (not an error) when no hash has been stored yet."""
         from custom_components.eppgrid.websocket_api import websocket_frontend_version
 
         connection = MagicMock()
@@ -6813,21 +6819,24 @@ class TestWebSocketFrontendVersion:
 
         websocket_frontend_version(hass, connection, msg)
 
-        connection.send_result.assert_called_once_with(8, {"hash": None})
+        connection.send_result.assert_called_once_with(8, {"hash": None, "card_hash": None})
 
-    async def test_requires_admin(self, hass: HomeAssistant) -> None:
-        """Non-admin callers are rejected (the panel is admin-only)."""
-        from homeassistant.exceptions import Unauthorized
-
+    async def test_allows_non_admin(self, hass: HomeAssistant) -> None:
+        """Non-admin callers succeed: the dashboard card renders for non-admin viewers
+        and must detect a stale card bundle too. The payload (content hashes) is
+        non-sensitive, so unlike the admin-only panel commands this one is not gated."""
+        from custom_components.eppgrid.const import CARD_BUNDLE_HASH_KEY
         from custom_components.eppgrid.websocket_api import websocket_frontend_version
 
+        hass.data[CARD_BUNDLE_HASH_KEY] = "card9999"
         connection = MagicMock()
         connection.user.is_admin = False
         msg = {"id": 9, "type": "eppgrid/frontend_version"}
 
-        with pytest.raises(Unauthorized):
-            websocket_frontend_version(hass, connection, msg)
-        connection.send_result.assert_not_called()
+        websocket_frontend_version(hass, connection, msg)
+
+        connection.send_result.assert_called_once()
+        assert connection.send_result.call_args.args[1]["card_hash"] == "card9999"
 
 
 class TestOverviewListDevices:
