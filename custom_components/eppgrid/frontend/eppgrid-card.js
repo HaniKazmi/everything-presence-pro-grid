@@ -85,7 +85,7 @@ class it extends ot{}it.directiveName="unsafeSVG",it.resultType=2;const nt=Je(it
 							@pointerdown=${e=>this._onItemPointerDown(e,i.id)}
 						>
 							${u?rt([i.icon,h,d],()=>j`<svg viewBox="${u.viewBox}" preserveAspectRatio="none" class="furn-svg">
-												${nt(function(e,t){return e.replace(/stroke-width="([\d.]+)"/g,(e,r)=>`stroke-width="${Math.round(Number(r)*t*1e3)/1e3}"`)}(u.content,function(e,t,r){const[,,o,i]=e.trim().split(/\s+/).map(Number);return Math.sqrt(t/o*(r/i))}(u.viewBox,h,d)))}
+												${nt(function(e,t){return e.replace(/stroke-width="(\d*\.?\d+)"/g,(e,r)=>`stroke-width="${Math.round(Number(r)*t*1e3)/1e3}"`)}(u.content,function(e,t,r){const[,,o,i]=e.trim().split(/\s+/).map(Number),n=Math.sqrt(t/o*(r/i));return Number.isFinite(n)&&n>0?n:1}(u.viewBox,h,d)))}
 											</svg>`):W`<ha-icon icon="${i.icon}" style="--mdc-icon-size: ${.6*Math.min(h,d)}px;"></ha-icon>`}
 							${a?W`
 										<!-- Resize handles (cursor follows visual rotation) -->

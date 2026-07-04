@@ -2249,7 +2249,7 @@ const Ws={},Js=ii(class extends si{constructor(){super(...arguments),this.ot=Ws}
 							@pointerdown=${e=>this._onItemPointerDown(e,r.id)}
 						>
 							${p?Js([r.icon,h,d],()=>Y`<svg viewBox="${p.viewBox}" preserveAspectRatio="none" class="furn-svg">
-												${ni(function(e,t){return e.replace(/stroke-width="([\d.]+)"/g,(e,i)=>`stroke-width="${Math.round(Number(i)*t*1e3)/1e3}"`)}(p.content,function(e,t,i){const[,,s,r]=e.trim().split(/\s+/).map(Number);return Math.sqrt(t/s*(i/r))}(p.viewBox,h,d)))}
+												${ni(function(e,t){return e.replace(/stroke-width="(\d*\.?\d+)"/g,(e,i)=>`stroke-width="${Math.round(Number(i)*t*1e3)/1e3}"`)}(p.content,function(e,t,i){const[,,s,r]=e.trim().split(/\s+/).map(Number),o=Math.sqrt(t/s*(i/r));return Number.isFinite(o)&&o>0?o:1}(p.viewBox,h,d)))}
 											</svg>`):N`<ha-icon icon="${r.icon}" style="--mdc-icon-size: ${.6*Math.min(h,d)}px;"></ha-icon>`}
 							${n?N`
 										<!-- Resize handles (cursor follows visual rotation) -->

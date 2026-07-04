@@ -489,8 +489,11 @@ export function getResizeCursor(handle: string, rotationDeg: number): string {
  * @returns The markup with each stroke-width multiplied by k (rounded to 3dp)
  */
 export function scaleSvgStrokeWidths(content: string, k: number): string {
+	// `\d*\.?\d+` matches only a well-formed number (e.g. "2", "1.5", ".5") and
+	// requires a trailing digit, so malformed values like "." or "1..2" don't
+	// match and are left untouched rather than turned into stroke-width="NaN".
 	return content.replace(
-		/stroke-width="([\d.]+)"/g,
+		/stroke-width="(\d*\.?\d+)"/g,
 		(_match, w: string) =>
 			`stroke-width="${Math.round(Number(w) * k * 1000) / 1000}"`,
 	);
@@ -512,7 +515,7 @@ export function scaleSvgStrokeWidths(content: string, k: number): string {
  * @param viewBox The SVG viewBox string (`"minX minY width height"`)
  * @param wPx On-screen width in px
  * @param hPx On-screen height in px
- * @returns The geometric-mean scale `sqrt(sx·sy)`
+ * @returns The geometric-mean scale `sqrt(sx·sy)`, or 1 if it can't be computed
  */
 export function svgStrokeScale(
 	viewBox: string,
@@ -522,7 +525,11 @@ export function svgStrokeScale(
 	// Tolerate irregular whitespace (double/leading/trailing spaces) so a
 	// hand-edited catalog viewBox can't silently shift the width/height tokens.
 	const [, , vbW, vbH] = viewBox.trim().split(/\s+/).map(Number);
-	return Math.sqrt((wPx / vbW) * (hPx / vbH));
+	const k = Math.sqrt((wPx / vbW) * (hPx / vbH));
+	// A malformed viewBox (missing/non-numeric/zero width or height) or a
+	// zero-size item yields NaN/Infinity/0, which would corrupt the SVG as
+	// stroke-width="NaN". Fall back to 1 (draw strokes at their nominal width).
+	return Number.isFinite(k) && k > 0 ? k : 1;
 }
 
 /**

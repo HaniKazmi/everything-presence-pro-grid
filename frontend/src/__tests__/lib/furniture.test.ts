@@ -303,6 +303,13 @@ describe("scaleSvgStrokeWidths", () => {
 			'<path stroke-width="2.828"/>',
 		);
 	});
+
+	it("leaves malformed stroke-width values untouched (no NaN)", () => {
+		// "." and "1..2" are not valid numbers, so they must not match and must
+		// not be rewritten as stroke-width="NaN".
+		const src = '<a stroke-width="."/><b stroke-width="1..2"/>';
+		expect(scaleSvgStrokeWidths(src, 2)).toBe(src);
+	});
 });
 
 describe("svgStrokeScale", () => {
@@ -327,5 +334,12 @@ describe("svgStrokeScale", () => {
 		// double, leading and trailing spaces must not shift the width/height
 		// tokens (would otherwise pick wrong values, not NaN).
 		expect(svgStrokeScale("  0  0   25 10 ", 100, 10)).toBeCloseTo(2, 10);
+	});
+
+	it("falls back to 1 for a malformed viewBox or zero-size item", () => {
+		expect(svgStrokeScale("0 0 0 0", 100, 100)).toBe(1); // zero dimensions
+		expect(svgStrokeScale("garbage", 100, 100)).toBe(1); // too few tokens
+		expect(svgStrokeScale("0 0 a b", 100, 100)).toBe(1); // non-numeric
+		expect(svgStrokeScale("0 0 25 10", 0, 0)).toBe(1); // zero-size item
 	});
 });
