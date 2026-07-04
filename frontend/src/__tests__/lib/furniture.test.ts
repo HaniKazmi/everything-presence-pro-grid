@@ -322,4 +322,10 @@ describe("svgStrokeScale", () => {
 			svgStrokeScale("99 99 50 50", 100, 100),
 		);
 	});
+
+	it("tolerates irregular whitespace in the viewBox", () => {
+		// double, leading and trailing spaces must not shift the width/height
+		// tokens (would otherwise pick wrong values, not NaN).
+		expect(svgStrokeScale("  0  0   25 10 ", 100, 10)).toBeCloseTo(2, 10);
+	});
 });

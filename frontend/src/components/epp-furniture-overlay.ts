@@ -1,5 +1,6 @@
 import { css, html, LitElement, nothing, svg } from "lit";
 import { property, state } from "lit/decorators.js";
+import { guard } from "lit/directives/guard.js";
 import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 import { FLOOR_PLAN_SVGS } from "../constants.js";
 import type { FurnitureItem } from "../lib/furniture.js";
@@ -430,13 +431,6 @@ export class EppFurnitureOverlay extends LitElement {
 						item.type === "svg" && Object.hasOwn(FLOOR_PLAN_SVGS, item.icon)
 							? FLOOR_PLAN_SVGS[item.icon]
 							: null;
-					let svgMarkup = "";
-					if (svgPlan) {
-						svgMarkup = scaleSvgStrokeWidths(
-							svgPlan.content,
-							svgStrokeScale(svgPlan.viewBox, wPx, hPx),
-						);
-					}
 					return html`
 						<div
 							class="furniture-item${selected ? " selected" : ""}${
@@ -453,9 +447,17 @@ export class EppFurnitureOverlay extends LitElement {
 						>
 							${
 								svgPlan
-									? svg`<svg viewBox="${svgPlan.viewBox}" preserveAspectRatio="none" class="furn-svg">
-										${unsafeSVG(svgMarkup)}
-									</svg>`
+									? // guard: the scaled markup depends only on icon + size, so the
+										// per-item stroke rescan re-runs only when those change (a
+										// move-drag recomputes nothing; a resize recomputes just the
+										// dragged item), not on every render tick.
+										guard(
+											[item.icon, wPx, hPx],
+											() =>
+												svg`<svg viewBox="${svgPlan.viewBox}" preserveAspectRatio="none" class="furn-svg">
+												${unsafeSVG(scaleSvgStrokeWidths(svgPlan.content, svgStrokeScale(svgPlan.viewBox, wPx, hPx)))}
+											</svg>`,
+										)
 									: html`<ha-icon icon="${item.icon}" style="--mdc-icon-size: ${Math.min(wPx, hPx) * 0.6}px;"></ha-icon>`
 							}
 							${

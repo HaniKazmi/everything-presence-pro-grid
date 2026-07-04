@@ -519,7 +519,9 @@ export function svgStrokeScale(
 	wPx: number,
 	hPx: number,
 ): number {
-	const [, , vbW, vbH] = viewBox.split(" ").map(Number);
+	// Tolerate irregular whitespace (double/leading/trailing spaces) so a
+	// hand-edited catalog viewBox can't silently shift the width/height tokens.
+	const [, , vbW, vbH] = viewBox.trim().split(/\s+/).map(Number);
 	return Math.sqrt((wPx / vbW) * (hPx / vbH));
 }
 
