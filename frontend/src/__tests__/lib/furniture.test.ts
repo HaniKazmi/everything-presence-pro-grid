@@ -4,12 +4,17 @@ import {
 	createTextItem,
 	DEFAULT_TEXT_FONT,
 	DEFAULT_TEXT_SIZE_MM,
+	EDGE_HANDLE_MIN_DESKTOP_PX,
+	EDGE_HANDLE_MIN_TOUCH_PX,
 	estimateTextBox,
 	fontStack,
 	isFurnitureOutsideGrid,
+	scaleSvgStrokeWidths,
+	svgStrokeScale,
 	TEXT_FONTS,
 	TEXT_SIZE_MAX_MM,
 	TEXT_SIZE_MIN_MM,
+	visibleHandles,
 } from "../../lib/furniture.js";
 
 describe("isFurnitureOutsideGrid", () => {
@@ -197,5 +202,144 @@ describe("text label helpers", () => {
 		expect(item.y).toBeGreaterThan(0);
 		expect(item.width).toBeGreaterThan(0);
 		expect(item.height).toBeGreaterThan(0);
+	});
+});
+
+describe("visibleHandles", () => {
+	it("shows all eight handles when both sides meet the threshold", () => {
+		expect(visibleHandles(false, 100, 100, 30)).toEqual([
+			"n",
+			"s",
+			"e",
+			"w",
+			"ne",
+			"nw",
+			"se",
+			"sw",
+		]);
+	});
+
+	it("shows only corners for an aspect-locked item", () => {
+		expect(visibleHandles(true, 100, 100, 30)).toEqual([
+			"ne",
+			"nw",
+			"se",
+			"sw",
+		]);
+	});
+
+	it("shows top/bottom (not left/right) when only width meets the threshold", () => {
+		expect(visibleHandles(false, 100, 10, 30)).toEqual([
+			"n",
+			"s",
+			"ne",
+			"nw",
+			"se",
+			"sw",
+		]);
+	});
+
+	it("shows left/right (not top/bottom) when only height meets the threshold", () => {
+		expect(visibleHandles(false, 10, 100, 30)).toEqual([
+			"e",
+			"w",
+			"ne",
+			"nw",
+			"se",
+			"sw",
+		]);
+	});
+
+	it("shows only corners when neither side meets the threshold", () => {
+		expect(visibleHandles(false, 10, 10, 30)).toEqual(["ne", "nw", "se", "sw"]);
+	});
+
+	it("treats the threshold as inclusive (>=)", () => {
+		expect(visibleHandles(false, 30, 30, 30)).toHaveLength(8);
+		expect(visibleHandles(false, 29, 29, 30)).toEqual(["ne", "nw", "se", "sw"]);
+	});
+
+	it("exposes desktop and touch thresholds", () => {
+		expect(EDGE_HANDLE_MIN_DESKTOP_PX).toBe(30);
+		expect(EDGE_HANDLE_MIN_TOUCH_PX).toBe(44);
+	});
+});
+
+describe("scaleSvgStrokeWidths", () => {
+	it("multiplies a stroke-width by the factor", () => {
+		expect(scaleSvgStrokeWidths('<path stroke-width="2"/>', 1.5)).toBe(
+			'<path stroke-width="3"/>',
+		);
+	});
+
+	it("scales every occurrence and preserves ratios", () => {
+		expect(
+			scaleSvgStrokeWidths('<a stroke-width="1"/><b stroke-width="2"/>', 3),
+		).toBe('<a stroke-width="3"/><b stroke-width="6"/>');
+	});
+
+	it("handles decimal widths", () => {
+		expect(
+			scaleSvgStrokeWidths('x stroke-width="1.5" y stroke-width="2.5"', 2),
+		).toBe('x stroke-width="3" y stroke-width="5"');
+	});
+
+	it("leaves fills, colours and dash arrays untouched", () => {
+		const src =
+			'<path fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3"/>';
+		expect(scaleSvgStrokeWidths(src, 2)).toBe(
+			'<path fill="none" stroke="currentColor" stroke-width="4" stroke-dasharray="4 3"/>',
+		);
+	});
+
+	it("returns identical values for k = 1", () => {
+		const src = '<path stroke-width="2"/><path stroke-width="1.5"/>';
+		expect(scaleSvgStrokeWidths(src, 1)).toBe(src);
+	});
+
+	it("rounds to 3 decimal places", () => {
+		// 2 * sqrt(2) ≈ 2.828
+		expect(scaleSvgStrokeWidths('<path stroke-width="2"/>', Math.SQRT2)).toBe(
+			'<path stroke-width="2.828"/>',
+		);
+	});
+
+	it("leaves malformed stroke-width values untouched (no NaN)", () => {
+		// "." and "1..2" are not valid numbers, so they must not match and must
+		// not be rewritten as stroke-width="NaN".
+		const src = '<a stroke-width="."/><b stroke-width="1..2"/>';
+		expect(scaleSvgStrokeWidths(src, 2)).toBe(src);
+	});
+});
+
+describe("svgStrokeScale", () => {
+	it("equals the uniform scale for a native-aspect item (sx === sy)", () => {
+		// viewBox 92×82 rendered at its own aspect → k === s (BWC invariant).
+		expect(svgStrokeScale("4 4 92 82", 92, 82)).toBeCloseTo(1, 10);
+		expect(svgStrokeScale("4 4 92 82", 46, 41)).toBeCloseTo(0.5, 10);
+	});
+
+	it("returns the geometric mean of the two axis scales when stretched", () => {
+		// sx = 100/25 = 4, sy = 10/10 = 1 → sqrt(4 * 1) = 2
+		expect(svgStrokeScale("0 0 25 10", 100, 10)).toBeCloseTo(2, 10);
+	});
+
+	it("uses only the width/height tokens, ignoring minX/minY", () => {
+		expect(svgStrokeScale("0 0 50 50", 100, 100)).toBe(
+			svgStrokeScale("99 99 50 50", 100, 100),
+		);
+	});
+
+	it("tolerates irregular whitespace in the viewBox", () => {
+		// double, leading and trailing spaces must not shift the width/height
+		// tokens (would otherwise pick wrong values, not NaN).
+		expect(svgStrokeScale("  0  0   25 10 ", 100, 10)).toBeCloseTo(2, 10);
+	});
+
+	it("falls back to 1 for a malformed viewBox or zero-size item", () => {
+		expect(svgStrokeScale("0 0 0 0", 100, 100)).toBe(1); // zero dimensions
+		expect(svgStrokeScale("garbage", 100, 100)).toBe(1); // too few tokens
+		expect(svgStrokeScale("0 0 a b", 100, 100)).toBe(1); // non-numeric
+		expect(svgStrokeScale("0 0 25 10", 0, 0)).toBe(1); // zero-size item
 	});
 });

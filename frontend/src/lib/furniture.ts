@@ -232,15 +232,19 @@ export function isProportionalResize(
 }
 
 /**
- * On-screen size (px, shorter side) below which an unlocked item shows corner
- * handles only. Below this, an edge handle sits close enough to its adjacent
- * corner handle that their ~44px hit areas overlap and a finger can't reliably
- * pick between them; collapsing to corners keeps the safe (proportional)
- * default. Set below 2× the touch target to let edges appear on fairly small
- * items, trading a little hit-area overlap for reach. Zooming in (larger
- * cellPx) reveals the edge handles. Tunable.
+ * On-screen size (px) a furniture side must reach for its edge handles to show.
+ * Each edge pair is gated by the length of the side it sits on: top/bottom
+ * (`n`/`s`) by width, left/right (`e`/`w`) by height. Below the threshold an
+ * edge handle sits too close to its corner for the two touch targets to be told
+ * apart, so only corners show. 30px on desktop (22px hit-area) is a deliberate
+ * reach-vs-overlap tradeoff, not the point the hit-boxes fully clear — at 30px
+ * the edge and corner hit-boxes still overlap a little; that's accepted so
+ * small items still get edge handles. They only fully clear above ~44px. On
+ * touch, 44px matches the larger 44px hit-area (`max-width: 819px`), so there
+ * they do clear.
  */
-export const EDGE_HANDLE_MIN_PX = 72;
+export const EDGE_HANDLE_MIN_DESKTOP_PX = 30;
+export const EDGE_HANDLE_MIN_TOUCH_PX = 44;
 
 // All eight resize handles, in render order. CORNER_HANDLES derives from this
 // via isCornerHandle, so the corner/edge split lives in exactly one place.
@@ -250,19 +254,32 @@ const CORNER_HANDLES = ALL_HANDLES.filter(isCornerHandle);
 /**
  * Which resize handles to render for a selected item.
  *
- * Corner handles are always shown (proportional resize). Edge handles — which
- * stretch a single axis — are shown only for an unlocked item that is large
- * enough on screen for the extra touch targets to be distinguishable.
+ * Corner handles are always shown (proportional resize). Edge handles are shown
+ * per-side: top & bottom (`n`/`s`, along the horizontal edges) when the item is
+ * at least `minPx` wide; left & right (`e`/`w`, along the vertical edges) when
+ * it is at least `minPx` tall. An aspect-locked item never distorts, so it gets
+ * corners only.
  *
  * @param hardLock Whether the item is aspect-locked (never distortable)
- * @param tooSmall Whether the item is below EDGE_HANDLE_MIN_PX on its short side
- * @returns Handle ids to render
+ * @param widthPx On-screen width in px
+ * @param heightPx On-screen height in px
+ * @param minPx Threshold a side must reach to show its edge handles
+ * @returns Handle ids to render, in render order
  */
 export function visibleHandles(
 	hardLock: boolean,
-	tooSmall: boolean,
+	widthPx: number,
+	heightPx: number,
+	minPx: number,
 ): readonly string[] {
-	return hardLock || tooSmall ? CORNER_HANDLES : ALL_HANDLES;
+	if (hardLock) return CORNER_HANDLES;
+	const showTopBottom = widthPx >= minPx; // n, s sit on the horizontal edges
+	const showLeftRight = heightPx >= minPx; // e, w sit on the vertical edges
+	return ALL_HANDLES.filter((h) => {
+		if (isCornerHandle(h)) return true;
+		if (h === "n" || h === "s") return showTopBottom;
+		return showLeftRight; // "e" || "w"
+	});
 }
 
 /**
@@ -454,6 +471,65 @@ export function getResizeCursor(handle: string, rotationDeg: number): string {
 		default:
 			return "nwse-resize";
 	}
+}
+
+/**
+ * Scale every `stroke-width` in an SVG markup string by a uniform factor.
+ *
+ * Paired with CSS `vector-effect: non-scaling-stroke`, this keeps a
+ * disproportionately scaled furniture item's line weights balanced: the caller
+ * passes the geometric mean of the item's x/y scale, so strokes grow with
+ * overall size while horizontal and vertical lines stay equally thick. Only
+ * numeric `stroke-width="…"` values are touched — fills, colours and dash
+ * arrays are untouched, and the ratios between the icon's own line weights are
+ * preserved.
+ *
+ * @param content SVG inner markup (from `FLOOR_PLAN_SVGS[...].content`)
+ * @param k Multiplier (>= 0); 1 leaves every value unchanged
+ * @returns The markup with each stroke-width multiplied by k (rounded to 3dp)
+ */
+export function scaleSvgStrokeWidths(content: string, k: number): string {
+	// `\d*\.?\d+` matches only a well-formed number (e.g. "2", "1.5", ".5") and
+	// requires a trailing digit, so malformed values like "." or "1..2" don't
+	// match and are left untouched rather than turned into stroke-width="NaN".
+	return content.replace(
+		/stroke-width="(\d*\.?\d+)"/g,
+		(_match, w: string) =>
+			`stroke-width="${Math.round(Number(w) * k * 1000) / 1000}"`,
+	);
+}
+
+/**
+ * Geometric-mean stroke-scale factor for an SVG furniture item rendered at
+ * `wPx`×`hPx`.
+ *
+ * With `preserveAspectRatio="none"` the item stretches to fill `wPx`×`hPx`,
+ * giving per-axis scales `sx = wPx/viewBoxW` and `sy = hPx/viewBoxH`. The
+ * geometric mean `sqrt(sx·sy)` is the balanced factor to pass to
+ * `scaleSvgStrokeWidths` (paired with `vector-effect: non-scaling-stroke`): for
+ * a native-aspect item `sx === sy`, so it equals the uniform scale and stroke
+ * widths render exactly as before; for a stretched item it grows with overall
+ * size without favouring either axis. The viewBox is `"minX minY width
+ * height"`; only the width/height tokens matter here.
+ *
+ * @param viewBox The SVG viewBox string (`"minX minY width height"`)
+ * @param wPx On-screen width in px
+ * @param hPx On-screen height in px
+ * @returns The geometric-mean scale `sqrt(sx·sy)`, or 1 if it can't be computed
+ */
+export function svgStrokeScale(
+	viewBox: string,
+	wPx: number,
+	hPx: number,
+): number {
+	// Tolerate irregular whitespace (double/leading/trailing spaces) so a
+	// hand-edited catalog viewBox can't silently shift the width/height tokens.
+	const [, , vbW, vbH] = viewBox.trim().split(/\s+/).map(Number);
+	const k = Math.sqrt((wPx / vbW) * (hPx / vbH));
+	// A malformed viewBox (missing/non-numeric/zero width or height) or a
+	// zero-size item yields NaN/Infinity/0, which would corrupt the SVG as
+	// stroke-width="NaN". Fall back to 1 (draw strokes at their nominal width).
+	return Number.isFinite(k) && k > 0 ? k : 1;
 }
 
 /**

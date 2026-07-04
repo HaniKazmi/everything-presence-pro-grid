@@ -1,7 +1,7 @@
 import { render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "../../components/epp-furniture-overlay.js";
-import type { EppFurnitureOverlay } from "../../components/epp-furniture-overlay.js";
+import { EppFurnitureOverlay } from "../../components/epp-furniture-overlay.js";
 import type { FurnitureItem } from "../../lib/furniture.js";
 import { roomStartCol } from "../../lib/grid.js";
 
@@ -43,8 +43,8 @@ const SAMPLE_FURNITURE: FurnitureItem = {
 	lockAspect: false,
 };
 
-// 2000mm at cellPx=28 → ~193px on its short side, above EDGE_HANDLE_MIN_PX,
-// so all eight handles render.
+// 2000mm at cellPx=28 → ~193px per side, well above the 30px desktop
+// threshold, so all eight handles render.
 const LARGE_FURNITURE: FurnitureItem = {
 	...SAMPLE_FURNITURE,
 	width: 2000,
@@ -128,10 +128,9 @@ describe("epp-furniture-overlay DOM rendering", () => {
 		document.body.removeChild(c);
 	});
 
-	it("renders all 8 resize handles for a mid-size item (~97px, above the 72px threshold)", () => {
-		// 1000mm at cellPx=28 → ~97px short side: comfortably above the 72px
-		// threshold, so edge handles appear (this size showed corners only at
-		// the original 120px threshold).
+	it("renders all 8 resize handles for a mid-size item (~97px)", () => {
+		// 1000mm at cellPx=28 → ~97px per side: above the 30px desktop threshold
+		// on both axes, so all eight handles render.
 		const el = createOverlay({
 			furniture: [{ ...LARGE_FURNITURE, width: 1000, height: 1000 }],
 			selectedFurnitureId: "f1",
@@ -143,10 +142,8 @@ describe("epp-furniture-overlay DOM rendering", () => {
 		document.body.removeChild(c);
 	});
 
-	it("renders all 8 resize handles for an item just above the threshold (~77px)", () => {
-		// 800mm at cellPx=28 → ~77px short side: above the 72px threshold, so
-		// edge handles appear (this size showed corners only at the earlier
-		// 88px threshold).
+	it("renders all 8 resize handles for an ~77px item", () => {
+		// 800mm at cellPx=28 → ~77px per side: above the 30px desktop threshold.
 		const el = createOverlay({
 			furniture: [SAMPLE_FURNITURE],
 			selectedFurnitureId: "f1",
@@ -158,9 +155,9 @@ describe("epp-furniture-overlay DOM rendering", () => {
 		document.body.removeChild(c);
 	});
 
-	it("renders only the 4 corner handles for a small item", () => {
+	it("renders only the 4 corner handles for a tiny item (below 30px both axes)", () => {
 		const el = createOverlay({
-			furniture: [{ ...SAMPLE_FURNITURE, width: 600, height: 600 }], // ~58px
+			furniture: [{ ...SAMPLE_FURNITURE, width: 250, height: 250 }], // ~24px
 			selectedFurnitureId: "f1",
 		});
 		const c = renderTo((el as any).render());
@@ -172,6 +169,40 @@ describe("epp-furniture-overlay DOM rendering", () => {
 		for (const edge of ["n", "s", "e", "w"]) {
 			expect(c.querySelector(`.furn-handle-${edge}`)).toBeNull();
 		}
+
+		document.body.removeChild(c);
+	});
+
+	it("shows top & bottom handles (not left/right) for a wide, short item", () => {
+		// 1400mm → ~135px wide (>=30); 250mm → ~24px tall (<30).
+		const el = createOverlay({
+			furniture: [{ ...SAMPLE_FURNITURE, width: 1400, height: 250 }],
+			selectedFurnitureId: "f1",
+		});
+		const c = renderTo((el as any).render());
+
+		expect(c.querySelector(".furn-handle-n")).not.toBeNull();
+		expect(c.querySelector(".furn-handle-s")).not.toBeNull();
+		expect(c.querySelector(".furn-handle-e")).toBeNull();
+		expect(c.querySelector(".furn-handle-w")).toBeNull();
+		expect(c.querySelectorAll(".furn-handle").length).toBe(6);
+
+		document.body.removeChild(c);
+	});
+
+	it("shows left & right handles (not top/bottom) for a tall, narrow item", () => {
+		// 250mm → ~24px wide (<30); 1400mm → ~135px tall (>=30).
+		const el = createOverlay({
+			furniture: [{ ...SAMPLE_FURNITURE, width: 250, height: 1400 }],
+			selectedFurnitureId: "f1",
+		});
+		const c = renderTo((el as any).render());
+
+		expect(c.querySelector(".furn-handle-e")).not.toBeNull();
+		expect(c.querySelector(".furn-handle-w")).not.toBeNull();
+		expect(c.querySelector(".furn-handle-n")).toBeNull();
+		expect(c.querySelector(".furn-handle-s")).toBeNull();
+		expect(c.querySelectorAll(".furn-handle").length).toBe(6);
 
 		document.body.removeChild(c);
 	});
@@ -280,6 +311,20 @@ describe("epp-furniture-overlay DOM rendering", () => {
 		document.body.removeChild(c);
 	});
 
+	it("hides edge handles below the 44px touch threshold when narrow", () => {
+		// 400mm → ~39px per side: above desktop 30 but below touch 44.
+		const el = createOverlay({
+			furniture: [{ ...SAMPLE_FURNITURE, width: 400, height: 400 }],
+			selectedFurnitureId: "f1",
+		});
+		(el as any)._isNarrow = true;
+		const c = renderTo((el as any).render());
+
+		expect(c.querySelectorAll(".furn-handle").length).toBe(4); // corners only
+
+		document.body.removeChild(c);
+	});
+
 	it("does not mark a selected item as .selected when not editing", () => {
 		// Without editing, the blue selection outline/glow must not show either —
 		// the item renders as a plain, unselected icon.
@@ -293,6 +338,30 @@ describe("epp-furniture-overlay DOM rendering", () => {
 		expect(c.querySelector(".furniture-item.selected")).toBeNull();
 
 		document.body.removeChild(c);
+	});
+
+	it("shows edge handles at that same ~39px size on desktop (30px)", () => {
+		const el = createOverlay({
+			furniture: [{ ...SAMPLE_FURNITURE, width: 400, height: 400 }],
+			selectedFurnitureId: "f1",
+		});
+		// _isNarrow defaults to false (desktop)
+		const c = renderTo((el as any).render());
+
+		expect(c.querySelectorAll(".furn-handle").length).toBe(8);
+
+		document.body.removeChild(c);
+	});
+
+	it("tracks the narrow breakpoint across connect / change / disconnect", () => {
+		const el = createOverlay();
+		document.body.appendChild(el); // connectedCallback: seeds from matchMedia
+		// happy-dom's matchMedia reports matches:false (wide) by default.
+		expect((el as any)._isNarrow).toBe(false);
+		// Exercise the change handler directly (happy-dom won't emit the event).
+		(el as any)._onNarrowMql({ matches: true } as MediaQueryList);
+		expect((el as any)._isNarrow).toBe(true);
+		document.body.removeChild(el); // disconnectedCallback: removes the listener
 	});
 
 	it("positions furniture items correctly based on room coordinates", () => {
@@ -311,6 +380,57 @@ describe("epp-furniture-overlay DOM rendering", () => {
 		if (item) {
 			expect(item.style.transform).toContain("rotate(0deg)");
 		}
+
+		document.body.removeChild(c);
+	});
+
+	it("applies non-scaling-stroke to svg shapes for balanced line widths", () => {
+		const cssText = (EppFurnitureOverlay.styles as { cssText: string }).cssText;
+		expect(cssText).toContain("non-scaling-stroke");
+	});
+
+	it("scales svg stroke widths when the item is stretched", () => {
+		// 3000mm × 500mm armchair (native viewBox 92×82): sx ≈ 3.15, sy ≈ 0.59,
+		// so k ≈ 1.36 ≠ 1 — the raw stroke-width="2" is rewritten.
+		const el = createOverlay({
+			furniture: [
+				{ ...SAMPLE_FURNITURE, icon: "armchair", width: 3000, height: 500 },
+			],
+			selectedFurnitureId: "f1",
+		});
+		const c = renderTo((el as any).render());
+
+		const path = c.querySelector(".furn-svg path");
+		expect(path).not.toBeNull();
+		expect(path?.getAttribute("stroke-width")).not.toBe("2");
+
+		document.body.removeChild(c);
+	});
+
+	it("keeps the old transform-scaled stroke width for a native-aspect item (BWC)", () => {
+		// BWC invariant: when the item's width:height ratio matches the icon's
+		// own viewBox ratio (native aspect, no stretch), sx === sy, so the
+		// geometric-mean multiplier k === s (the uniform scale) — the stroke
+		// ends up exactly base·s, identical to the old (pre-non-uniform-scale)
+		// transform-scaled behaviour, never distorted.
+		//
+		// armchair viewBox="4 4 92 82" (vbW=92, vbH=82), first path
+		// stroke-width="2". 920×820mm is exactly the 92:82 ratio:
+		//   wPx = 920·29/300 = 88.9333…, sx = 88.9333…/92  = 0.96666…
+		//   hPx = 820·29/300 = 79.2667…, sy = 79.2667…/82  = 0.96666…
+		//   k = sqrt(sx·sy) = 0.96666… = s
+		//   stroke-width = round(2 · 0.96666…, 3dp) = 1.933
+		const el = createOverlay({
+			furniture: [
+				{ ...SAMPLE_FURNITURE, icon: "armchair", width: 920, height: 820 },
+			],
+			selectedFurnitureId: "f1",
+		});
+		const c = renderTo((el as any).render());
+
+		const path = c.querySelector(".furn-svg path");
+		expect(path).not.toBeNull();
+		expect(path?.getAttribute("stroke-width")).toBe("1.933");
 
 		document.body.removeChild(c);
 	});

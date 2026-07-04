@@ -416,15 +416,15 @@ describe("visibleHandles", () => {
 	const CORNERS = ["ne", "nw", "se", "sw"]; // already sorted
 
 	it("shows only corners for a hard-locked item", () => {
-		expect([...visibleHandles(true, false)].sort()).toEqual(CORNERS);
+		expect([...visibleHandles(true, 100, 100, 30)].sort()).toEqual(CORNERS);
 	});
 
 	it("shows only corners for a small unlocked item", () => {
-		expect([...visibleHandles(false, true)].sort()).toEqual(CORNERS);
+		expect([...visibleHandles(false, 10, 10, 30)].sort()).toEqual(CORNERS);
 	});
 
 	it("shows all eight handles for a large unlocked item", () => {
-		expect([...visibleHandles(false, false)].sort()).toEqual(ALL);
+		expect([...visibleHandles(false, 100, 100, 30)].sort()).toEqual(ALL);
 	});
 });
 
