@@ -1,7 +1,7 @@
 import { render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "../../components/epp-furniture-overlay.js";
-import type { EppFurnitureOverlay } from "../../components/epp-furniture-overlay.js";
+import { EppFurnitureOverlay } from "../../components/epp-furniture-overlay.js";
 import type { FurnitureItem } from "../../lib/furniture.js";
 import { roomStartCol } from "../../lib/grid.js";
 
@@ -380,6 +380,29 @@ describe("epp-furniture-overlay DOM rendering", () => {
 		if (item) {
 			expect(item.style.transform).toContain("rotate(0deg)");
 		}
+
+		document.body.removeChild(c);
+	});
+
+	it("applies non-scaling-stroke to svg shapes for balanced line widths", () => {
+		const cssText = (EppFurnitureOverlay.styles as { cssText: string }).cssText;
+		expect(cssText).toContain("non-scaling-stroke");
+	});
+
+	it("scales svg stroke widths when the item is stretched", () => {
+		// 3000mm × 500mm armchair (native viewBox 92×82): sx ≈ 3.15, sy ≈ 0.59,
+		// so k ≈ 1.36 ≠ 1 — the raw stroke-width="2" is rewritten.
+		const el = createOverlay({
+			furniture: [
+				{ ...SAMPLE_FURNITURE, icon: "armchair", width: 3000, height: 500 },
+			],
+			selectedFurnitureId: "f1",
+		});
+		const c = renderTo((el as any).render());
+
+		const path = c.querySelector(".furn-svg path");
+		expect(path).not.toBeNull();
+		expect(path?.getAttribute("stroke-width")).not.toBe("2");
 
 		document.body.removeChild(c);
 	});

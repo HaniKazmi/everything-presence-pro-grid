@@ -12,6 +12,7 @@ import {
 	fontStack,
 	getResizeCursor,
 	mmToPx,
+	scaleSvgStrokeWidths,
 	visibleHandles,
 } from "../lib/furniture.js";
 import { furnitureContrast, hexToRgb } from "../lib/furniture-contrast.js";
@@ -158,6 +159,14 @@ export class EppFurnitureOverlay extends LitElement {
 			width: 100%;
 			height: 100%;
 			pointer-events: none;
+		}
+
+		/* Keep stroke widths balanced under non-uniform (preserveAspectRatio=
+		   none) scaling — the stretch no longer thickens/thins strokes per axis.
+		   Line weight is restored via a geometric-mean stroke-width multiplier at
+		   render time (scaleSvgStrokeWidths). */
+		.furn-svg * {
+			vector-effect: non-scaling-stroke;
 		}
 
 		.furn-handle {
@@ -410,6 +419,19 @@ export class EppFurnitureOverlay extends LitElement {
 
 					const wPx = this._mmToPx(item.width);
 					const hPx = this._mmToPx(item.height);
+					// SVG furniture: scale stroke widths by the geometric mean of
+					// the x/y scale so a non-uniform stretch keeps balanced line
+					// weights (paired with vector-effect: non-scaling-stroke).
+					const svgPlan =
+						item.type === "svg" && Object.hasOwn(FLOOR_PLAN_SVGS, item.icon)
+							? FLOOR_PLAN_SVGS[item.icon]
+							: null;
+					let svgMarkup = "";
+					if (svgPlan) {
+						const [, , vbW, vbH] = svgPlan.viewBox.split(" ").map(Number);
+						const k = Math.sqrt((wPx / vbW) * (hPx / vbH));
+						svgMarkup = scaleSvgStrokeWidths(svgPlan.content, k);
+					}
 					return html`
 						<div
 							class="furniture-item${selected ? " selected" : ""}${
@@ -425,11 +447,9 @@ export class EppFurnitureOverlay extends LitElement {
 							@pointerdown=${(e: PointerEvent) => this._onItemPointerDown(e, item.id)}
 						>
 							${
-								// Object.hasOwn: a plain-object catalog makes prototype
-								// members ("constructor", …) truthy under bare indexing.
-								item.type === "svg" && Object.hasOwn(FLOOR_PLAN_SVGS, item.icon)
-									? svg`<svg viewBox="${FLOOR_PLAN_SVGS[item.icon].viewBox}" preserveAspectRatio="none" class="furn-svg">
-										${unsafeSVG(FLOOR_PLAN_SVGS[item.icon].content)}
+								svgPlan
+									? svg`<svg viewBox="${svgPlan.viewBox}" preserveAspectRatio="none" class="furn-svg">
+										${unsafeSVG(svgMarkup)}
 									</svg>`
 									: html`<ha-icon icon="${item.icon}" style="--mdc-icon-size: ${Math.min(wPx, hPx) * 0.6}px;"></ha-icon>`
 							}
