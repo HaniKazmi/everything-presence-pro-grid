@@ -311,6 +311,20 @@ describe("epp-furniture-overlay DOM rendering", () => {
 		document.body.removeChild(c);
 	});
 
+	it("hides edge handles below the 44px touch threshold when narrow", () => {
+		// 400mm → ~39px per side: above desktop 30 but below touch 44.
+		const el = createOverlay({
+			furniture: [{ ...SAMPLE_FURNITURE, width: 400, height: 400 }],
+			selectedFurnitureId: "f1",
+		});
+		(el as any)._isNarrow = true;
+		const c = renderTo((el as any).render());
+
+		expect(c.querySelectorAll(".furn-handle").length).toBe(4); // corners only
+
+		document.body.removeChild(c);
+	});
+
 	it("does not mark a selected item as .selected when not editing", () => {
 		// Without editing, the blue selection outline/glow must not show either —
 		// the item renders as a plain, unselected icon.
@@ -324,6 +338,30 @@ describe("epp-furniture-overlay DOM rendering", () => {
 		expect(c.querySelector(".furniture-item.selected")).toBeNull();
 
 		document.body.removeChild(c);
+	});
+
+	it("shows edge handles at that same ~39px size on desktop (30px)", () => {
+		const el = createOverlay({
+			furniture: [{ ...SAMPLE_FURNITURE, width: 400, height: 400 }],
+			selectedFurnitureId: "f1",
+		});
+		// _isNarrow defaults to false (desktop)
+		const c = renderTo((el as any).render());
+
+		expect(c.querySelectorAll(".furn-handle").length).toBe(8);
+
+		document.body.removeChild(c);
+	});
+
+	it("tracks the narrow breakpoint across connect / change / disconnect", () => {
+		const el = createOverlay();
+		document.body.appendChild(el); // connectedCallback: seeds from matchMedia
+		// happy-dom's matchMedia reports matches:false (wide) by default.
+		expect((el as any)._isNarrow).toBe(false);
+		// Exercise the change handler directly (happy-dom won't emit the event).
+		(el as any)._onNarrowMql({ matches: true } as MediaQueryList);
+		expect((el as any)._isNarrow).toBe(true);
+		document.body.removeChild(el); // disconnectedCallback: removes the listener
 	});
 
 	it("positions furniture items correctly based on room coordinates", () => {

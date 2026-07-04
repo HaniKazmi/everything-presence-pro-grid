@@ -1,5 +1,5 @@
 import { css, html, LitElement, nothing, svg } from "lit";
-import { property } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 import { FLOOR_PLAN_SVGS } from "../constants.js";
 import type { FurnitureItem } from "../lib/furniture.js";
@@ -8,6 +8,7 @@ import {
 	DEFAULT_TEXT_FONT,
 	DEFAULT_TEXT_SIZE_MM,
 	EDGE_HANDLE_MIN_DESKTOP_PX,
+	EDGE_HANDLE_MIN_TOUCH_PX,
 	fontStack,
 	getResizeCursor,
 	mmToPx,
@@ -40,6 +41,27 @@ export class EppFurnitureOverlay extends LitElement {
 		string,
 		FurnitureItemTone
 	>;
+
+	// True on narrow/touch viewports (the same ≤819px breakpoint that grows
+	// handle hit-areas to 44px). Drives the larger edge-handle threshold so
+	// edge and corner hit-areas don't collide on small items.
+	@state() private _isNarrow = false;
+	private _narrowMql?: MediaQueryList;
+	private _onNarrowMql = (e: MediaQueryListEvent | MediaQueryList): void => {
+		this._isNarrow = e.matches;
+	};
+
+	connectedCallback(): void {
+		super.connectedCallback();
+		this._narrowMql = window.matchMedia("(max-width: 819px)");
+		this._isNarrow = this._narrowMql.matches;
+		this._narrowMql.addEventListener("change", this._onNarrowMql);
+	}
+
+	disconnectedCallback(): void {
+		super.disconnectedCallback();
+		this._narrowMql?.removeEventListener("change", this._onNarrowMql);
+	}
 
 	static styles = css`
 		:host {
@@ -315,6 +337,9 @@ export class EppFurnitureOverlay extends LitElement {
 
 		const startCol = roomStartCol(this.roomWidth);
 		const step = this.cellPx + this.gapPx;
+		const edgeHandleMinPx = this._isNarrow
+			? EDGE_HANDLE_MIN_TOUCH_PX
+			: EDGE_HANDLE_MIN_DESKTOP_PX;
 
 		const interactive = this.sidebarTab === "furniture";
 		return html`
@@ -416,7 +441,7 @@ export class EppFurnitureOverlay extends LitElement {
 											item.lockAspect,
 											wPx,
 											hPx,
-											EDGE_HANDLE_MIN_DESKTOP_PX,
+											edgeHandleMinPx,
 										).map(
 											(h) => html`
 												<div
