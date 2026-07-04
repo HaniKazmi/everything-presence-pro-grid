@@ -422,6 +422,9 @@ export class EppFurnitureOverlay extends LitElement {
 					// SVG furniture: scale stroke widths by the geometric mean of
 					// the x/y scale so a non-uniform stretch keeps balanced line
 					// weights (paired with vector-effect: non-scaling-stroke).
+					// Object.hasOwn (not bare indexing / `in`): a plain-object catalog
+					// makes prototype members ("constructor", …) truthy, which would
+					// render garbage.
 					const svgPlan =
 						item.type === "svg" && Object.hasOwn(FLOOR_PLAN_SVGS, item.icon)
 							? FLOOR_PLAN_SVGS[item.icon]

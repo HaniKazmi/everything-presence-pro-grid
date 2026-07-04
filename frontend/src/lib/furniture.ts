@@ -236,9 +236,12 @@ export function isProportionalResize(
  * Each edge pair is gated by the length of the side it sits on: top/bottom
  * (`n`/`s`) by width, left/right (`e`/`w`) by height. Below the threshold an
  * edge handle sits too close to its corner for the two touch targets to be told
- * apart, so only corners show. Threshold ≈ the hit-area size, so an edge handle
- * only appears once its side clears the corner: 30px on desktop (22px hit-area)
- * and 44px on touch (44px hit-area, `max-width: 819px`).
+ * apart, so only corners show. 30px on desktop (22px hit-area) is a deliberate
+ * reach-vs-overlap tradeoff, not the point the hit-boxes fully clear — at 30px
+ * the edge and corner hit-boxes still overlap a little; that's accepted so
+ * small items still get edge handles. They only fully clear above ~44px. On
+ * touch, 44px matches the larger 44px hit-area (`max-width: 819px`), so there
+ * they do clear.
  */
 export const EDGE_HANDLE_MIN_DESKTOP_PX = 30;
 export const EDGE_HANDLE_MIN_TOUCH_PX = 44;

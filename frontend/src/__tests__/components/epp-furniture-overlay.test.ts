@@ -406,6 +406,34 @@ describe("epp-furniture-overlay DOM rendering", () => {
 
 		document.body.removeChild(c);
 	});
+
+	it("keeps the old transform-scaled stroke width for a native-aspect item (BWC)", () => {
+		// BWC invariant: when the item's width:height ratio matches the icon's
+		// own viewBox ratio (native aspect, no stretch), sx === sy, so the
+		// geometric-mean multiplier k === s (the uniform scale) — the stroke
+		// ends up exactly base·s, identical to the old (pre-non-uniform-scale)
+		// transform-scaled behaviour, never distorted.
+		//
+		// armchair viewBox="4 4 92 82" (vbW=92, vbH=82), first path
+		// stroke-width="2". 920×820mm is exactly the 92:82 ratio:
+		//   wPx = 920·29/300 = 88.9333…, sx = 88.9333…/92  = 0.96666…
+		//   hPx = 820·29/300 = 79.2667…, sy = 79.2667…/82  = 0.96666…
+		//   k = sqrt(sx·sy) = 0.96666… = s
+		//   stroke-width = round(2 · 0.96666…, 3dp) = 1.933
+		const el = createOverlay({
+			furniture: [
+				{ ...SAMPLE_FURNITURE, icon: "armchair", width: 920, height: 820 },
+			],
+			selectedFurnitureId: "f1",
+		});
+		const c = renderTo((el as any).render());
+
+		const path = c.querySelector(".furn-svg path");
+		expect(path).not.toBeNull();
+		expect(path?.getAttribute("stroke-width")).toBe("1.933");
+
+		document.body.removeChild(c);
+	});
 });
 
 describe("epp-furniture-overlay gap-aware scaling (clean-map plain mode)", () => {
