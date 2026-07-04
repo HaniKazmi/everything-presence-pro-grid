@@ -263,6 +263,38 @@ describe("epp-furniture-overlay DOM rendering", () => {
 		document.body.removeChild(c);
 	});
 
+	it("does not render resize/rotate/delete handles for a selected item when not editing", () => {
+		// Selection handles are editing affordances. A still-selected item carried
+		// to a non-furniture tab must not render (or expose clickable) handles.
+		const el = createOverlay({
+			furniture: [LARGE_FURNITURE],
+			selectedFurnitureId: "f1",
+			sidebarTab: "zones",
+		});
+		const c = renderTo((el as any).render());
+
+		expect(c.querySelectorAll(".furn-handle").length).toBe(0);
+		expect(c.querySelector(".furn-rotate-handle")).toBeNull();
+		expect(c.querySelector(".furn-delete-btn")).toBeNull();
+
+		document.body.removeChild(c);
+	});
+
+	it("does not mark a selected item as .selected when not editing", () => {
+		// Without editing, the blue selection outline/glow must not show either —
+		// the item renders as a plain, unselected icon.
+		const el = createOverlay({
+			furniture: [SAMPLE_FURNITURE],
+			selectedFurnitureId: "f1",
+			sidebarTab: "zones",
+		});
+		const c = renderTo((el as any).render());
+
+		expect(c.querySelector(".furniture-item.selected")).toBeNull();
+
+		document.body.removeChild(c);
+	});
+
 	it("positions furniture items correctly based on room coordinates", () => {
 		const el = createOverlay({
 			furniture: [SAMPLE_FURNITURE],
@@ -621,6 +653,24 @@ describe("touch support CSS", () => {
 		expect(cssText).toMatch(/\.furn-handle\s*{[^}]*touch-action:\s*none/);
 		expect(cssText).toMatch(
 			/\.furn-rotate-handle\s*{[^}]*touch-action:\s*none/,
+		);
+	});
+});
+
+describe("furniture bounding box visibility", () => {
+	it("hides the bounding box border when not editing (non-interactive)", () => {
+		// The light grey box around a furniture icon is an editing affordance.
+		// When the overlay is non-interactive (any non-furniture sidebar tab) the
+		// border colour is made transparent so the icon shows without its box,
+		// while the 1px border still reserves layout so nothing shifts on tab
+		// switch.
+		const cssText = (
+			(customElements.get("epp-furniture-overlay") as any).styles as {
+				cssText: string;
+			}
+		).cssText;
+		expect(cssText).toMatch(
+			/\.furniture-overlay\.non-interactive\s+\.furniture-item\s*{[^}]*border-color:\s*transparent/,
 		);
 	});
 });

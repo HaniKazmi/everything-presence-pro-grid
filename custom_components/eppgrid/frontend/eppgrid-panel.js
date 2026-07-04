@@ -2220,44 +2220,44 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 			</div>
 		`}render(){if(!this.furniture.length)return W;const e=Bi(this.roomWidth),t=this.cellPx+this.gapPx,i="furniture"===this.sidebarTab;return N`
 			<div class="furniture-overlay ${i?"":"non-interactive"}">
-				${this.furniture.map(i=>{const s=(e-this.minCol)*t+this._mmToPx(i.x),r=(0-this.minRow)*t+this._mmToPx(i.y),o=this.selectedFurnitureId===i.id,a=this.furnitureTones?.get(i.id);if("text"===i.type){const e=this._mmToPx(i.fontSize??Cs),t=i.background?Ls(i.background):null,l=t?`background: color-mix(in srgb, ${i.background} 85%, transparent);`:"",c=i.color&&Ls(i.color)?i.color:null,h="var(--epp-text, var(--primary-text-color, #212121))";let d,p=null;c?d=c:t?d=Ks(t).color:a?(d=a.color,p=a.halo):d=h;const u=[`font-family: ${n=i.fontFamily??ys,(Es.find(e=>e.key===n)??Es[0]).stack};`,`font-size: ${e}px;`,`font-weight: ${i.bold?700:400};`,`font-style: ${i.italic?"italic":"normal"};`,`color: ${d};`,`text-align: ${i.align??xs};`,l].join(" ");return N`
+				${this.furniture.map(s=>{const r=(e-this.minCol)*t+this._mmToPx(s.x),o=(0-this.minRow)*t+this._mmToPx(s.y),a=i&&this.selectedFurnitureId===s.id,n=this.furnitureTones?.get(s.id);if("text"===s.type){const e=this._mmToPx(s.fontSize??Cs),t=s.background?Ls(s.background):null,i=t?`background: color-mix(in srgb, ${s.background} 85%, transparent);`:"",c=s.color&&Ls(s.color)?s.color:null,h="var(--epp-text, var(--primary-text-color, #212121))";let d,p=null;c?d=c:t?d=Ks(t).color:n?(d=n.color,p=n.halo):d=h;const u=[`font-family: ${l=s.fontFamily??ys,(Es.find(e=>e.key===l)??Es[0]).stack};`,`font-size: ${e}px;`,`font-weight: ${s.bold?700:400};`,`font-style: ${s.italic?"italic":"normal"};`,`color: ${d};`,`text-align: ${s.align??xs};`,i].join(" ");return N`
 							<div
-								class="furniture-item furniture-item--text${o?" selected":""}${p?" has-halo":""}"
-								data-id="${i.id}"
-								style="${p?`--epp-furniture-halo-color:${p};`:""}left: ${s}px; top: ${r}px; transform: rotate(${i.rotation}deg);"
-								@pointerdown=${e=>this._onItemPointerDown(e,i.id)}
+								class="furniture-item furniture-item--text${a?" selected":""}${p?" has-halo":""}"
+								data-id="${s.id}"
+								style="${p?`--epp-furniture-halo-color:${p};`:""}left: ${r}px; top: ${o}px; transform: rotate(${s.rotation}deg);"
+								@pointerdown=${e=>this._onItemPointerDown(e,s.id)}
 							>
-								<span class="furniture-text-content" style="${u}">${i.text??""}</span>
-								${o?this._renderSelectionControls(i):W}
+								<span class="furniture-text-content" style="${u}">${s.text??""}</span>
+								${a?this._renderSelectionControls(s):W}
 							</div>
-						`}var n;const l=this._mmToPx(i.width),c=this._mmToPx(i.height);return N`
+						`}var l;const c=this._mmToPx(s.width),h=this._mmToPx(s.height);return N`
 						<div
-							class="furniture-item${o?" selected":""}${a?" has-halo":""}"
-							data-id="${i.id}"
+							class="furniture-item${a?" selected":""}${n?" has-halo":""}"
+							data-id="${s.id}"
 							style="
-								${a?`--epp-furniture-color:${a.color};--epp-furniture-halo-color:${a.halo};`:""}
-								left: ${s}px; top: ${r}px;
-								width: ${l}px; height: ${c}px;
-								transform: rotate(${i.rotation}deg);
+								${n?`--epp-furniture-color:${n.color};--epp-furniture-halo-color:${n.halo};`:""}
+								left: ${r}px; top: ${o}px;
+								width: ${c}px; height: ${h}px;
+								transform: rotate(${s.rotation}deg);
 							"
-							@pointerdown=${e=>this._onItemPointerDown(e,i.id)}
+							@pointerdown=${e=>this._onItemPointerDown(e,s.id)}
 						>
-							${"svg"===i.type&&Object.hasOwn(Di,i.icon)?Y`<svg viewBox="${Di[i.icon].viewBox}" preserveAspectRatio="none" class="furn-svg">
-										${ni(Di[i.icon].content)}
-									</svg>`:N`<ha-icon icon="${i.icon}" style="--mdc-icon-size: ${.6*Math.min(l,c)}px;"></ha-icon>`}
-							${o?N`
+							${"svg"===s.type&&Object.hasOwn(Di,s.icon)?Y`<svg viewBox="${Di[s.icon].viewBox}" preserveAspectRatio="none" class="furn-svg">
+										${ni(Di[s.icon].content)}
+									</svg>`:N`<ha-icon icon="${s.icon}" style="--mdc-icon-size: ${.6*Math.min(c,h)}px;"></ha-icon>`}
+							${a?N`
 										<!-- Resize handles (cursor follows visual rotation) -->
-										${(h=i.lockAspect,d=Math.min(l,c)<72,h||d?ms:fs).map(e=>N`
+										${(d=s.lockAspect,p=Math.min(c,h)<72,d||p?ms:fs).map(e=>N`
 												<div
 													class="furn-handle furn-handle-${e}"
-													style="cursor: ${function(e,t){const i=e.includes("e")?1:e.includes("w")?-1:0,s=e.includes("s")?1:e.includes("n")?-1:0,r=((180*Math.atan2(i,-s)/Math.PI+t)%180+180)%180;switch(45*Math.round(r/45)%180){case 0:return"ns-resize";case 45:return"nesw-resize";case 90:return"ew-resize";default:return"nwse-resize"}}(e,i.rotation)};"
-													@pointerdown=${t=>this._onResizePointerDown(t,i.id,e)}
+													style="cursor: ${function(e,t){const i=e.includes("e")?1:e.includes("w")?-1:0,s=e.includes("s")?1:e.includes("n")?-1:0,r=((180*Math.atan2(i,-s)/Math.PI+t)%180+180)%180;switch(45*Math.round(r/45)%180){case 0:return"ns-resize";case 45:return"nesw-resize";case 90:return"ew-resize";default:return"nwse-resize"}}(e,s.rotation)};"
+													@pointerdown=${t=>this._onResizePointerDown(t,s.id,e)}
 												></div>
 											`)}
-										${this._renderSelectionControls(i)}
+										${this._renderSelectionControls(s)}
 									`:W}
 						</div>
-					`;var h,d})}
+					`;var d,p})}
 			</div>
 		`}}Ws.styles=a`
 		:host {
@@ -2281,6 +2281,10 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
 		.furniture-overlay.non-interactive .furniture-item {
 			pointer-events: none !important;
 			opacity: 0.6;
+			/* The grey box is an editing affordance — hide it outside the
+			   furniture tab. Transparent (not border: none) keeps the 1px
+			   border reserving layout so the icon doesn't shift on tab switch. */
+			border-color: transparent;
 		}
 
 		/* touch-action: none on every draggable surface — otherwise the
