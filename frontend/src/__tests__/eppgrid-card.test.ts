@@ -1285,6 +1285,79 @@ describe("card stale-bundle auto-reload", () => {
 		expect(reload).toHaveBeenCalledTimes(1);
 	});
 
+	it("does not issue a version query on every hass push while the backend is coming up", async () => {
+		// While pending (integration still starting → card_hash null), a burst of
+		// hass state updates must NOT each fire a frontend_version WS call, or a
+		// busy dashboard with several cards would spam the endpoint. Retries are
+		// timer-driven, not tied to hass updates.
+		const conn = { subscribeMessage: vi.fn(async () => vi.fn()) };
+		const callWS = vi.fn(async (msg: { type: string }) => {
+			if (msg.type === "eppgrid/frontend_version") {
+				return { hash: "PANEL", card_hash: null }; // not ready yet
+			}
+			return { devices: [] };
+		});
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "dev-storm" });
+		const a = el as any;
+		a._currentBundleHash = "old";
+		a._reloadPage = vi.fn();
+		el.hass = { connection: conn, callWS, locale: { language: "en" } } as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		await flush();
+
+		const countVersion = () =>
+			(callWS as any).mock.calls.filter(
+				(c: any[]) => c[0]?.type === "eppgrid/frontend_version",
+			).length;
+		const before = countVersion();
+
+		// A burst of state updates on the SAME connection.
+		for (let i = 0; i < 5; i++) {
+			el.hass = {
+				connection: conn,
+				callWS,
+				locale: { language: "en" },
+			} as never;
+		}
+		await flush();
+
+		// The pushes added no new version queries.
+		expect(countVersion()).toBe(before);
+	});
+
+	it("retries on a timer while the backend is still coming up, then reloads", async () => {
+		let cardHash: string | null = null; // integration not up yet
+		const callWS = vi.fn(async (msg: { type: string }) => {
+			if (msg.type === "eppgrid/frontend_version") {
+				return { hash: "PANEL", card_hash: cardHash };
+			}
+			return { devices: [] };
+		});
+		const el = document.createElement("eppgrid-card") as EppGridCard;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "dev-timer" });
+		const a = el as any;
+		a._currentBundleHash = "old";
+		a._bundleRetryMs = 5; // fast retry for the test
+		const reload = vi.fn();
+		a._reloadPage = reload;
+		el.hass = {
+			connection: { subscribeMessage: vi.fn(async () => vi.fn()) },
+			callWS,
+			locale: { language: "en" },
+		} as never;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		await flush();
+		expect(reload).not.toHaveBeenCalled(); // backend not ready → retry armed
+
+		// Backend comes up; the scheduled retry picks up the new hash.
+		cardHash = "new";
+		await new Promise((r) => setTimeout(r, 30));
+		expect(reload).toHaveBeenCalledTimes(1);
+	});
+
 	it("reloads the page via location.reload by default", () => {
 		const el = document.createElement("eppgrid-card") as EppGridCard;
 		const original = window.location.reload;
