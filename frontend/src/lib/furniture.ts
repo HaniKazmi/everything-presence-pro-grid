@@ -471,6 +471,29 @@ export function getResizeCursor(handle: string, rotationDeg: number): string {
 }
 
 /**
+ * Scale every `stroke-width` in an SVG markup string by a uniform factor.
+ *
+ * Paired with CSS `vector-effect: non-scaling-stroke`, this keeps a
+ * disproportionately scaled furniture item's line weights balanced: the caller
+ * passes the geometric mean of the item's x/y scale, so strokes grow with
+ * overall size while horizontal and vertical lines stay equally thick. Only
+ * numeric `stroke-width="…"` values are touched — fills, colours and dash
+ * arrays are untouched, and the ratios between the icon's own line weights are
+ * preserved.
+ *
+ * @param content SVG inner markup (from `FLOOR_PLAN_SVGS[...].content`)
+ * @param k Multiplier (>= 0); 1 leaves every value unchanged
+ * @returns The markup with each stroke-width multiplied by k (rounded to 3dp)
+ */
+export function scaleSvgStrokeWidths(content: string, k: number): string {
+	return content.replace(
+		/stroke-width="([\d.]+)"/g,
+		(_match, w: string) =>
+			`stroke-width="${Math.round(Number(w) * k * 1000) / 1000}"`,
+	);
+}
+
+/**
  * Compute the new rotation angle for a furniture item being rotated.
  *
  * @param origRotation Original rotation in degrees

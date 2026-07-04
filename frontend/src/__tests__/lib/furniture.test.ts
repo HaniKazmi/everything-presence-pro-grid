@@ -9,6 +9,7 @@ import {
 	estimateTextBox,
 	fontStack,
 	isFurnitureOutsideGrid,
+	scaleSvgStrokeWidths,
 	TEXT_FONTS,
 	TEXT_SIZE_MAX_MM,
 	TEXT_SIZE_MIN_MM,
@@ -260,5 +261,45 @@ describe("visibleHandles", () => {
 	it("exposes desktop and touch thresholds", () => {
 		expect(EDGE_HANDLE_MIN_DESKTOP_PX).toBe(30);
 		expect(EDGE_HANDLE_MIN_TOUCH_PX).toBe(44);
+	});
+});
+
+describe("scaleSvgStrokeWidths", () => {
+	it("multiplies a stroke-width by the factor", () => {
+		expect(scaleSvgStrokeWidths('<path stroke-width="2"/>', 1.5)).toBe(
+			'<path stroke-width="3"/>',
+		);
+	});
+
+	it("scales every occurrence and preserves ratios", () => {
+		expect(
+			scaleSvgStrokeWidths('<a stroke-width="1"/><b stroke-width="2"/>', 3),
+		).toBe('<a stroke-width="3"/><b stroke-width="6"/>');
+	});
+
+	it("handles decimal widths", () => {
+		expect(
+			scaleSvgStrokeWidths('x stroke-width="1.5" y stroke-width="2.5"', 2),
+		).toBe('x stroke-width="3" y stroke-width="5"');
+	});
+
+	it("leaves fills, colours and dash arrays untouched", () => {
+		const src =
+			'<path fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3"/>';
+		expect(scaleSvgStrokeWidths(src, 2)).toBe(
+			'<path fill="none" stroke="currentColor" stroke-width="4" stroke-dasharray="4 3"/>',
+		);
+	});
+
+	it("returns identical values for k = 1", () => {
+		const src = '<path stroke-width="2"/><path stroke-width="1.5"/>';
+		expect(scaleSvgStrokeWidths(src, 1)).toBe(src);
+	});
+
+	it("rounds to 3 decimal places", () => {
+		// 2 * sqrt(2) ≈ 2.828
+		expect(scaleSvgStrokeWidths('<path stroke-width="2"/>', Math.SQRT2)).toBe(
+			'<path stroke-width="2.828"/>',
+		);
 	});
 });
