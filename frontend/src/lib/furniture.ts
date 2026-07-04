@@ -232,15 +232,16 @@ export function isProportionalResize(
 }
 
 /**
- * On-screen size (px, shorter side) below which an unlocked item shows corner
- * handles only. Below this, an edge handle sits close enough to its adjacent
- * corner handle that their ~44px hit areas overlap and a finger can't reliably
- * pick between them; collapsing to corners keeps the safe (proportional)
- * default. Set below 2× the touch target to let edges appear on fairly small
- * items, trading a little hit-area overlap for reach. Zooming in (larger
- * cellPx) reveals the edge handles. Tunable.
+ * On-screen size (px) a furniture side must reach for its edge handles to show.
+ * Each edge pair is gated by the length of the side it sits on: top/bottom
+ * (`n`/`s`) by width, left/right (`e`/`w`) by height. Below the threshold an
+ * edge handle sits too close to its corner for the two touch targets to be told
+ * apart, so only corners show. Threshold ≈ the hit-area size, so an edge handle
+ * only appears once its side clears the corner: 30px on desktop (22px hit-area)
+ * and 44px on touch (44px hit-area, `max-width: 819px`).
  */
-export const EDGE_HANDLE_MIN_PX = 72;
+export const EDGE_HANDLE_MIN_DESKTOP_PX = 30;
+export const EDGE_HANDLE_MIN_TOUCH_PX = 44;
 
 // All eight resize handles, in render order. CORNER_HANDLES derives from this
 // via isCornerHandle, so the corner/edge split lives in exactly one place.
@@ -250,19 +251,32 @@ const CORNER_HANDLES = ALL_HANDLES.filter(isCornerHandle);
 /**
  * Which resize handles to render for a selected item.
  *
- * Corner handles are always shown (proportional resize). Edge handles — which
- * stretch a single axis — are shown only for an unlocked item that is large
- * enough on screen for the extra touch targets to be distinguishable.
+ * Corner handles are always shown (proportional resize). Edge handles are shown
+ * per-side: top & bottom (`n`/`s`, along the horizontal edges) when the item is
+ * at least `minPx` wide; left & right (`e`/`w`, along the vertical edges) when
+ * it is at least `minPx` tall. An aspect-locked item never distorts, so it gets
+ * corners only.
  *
  * @param hardLock Whether the item is aspect-locked (never distortable)
- * @param tooSmall Whether the item is below EDGE_HANDLE_MIN_PX on its short side
- * @returns Handle ids to render
+ * @param widthPx On-screen width in px
+ * @param heightPx On-screen height in px
+ * @param minPx Threshold a side must reach to show its edge handles
+ * @returns Handle ids to render, in render order
  */
 export function visibleHandles(
 	hardLock: boolean,
-	tooSmall: boolean,
+	widthPx: number,
+	heightPx: number,
+	minPx: number,
 ): readonly string[] {
-	return hardLock || tooSmall ? CORNER_HANDLES : ALL_HANDLES;
+	if (hardLock) return CORNER_HANDLES;
+	const showTopBottom = widthPx >= minPx; // n, s sit on the horizontal edges
+	const showLeftRight = heightPx >= minPx; // e, w sit on the vertical edges
+	return ALL_HANDLES.filter((h) => {
+		if (isCornerHandle(h)) return true;
+		if (h === "n" || h === "s") return showTopBottom;
+		return showLeftRight; // "e" || "w"
+	});
 }
 
 /**

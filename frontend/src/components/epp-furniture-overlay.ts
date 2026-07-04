@@ -7,7 +7,7 @@ import {
 	DEFAULT_TEXT_ALIGN,
 	DEFAULT_TEXT_FONT,
 	DEFAULT_TEXT_SIZE_MM,
-	EDGE_HANDLE_MIN_PX,
+	EDGE_HANDLE_MIN_DESKTOP_PX,
 	fontStack,
 	getResizeCursor,
 	mmToPx,
@@ -414,7 +414,9 @@ export class EppFurnitureOverlay extends LitElement {
 										<!-- Resize handles (cursor follows visual rotation) -->
 										${visibleHandles(
 											item.lockAspect,
-											Math.min(wPx, hPx) < EDGE_HANDLE_MIN_PX,
+											wPx,
+											hPx,
+											EDGE_HANDLE_MIN_DESKTOP_PX,
 										).map(
 											(h) => html`
 												<div

@@ -4,12 +4,15 @@ import {
 	createTextItem,
 	DEFAULT_TEXT_FONT,
 	DEFAULT_TEXT_SIZE_MM,
+	EDGE_HANDLE_MIN_DESKTOP_PX,
+	EDGE_HANDLE_MIN_TOUCH_PX,
 	estimateTextBox,
 	fontStack,
 	isFurnitureOutsideGrid,
 	TEXT_FONTS,
 	TEXT_SIZE_MAX_MM,
 	TEXT_SIZE_MIN_MM,
+	visibleHandles,
 } from "../../lib/furniture.js";
 
 describe("isFurnitureOutsideGrid", () => {
@@ -197,5 +200,65 @@ describe("text label helpers", () => {
 		expect(item.y).toBeGreaterThan(0);
 		expect(item.width).toBeGreaterThan(0);
 		expect(item.height).toBeGreaterThan(0);
+	});
+});
+
+describe("visibleHandles", () => {
+	it("shows all eight handles when both sides meet the threshold", () => {
+		expect(visibleHandles(false, 100, 100, 30)).toEqual([
+			"n",
+			"s",
+			"e",
+			"w",
+			"ne",
+			"nw",
+			"se",
+			"sw",
+		]);
+	});
+
+	it("shows only corners for an aspect-locked item", () => {
+		expect(visibleHandles(true, 100, 100, 30)).toEqual([
+			"ne",
+			"nw",
+			"se",
+			"sw",
+		]);
+	});
+
+	it("shows top/bottom (not left/right) when only width meets the threshold", () => {
+		expect(visibleHandles(false, 100, 10, 30)).toEqual([
+			"n",
+			"s",
+			"ne",
+			"nw",
+			"se",
+			"sw",
+		]);
+	});
+
+	it("shows left/right (not top/bottom) when only height meets the threshold", () => {
+		expect(visibleHandles(false, 10, 100, 30)).toEqual([
+			"e",
+			"w",
+			"ne",
+			"nw",
+			"se",
+			"sw",
+		]);
+	});
+
+	it("shows only corners when neither side meets the threshold", () => {
+		expect(visibleHandles(false, 10, 10, 30)).toEqual(["ne", "nw", "se", "sw"]);
+	});
+
+	it("treats the threshold as inclusive (>=)", () => {
+		expect(visibleHandles(false, 30, 30, 30)).toHaveLength(8);
+		expect(visibleHandles(false, 29, 29, 30)).toEqual(["ne", "nw", "se", "sw"]);
+	});
+
+	it("exposes desktop and touch thresholds", () => {
+		expect(EDGE_HANDLE_MIN_DESKTOP_PX).toBe(30);
+		expect(EDGE_HANDLE_MIN_TOUCH_PX).toBe(44);
 	});
 });
