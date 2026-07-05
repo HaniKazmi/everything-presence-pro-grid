@@ -49,7 +49,10 @@ fi
 # installed rather than hard-failing a contributor who hasn't set them up.
 printf '\n▶ mdformat --check\n'
 if command -v mdformat >/dev/null 2>&1; then
-    if ! git ls-files -- docs README.md | { grep '\.md$' || true; } | xargs -r mdformat --check; then
+    # Portable equivalent of the CI docs gate. We avoid `xargs -r` (a GNU
+    # extension that BSD/macOS xargs rejects) by guarding the empty case here.
+    md_files=$(git ls-files -- docs README.md | { grep '\.md$' || true; })
+    if [ -n "$md_files" ] && ! printf '%s\n' "$md_files" | xargs mdformat --check; then
         printf '\n✗ Markdown formatting — run: git ls-files -- docs README.md | grep "\\.md$" | xargs mdformat\n'
         exit 1
     fi
