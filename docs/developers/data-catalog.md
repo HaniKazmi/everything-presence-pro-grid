@@ -247,25 +247,29 @@ the subscribe command resolves it to a MAC server-side).
 
 #### `eppgrid/overview/subscribe`
 
-Streams read-only overview data for one device. The command owns the session
-lifecycle — it opens a refcounted aioesphomeapi session (shared with any
-concurrent panel or OTA sessions on the same device) and releases it on
-unsubscribe.
+Streams read-only overview data for one device. The command registers a
+**durable state stream** with the manager rather than opening a session itself:
+the manager owns the refcounted session (shared with any concurrent panel or OTA
+sessions on the same device) and re-arms the stream on a fresh connection after
+the device flaps, instead of leaving the card frozen — see architecture.md →
+*Durable frontend state streams*.
 
 **Request:** `{ "type": "eppgrid/overview/subscribe", "device_id": str }`
 
-**Events (in order):**
+**Events (in order, and repeating for the life of the subscription):**
 
 1. `{ "snapshot": <stored device config dict> }` — sent immediately on subscribe
     (even when the device is offline) so the card can draw the room layout from
     stored data.
-1. One of:
-    - `{ "targets": [...], "sensors": {...}, "zones": {...} }` — live data
-        frames, same shape as the `subscribe_grid_targets` payload, streamed at
-        the same rates (display_interval / zone_state_interval) while the session
-        is open.
-    - `{ "available": false }` — sent when the device session can't be opened
-        (device offline or unknown) and no further frames follow.
+1. `{ "available": bool }` — reflects the stream's live/lost state: `true` once
+    the stream (re)arms successfully — including the very first arm right after
+    subscribing — and `false` whenever it loses its connection (device offline,
+    config-entry reload, a reconnect attempt that fails). No further data
+    frames arrive while `available` is `false`; they resume once a following
+    `true` arrives.
+1. `{ "targets": [...], "sensors": {...}, "zones": {...} }` — live data frames,
+    same shape as the `subscribe_grid_targets` payload, streamed at the same
+    rates (display_interval / zone_state_interval) while the stream is armed.
 
 Errors: `device_not_found` when the `device_id` doesn't match a known device.
 
@@ -273,17 +277,22 @@ Errors: `device_not_found` when the `device_id` doesn't match a known device.
 
 Streams the on-device activity heatmap for one device — the non-admin,
 `device_id`-based counterpart of the admin `subscribe_heatmap` command, used by
-the dashboard card's **Show heatmap** option. Like `overview/subscribe` it owns
-a refcounted session, and it counts under `heatmap_subs` (the subscriber counter
-that turns on the firmware's `heatmap_interval` emission).
+the dashboard card's **Show heatmap** option. Like `overview/subscribe` it
+registers a durable state stream (so it also recovers automatically after the
+device flaps) and counts under `heatmap_subs` (the subscriber counter that turns
+on the firmware's `heatmap_interval` emission). Its wire contract is
+deliberately unchanged from before durable streams, though: it never relays live
+`available` events, because already-deployed card bundles treat any message
+without a `cells` field as an empty heatmap — see architecture.md → *Durable
+frontend state streams*.
 
 **Request:**
 `{ "type": "eppgrid/overview/subscribe_heatmap", "device_id": str }`
 
 **Events:** `{ "cells": [int, ...] }` — the decoded activity cells (0-255,
-row-major), streamed while the session is open; or `{ "available": false }` when
-the device session can't be opened. No snapshot is sent (unlike
-`overview/subscribe`).
+row-major), streamed while the stream is armed; or, at most once, right after
+subscribing, `{ "available": false }` if the stream could not be armed. No
+snapshot is sent (unlike `overview/subscribe`).
 
 Errors: `device_not_found` when the `device_id` doesn't match a known device.
 

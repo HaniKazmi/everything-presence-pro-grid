@@ -285,6 +285,52 @@ rename. The integration is now the source of truth for firmware-update detection
 (`update_interval: never` in the variant YAMLs) to eliminate the recurring
 ~30-50 KB TLS-handshake spike to GitHub Pages.
 
+### Durable frontend state streams (`device_manager/_streams.py`)
+
+A `DeviceConnection` is disposable — a device flap kills it, and its death
+clears every state subscriber registered on it (`_release_references`). A
+frontend client's subscription is not: the dashboard card can sit on a wall
+tablet for days. The two are bridged by **durable state streams**: a
+`StateStream` record (`_streams.py`) that `DeviceManager` registers, arms, and
+re-arms across connection replacement.
+
+A stream stores a *factory* (`make_on_state(mac, conn)`), not a bound callback,
+because the device's entity keys are only knowable from the live connection —
+and can change across an OTA — so a re-arm rebuilds the callback against the
+replacement connection instead of reusing one bound to the dead one.
+
+`_ensure_streams(mac)` is the reconciler: it arms every unarmed stream for a
+device, and runs on three triggers — a stream is added
+(`async_add_state_stream`), a session is lost (`DeviceConnection(on_stop=…)` →
+`_on_session_lost`), or the device becomes available again
+(`_on_device_available`). A bounded backoff (`_schedule_stream_retry`, delays
+1/3/9/30s with the last one repeating) covers the case where HA reports the
+device available but the manager's own connect still fails; it stands down once
+the device goes offline, since recovery then comes from the availability
+transition instead.
+
+Subscriber counts (`_target_subs`, which gate the device's emission pipeline —
+see data-catalog.md → *Pipeline intervals*) are taken when a stream is **added**
+and released when it **closes**, never on arm/disarm. They are per-mac rather
+than per-connection precisely so they survive a connection replacement.
+
+Arm/disarm is reported to the stream's owner through `on_availability(bool)`.
+The overview WS commands (`websocket_api/_overview.py`,
+`_start_durable_target_stream`) hand their streams to the manager this way and
+relay the notification to the card as `{"available": …}` events — but only for
+`eppgrid/overview/subscribe`. `eppgrid/overview/subscribe_heatmap` deliberately
+keeps its wire contract byte-identical to what shipped before durable streams
+(at most one subscribe-time `{"available": false}`, never a live event):
+already-deployed card bundles blank the heatmap overlay on any message without a
+`cells` field, so a live availability event would blank a working heatmap on
+every flap.
+
+The admin panel's streams (`_devices.py::_start_target_stream`) were
+deliberately not converted — the panel already recovers on its own by watching
+the device list and re-subscribing (`onSelectedAvailable` in
+`device-controller.ts`). The two mechanisms coexist safely: both go through the
+same refcounted session.
+
 ### Storage (`storage.py`)
 
 Persists per-device config (calibration, room layout, zone slots, sensor
@@ -478,10 +524,13 @@ live-overview view. No duplication of rendering logic.
 - `eppgrid/overview/list_devices` — returns the list of EPP devices (device_id,
     mac, name) for the card editor's device picker. Synchronous, no admin gate.
 - `eppgrid/overview/subscribe` — sends a stored-layout snapshot (so the card can
-    draw the room even while the device is offline), then opens a refcounted
-    device session and streams the same `{targets, sensors, zones}` frames as
-    `subscribe_grid_targets`, reusing `_make_grid_target_on_state`. The command
-    owns the session lifecycle (open + release).
+    draw the room even while the device is offline), then registers a durable
+    state stream that emits the same `{targets, sensors, zones}` frames as
+    `subscribe_grid_targets`, reusing `_make_grid_target_on_state`. The manager
+    owns the session lifecycle and re-arms the stream after a connection loss —
+    see
+    [Durable frontend state streams](#durable-frontend-state-streams-device_manager_streamspy)
+    above.
 
 **`OverviewStore` (`frontend/src/card/overview-store.ts`).** A module-level,
 ref-counted store keyed by `device_id`. Multiple cards for the same device share

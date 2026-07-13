@@ -4,6 +4,15 @@ User-facing changes to Everything Presence Pro Grid. For full release assets and
 firmware downloads, see the
 [GitHub releases page](https://github.com/clintongormley/everything-presence-pro-grid/releases).
 
+## v1.6.0 — unreleased
+
+### Fixes
+
+- **The dashboard card recovers after a device's connection drops.** If a device
+    briefly lost its connection — for example during a Wi-Fi hiccup — the live
+    map and sensor values on a dashboard card used to freeze until you reloaded
+    the dashboard. The card now picks back up on its own.
+
 ## v1.5.1 — 2026-07-04
 
 **Everything Presence Pro Grid is now available directly in HACS.** The headline
@@ -18,8 +27,8 @@ an on-device **activity heatmap**, and **text labels** for your room layout.
     show the map, the sensors, or both, and control which sensor groups and map
     layers appear. The card heading (Primary and Secondary text) supports Jinja
     templates, so it can show live values from any entity. Two display controls
-    let you tune the map: **Show grid** turns off the gridlines, zone colours and
-    occupancy glow for a clean, plain map that still shows live targets and
+    let you tune the map: **Show grid** turns off the gridlines, zone colours
+    and occupancy glow for a clean, plain map that still shows live targets and
     furniture, and **Rest-of-room colour** sets the colour of the unpainted area
     of the room. The card fills the full width of its dashboard column and lays
     out correctly on narrow screens. Non-admin household users can view
