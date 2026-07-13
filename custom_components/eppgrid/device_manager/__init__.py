@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator
 from collections.abc import Callable
 from collections.abc import Coroutine
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 
 from aioesphomeapi import APIConnectionError
@@ -629,6 +630,10 @@ class DeviceManager:
         self._active_connections.clear()
         self._session_refcounts.clear()
         self._target_subs.clear()
+        # Streams are dead with the connections above. `_stopping` already stops
+        # `_on_session_lost` (fired by those disconnects) from re-arming them.
+        self._state_streams.clear()
+        self._stream_locks.clear()
         self._static_presence_cache.clear()
 
     def _ota_manifest_url(self, mac: str) -> str:
@@ -1382,6 +1387,18 @@ class DeviceManager:
                 unsub = self._entry_update_unsubs.pop(dev.esphome_config_entry_id, None)
                 if unsub is not None:
                     unsub()
+        # Drop the device's streams: nothing can ever arm them again. The close
+        # above already disarmed and notified them IF a session was live (its
+        # on_stop ran `_on_session_lost`); this covers the no-session case, and
+        # `notify` de-dupes when it didn't.
+        # This is the ONLY place `_stream_locks[mac]` may be popped: the mac has no
+        # streams left, so no `_ensure_streams` pass can mint a second lock object
+        # for it and run concurrently with a pass still holding the old one.
+        for stream in self._state_streams.pop(mac, []):
+            self._disarm_stream(stream)
+            if not stream.closed:
+                stream.notify(False)
+        self._stream_locks.pop(mac, None)
         self._build_flags.pop(mac, None)
         self._session_locks.pop(mac, None)
         self._ota_locks.pop(mac, None)
@@ -1428,6 +1445,13 @@ class DeviceManager:
                 device_name=dev.name,
                 fw_ver=self.read_firmware_version(dev.device_id),
             )
+
+        # Re-arm durable frontend streams FIRST: a card that sat on a dashboard
+        # through the flap must resume streaming even if the config push below is
+        # skipped (entity-update guard) or fails and retries with backoff — that
+        # path can take many seconds, and until then the card shows nothing.
+        if self._state_streams.get(mac):
+            self._spawn(self._ensure_streams(mac))
 
         # Skip push if we caused this reconnect via entity registry updates.
         # Don't clear the guard here — multiple entities cycle through
@@ -1701,6 +1725,37 @@ class DeviceManager:
         with contextlib.suppress(Exception):
             conn.unsubscribe_states(cb)
         self.release_session(stream.mac, conn)
+
+    @callback
+    def _on_session_lost(self, mac: str) -> None:
+        """A session's API connection stopped — disarm its streams and re-arm.
+
+        Runs from aioesphomeapi's stop path (via `DeviceConnection.on_stop`), which
+        can be inside `async_close_session` holding `_session_locks[mac]`. The
+        reconcile therefore must NOT be awaited here: `_ensure_streams` takes
+        `_stream_locks[mac]` and then, through `async_open_session`,
+        `_session_locks[mac]` — awaiting it under the session lock would deadlock.
+        `_spawn` runs it on a fresh task (and tracks it, so async_stop drains it).
+
+        Covers both an unexpected drop and our own force-close: `_ensure_streams`
+        no-ops while the device is offline, and `_on_device_available` re-runs it
+        when the device comes back.
+
+        Subscriber counts are untouched — they belong to the client, not the
+        connection (see `_target_subs`).
+        """
+        streams = self._state_streams.get(mac)
+        if not streams:
+            return
+        # Iterate a copy: `notify` runs the client's callback, which is free to
+        # unsub in response — that removes the stream from this very list.
+        for stream in list(streams):
+            self._disarm_stream(stream)
+            if not stream.closed:
+                stream.notify(False)
+        if self._stopping:
+            return
+        self._spawn(self._ensure_streams(mac))
 
     async def _ensure_streams(self, mac: str) -> None:
         """Arm every unarmed stream for `mac`. Idempotent; safe to call often.
@@ -2080,6 +2135,9 @@ class DeviceManager:
                 noise_psk=_extract_noise_psk(dev.esphome_config_entry_id, self._hass),
                 mac=mac,
                 static_presence_cache=self._static_presence_cache,
+                # Durable state streams hold no connection of their own: this hook
+                # is how they learn the one under them died (see `_on_session_lost`).
+                on_stop=partial(self._on_session_lost, mac),
             )
             await asyncio.wait_for(conn.async_connect(), timeout=30)
             # Re-check availability after the connect: if HA flipped the

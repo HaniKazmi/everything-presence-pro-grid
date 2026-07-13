@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 from typing import Any
+from unittest.mock import ANY
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -2802,6 +2803,9 @@ class TestNoisePsk:
             noise_psk="abcdef==",
             mac="AA:BB:CC:DD:EE:FF",
             static_presence_cache=manager._static_presence_cache,
+            # A `partial` — identity-compared, so pinned by its own test
+            # (`test_open_session_passes_on_stop_hook`) rather than here.
+            on_stop=ANY,
         )
 
 
@@ -9537,3 +9541,221 @@ class TestStateStreams:
         assert manager._state_streams[mac][0].armed is True
         # One release: the ref A took for the stream that closed under it.
         assert manager.release_session.call_count == 1
+
+    async def test_session_loss_disarms_then_rearms_on_a_fresh_connection(self, hass, manager):
+        """The card's stream must survive a device flap — issue #334."""
+        mac, conn = self._armable(manager)
+        conn2 = MagicMock()
+        conn2.entities = []
+        conn2.subscribe_states = AsyncMock()
+        conn2.unsubscribe_states = MagicMock()
+        manager.async_open_session = AsyncMock(side_effect=[conn, conn2])
+        built: list[Any] = []
+        seen: list[bool] = []
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: built.append(c) or (lambda s: None),
+            on_availability=seen.append,
+        )
+        assert built == [conn]
+
+        # The device's API connection dies: aioesphomeapi fires on_stop.
+        manager._on_session_lost(mac)
+        await hass.async_block_till_done()
+
+        # Re-armed against the REPLACEMENT connection, with a callback rebuilt
+        # from the factory (entity keys are only knowable from the live conn).
+        assert built == [conn, conn2]
+        conn2.subscribe_states.assert_awaited_once()
+        assert seen == [True, False, True]
+        # The count survives the flap: taken once at add, never re-taken.
+        assert manager._target_subs[mac]["grid_target_subs"] == 1
+
+    async def test_session_loss_while_device_offline_waits_for_availability(self, hass, manager):
+        """Offline device: don't hammer it — arm when it comes back."""
+        mac, conn = self._armable(manager)
+        conn2 = MagicMock()
+        conn2.entities = []
+        conn2.subscribe_states = AsyncMock()
+        manager.async_open_session = AsyncMock(side_effect=[conn, conn2])
+        seen: list[bool] = []
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        manager._is_device_available = MagicMock(return_value=False)
+        manager._on_session_lost(mac)
+        await hass.async_block_till_done()
+
+        assert manager.async_open_session.await_count == 1  # no reopen attempt
+        assert seen == [True, False]
+        assert manager._state_streams[mac][0].armed is False
+
+        # Device comes back — the availability hook re-runs the reconciler.
+        manager._is_device_available = MagicMock(return_value=True)
+        await manager._ensure_streams(mac)
+
+        assert manager.async_open_session.await_count == 2
+        assert seen == [True, False, True]
+
+    async def test_closed_stream_is_not_rearmed(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        unsub()
+        manager.async_open_session.reset_mock()
+
+        manager._on_session_lost(mac)
+        await hass.async_block_till_done()
+
+        manager.async_open_session.assert_not_awaited()
+
+    async def test_open_session_passes_on_stop_hook(self, hass, manager):
+        """A session connection must tell the manager when it dies."""
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._is_device_available = MagicMock(return_value=True)
+        manager._on_session_lost = MagicMock()
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as conn_cls:
+            conn = conn_cls.return_value
+            conn.async_connect = AsyncMock()
+            conn.connected = True
+            await manager.async_open_session(mac)
+
+        on_stop = conn_cls.call_args.kwargs["on_stop"]
+        on_stop()
+        manager._on_session_lost.assert_called_once_with(mac)
+
+    async def test_device_removed_drops_streams(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        seen: list[bool] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        await manager._on_device_removed(mac)
+
+        assert mac not in manager._state_streams
+        assert seen == [True, False]
+
+    async def test_async_stop_drops_streams(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        await manager.async_stop()
+
+        assert manager._state_streams == {}
+
+    async def test_device_available_rearms_streams_before_the_config_push(self, hass, manager):
+        """The availability transition is the recovery trigger for a stream whose
+        device was still offline when its session died (`_ensure_streams` no-ops
+        then). It must run ahead of the config push — here the entity-update guard
+        skips that push entirely, and the card must stream regardless."""
+        mac, conn = self._armable(manager)
+        conn2 = MagicMock()
+        conn2.entities = []
+        conn2.subscribe_states = AsyncMock()
+        manager.async_open_session = AsyncMock(side_effect=[conn, conn2])
+        seen: list[bool] = []
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        manager._is_device_available = MagicMock(return_value=False)
+        manager._on_session_lost(mac)
+        await hass.async_block_till_done()
+        assert manager._state_streams[mac][0].armed is False
+
+        manager._is_device_available = MagicMock(return_value=True)
+        manager._entity_update_macs.add(mac)
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as push:
+            await manager._on_device_available(mac)
+            await hass.async_block_till_done()
+
+        push.assert_not_awaited()
+        assert manager._state_streams[mac][0].armed is True
+        assert seen == [True, False, True]
+
+    async def test_session_loss_while_stopping_spawns_nothing(self, hass, manager):
+        """async_stop disconnects every session in Phase 3 — AFTER its Phase 2 task
+        drain. A reconcile spawned from those on_stop callbacks would escape the
+        drain and outlive the config entry (which HA's test harness fails on)."""
+        mac, _conn = self._armable(manager)
+        seen: list[bool] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+        manager._stopping = True
+
+        with patch.object(manager, "_spawn") as spawn:
+            manager._on_session_lost(mac)
+
+        spawn.assert_not_called()
+        # The streams are still torn down and the clients still told.
+        assert manager._state_streams[mac][0].armed is False
+        assert seen == [True, False]
+
+    async def test_session_loss_survives_a_client_unsubbing_from_its_own_callback(self, hass, manager):
+        """`notify` runs client code, which may unsub in response — removing the
+        stream from the very list `_on_session_lost` is walking. Walking that list
+        live would skip the NEXT stream: it would keep a callback on the dead
+        connection and never hear about the outage."""
+        mac, conn = self._armable(manager)
+        unsubs: list[Any] = []
+        other: list[bool] = []
+
+        def quit_on_loss(available: bool) -> None:
+            if not available:
+                unsubs[0]()
+
+        unsubs.append(
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=quit_on_loss,
+            )
+        )
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="heatmap_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=other.append,
+        )
+        assert other == [True]
+        manager._stopping = True  # park the reconcile — it's covered elsewhere
+
+        manager._on_session_lost(mac)
+
+        # The self-unsubbing client is gone; the survivor is disarmed and informed.
+        survivor = manager._state_streams[mac][0]
+        assert survivor.counter_attr == "heatmap_subs"
+        assert survivor.armed is False
+        assert other == [True, False]
+        assert conn.unsubscribe_states.call_count == 2
