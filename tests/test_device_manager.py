@@ -11167,7 +11167,7 @@ class TestOverviewStreamRecovery:
 
     async def test_card_keeps_streaming_after_a_device_flap(self, hass, manager):
         from custom_components.eppgrid.websocket_api._devices import _make_grid_target_on_state
-        from custom_components.eppgrid.websocket_api._overview import _start_durable_target_stream
+        from custom_components.eppgrid.websocket_api._overview import _start_overview_stream
 
         mac = "AA:BB:CC:DD:EE:01"
         manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
@@ -11194,7 +11194,7 @@ class TestOverviewStreamRecovery:
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
 
-        await _start_durable_target_stream(
+        await _start_overview_stream(
             connection,
             msg,
             manager,
@@ -11252,7 +11252,7 @@ class TestOverviewStreamRecovery:
         """
         from custom_components.eppgrid.websocket_api._devices import _make_grid_target_on_state
         from custom_components.eppgrid.websocket_api._devices import _make_heatmap_on_state
-        from custom_components.eppgrid.websocket_api._overview import _start_durable_target_stream
+        from custom_components.eppgrid.websocket_api._overview import _start_overview_stream
 
         mac = "AA:BB:CC:DD:EE:01"
         manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50", device_id="dev1")
@@ -11272,7 +11272,7 @@ class TestOverviewStreamRecovery:
         connection.subscriptions = {}
 
         with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=conn):
-            await _start_durable_target_stream(
+            await _start_overview_stream(
                 connection,
                 {"id": 1, "type": "eppgrid/overview/subscribe", "device_id": "dev1"},
                 manager,
@@ -11282,7 +11282,7 @@ class TestOverviewStreamRecovery:
                 send_availability=True,
                 log_prefix="test",
             )
-            await _start_durable_target_stream(
+            await _start_overview_stream(
                 connection,
                 {"id": 2, "type": "eppgrid/overview/subscribe_heatmap", "device_id": "dev1"},
                 manager,

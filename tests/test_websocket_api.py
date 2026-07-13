@@ -7174,7 +7174,7 @@ class TestOverviewSubscribe:
         connection = MagicMock()
         connection.subscriptions = {}
         with patch(
-            "custom_components.eppgrid.websocket_api._overview._connection_is_closed",
+            "custom_components.eppgrid.websocket_api._durable_stream._connection_is_closed",
             return_value=True,
         ):
             msg = {"id": 16, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
