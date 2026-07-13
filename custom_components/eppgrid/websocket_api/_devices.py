@@ -704,7 +704,7 @@ async def websocket_subscribe_device(
         _unsub()
 
 
-# -- target stream subscriptions (raw + grid) --
+# -- panel stream subscriptions (raw + grid + heatmap) --
 
 
 async def _start_panel_stream(
@@ -742,55 +742,6 @@ async def _start_panel_stream(
         log_prefix=log_prefix,
         send_protocol_events=opted_in,
     )
-
-
-async def _start_target_stream(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict[str, Any],
-    manager: Any,
-    *,
-    counter_attr: Literal["raw_target_subs", "grid_target_subs", "heatmap_subs"],
-    make_on_state: Callable[[Any], Callable[[Any], None]],
-) -> None:
-    """Shared scaffolding for `subscribe_raw_targets` / `subscribe_grid_targets`.
-
-    Session lookup with the standard no-session error, the per-stream state
-    callback (built by ``make_on_state`` from the live session), the
-    subscriber-counter increment (``counter_attr``) with a pipeline kick,
-    and the symmetric unsubscribe.
-    """
-    mac = msg["mac"]
-    device_conn = manager.get_session(mac)
-    if device_conn is None:
-        _send_no_session(connection, msg["id"])
-        return
-
-    on_state = make_on_state(device_conn)
-    await device_conn.subscribe_states(on_state)
-    connection.send_result(msg["id"])
-
-    # Count the subscriber on the manager, keyed by mac — NOT on `device_conn`.
-    # The count must outlive this connection: when the device flaps and the
-    # session is reopened on a fresh connection, a per-connection counter would
-    # reset to zero and the recomputed pipeline would silence the device while
-    # this subscription is still live (the "target disappears" freeze).
-    manager.note_target_subscribe(mac, counter_attr)
-    manager.request_pipeline_push(mac)
-
-    @callback
-    def _unsub() -> None:
-        device_conn.unsubscribe_states(on_state)
-        # Re-fetch the manager instead of closing over `manager`: the unsub
-        # can fire after a config-entry unload tore that manager down, and
-        # the fresh lookup returning None skips the decrement + pipeline kick
-        # instead of poking a dead manager.
-        mgr = _get_manager(hass)
-        if mgr:
-            mgr.note_target_unsubscribe(mac, counter_attr)
-            mgr.request_pipeline_push(mac)
-
-    connection.subscriptions[msg["id"]] = _unsub
 
 
 # -- subscribe_raw_targets --
@@ -1091,6 +1042,7 @@ def _make_heatmap_on_state(
     {
         vol.Required("type"): "eppgrid/subscribe_heatmap",
         vol.Required("mac"): MAC_SCHEMA,
+        vol.Optional("availability", default=False): bool,
     }
 )
 @websocket_api.require_admin
@@ -1102,15 +1054,14 @@ async def websocket_subscribe_heatmap(
     msg: dict[str, Any],
     manager: Any,
 ) -> None:
-    """Stream the on-device activity heatmap for a device session."""
-    mac = msg["mac"]
-    await _start_target_stream(
-        hass,
+    """Stream the occupancy heatmap from a durable device stream."""
+    await _start_panel_stream(
         connection,
         msg,
         manager,
         counter_attr="heatmap_subs",
-        make_on_state=lambda dc: _make_heatmap_on_state(connection, msg["id"], mac, dc),
+        make_on_state=lambda mac, device_conn: _make_heatmap_on_state(connection, msg["id"], mac, device_conn),
+        log_prefix="subscribe_heatmap",
     )
 
 

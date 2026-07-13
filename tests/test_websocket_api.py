@@ -4519,48 +4519,41 @@ def test_decode_heatmap_b64_rejects_bad_input() -> None:
 class TestSubscribeHeatmap:
     """Tests for eppgrid/subscribe_heatmap."""
 
-    async def test_subscribe_heatmap_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """subscribe_heatmap returns error without active session."""
-        await setup_integration(hass, config_entry)
+    async def test_subscribe_heatmap_registers_a_durable_stream(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """The heatmap overlay is durable too (#336).
 
-        from custom_components.eppgrid.websocket_api import websocket_subscribe_heatmap
-
-        connection = MagicMock()
-        msg = {"id": 30, "type": "eppgrid/subscribe_heatmap", "mac": "AA:BB:CC:DD:EE:FF"}
-
-        await call_async_handler(hass, websocket_subscribe_heatmap, connection, msg)
-
-        connection.send_error.assert_called_once_with(
-            30,
-            "no_session",
-            "No active session — call subscribe_device first",
-            translation_domain=DOMAIN,
-            translation_key="no_active_session",
-        )
-
-    async def test_subscribe_heatmap_with_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """subscribe_heatmap registers state callback and unsubscribe."""
+        It fails the most quietly of the three: it is subscribed with `optional: true`
+        on the frontend, so a dead re-subscribe never even latches the connection
+        banner — the overlay just goes stale.
+        """
         mock_dm = await setup_integration(hass, config_entry)
-        mock_device_conn = MagicMock()
-        mock_device_conn.entities = []
-        mock_device_conn.subscribe_states = AsyncMock()
-        mock_device_conn.unsubscribe_states = MagicMock()
-        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+        register_managed_device(mock_dm)
+        unsub_stream = MagicMock()
+        mock_dm.async_add_state_stream = AsyncMock(return_value=unsub_stream)
 
         from custom_components.eppgrid.websocket_api import websocket_subscribe_heatmap
 
         connection = MagicMock()
         connection.subscriptions = {}
-        msg = {"id": 31, "type": "eppgrid/subscribe_heatmap", "mac": "AA:BB:CC:DD:EE:FF"}
+        msg = {
+            "id": 50,
+            "type": "eppgrid/subscribe_heatmap",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "availability": True,
+        }
 
         await call_async_handler(hass, websocket_subscribe_heatmap, connection, msg)
 
-        connection.send_result.assert_called_once_with(31)
-        mock_device_conn.subscribe_states.assert_awaited_once()
-        assert 31 in connection.subscriptions
-        mock_dm.note_target_subscribe.assert_called_once_with("AA:BB:CC:DD:EE:FF", "heatmap_subs")
-        connection.subscriptions[31]()
-        mock_dm.note_target_unsubscribe.assert_called_once_with("AA:BB:CC:DD:EE:FF", "heatmap_subs")
+        connection.send_result.assert_called_once_with(50)
+        assert mock_dm.async_add_state_stream.await_args.args[0] == "AA:BB:CC:DD:EE:FF"
+        assert mock_dm.async_add_state_stream.await_args.kwargs["counter_attr"] == "heatmap_subs"
+        mock_dm.get_session.assert_not_called()
+        mock_dm.note_target_subscribe.assert_not_called()
+
+        connection.subscriptions[50]()
+        unsub_stream.assert_called_once()
 
     async def test_subscribe_heatmap_emits_cells_on_state(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -4576,9 +4569,7 @@ class TestSubscribeHeatmap:
         mock_device_conn.entities = [
             TextSensorInfo(object_id="heatmap", key=42, name="Heatmap"),
         ]
-        mock_device_conn.subscribe_states = AsyncMock()
-        mock_device_conn.unsubscribe_states = MagicMock()
-        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+        mock_dm.async_add_state_stream = AsyncMock(return_value=MagicMock())
 
         from custom_components.eppgrid.websocket_api import websocket_subscribe_heatmap
 
@@ -4587,7 +4578,8 @@ class TestSubscribeHeatmap:
         msg = {"id": 32, "type": "eppgrid/subscribe_heatmap", "mac": "AA:BB:CC:DD:EE:FF"}
 
         await call_async_handler(hass, websocket_subscribe_heatmap, connection, msg)
-        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+        make_on_state = mock_dm.async_add_state_stream.await_args.kwargs["make_on_state"]
+        on_state = make_on_state("AA:BB:CC:DD:EE:FF", mock_device_conn)
         connection.send_message.reset_mock()
 
         raw = bytearray(400)
@@ -4616,9 +4608,7 @@ class TestSubscribeHeatmap:
         mock_device_conn.entities = [
             TextSensorInfo(object_id="heatmap", key=42, name="Heatmap"),
         ]
-        mock_device_conn.subscribe_states = AsyncMock()
-        mock_device_conn.unsubscribe_states = MagicMock()
-        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+        mock_dm.async_add_state_stream = AsyncMock(return_value=MagicMock())
 
         from custom_components.eppgrid.websocket_api import websocket_subscribe_heatmap
 
@@ -4627,7 +4617,8 @@ class TestSubscribeHeatmap:
         msg = {"id": 33, "type": "eppgrid/subscribe_heatmap", "mac": "AA:BB:CC:DD:EE:FF"}
 
         await call_async_handler(hass, websocket_subscribe_heatmap, connection, msg)
-        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+        make_on_state = mock_dm.async_add_state_stream.await_args.kwargs["make_on_state"]
+        on_state = make_on_state("AA:BB:CC:DD:EE:FF", mock_device_conn)
         connection.send_message.reset_mock()
 
         on_state(TextSensorState(key=42, state="", missing_state=False))
@@ -4648,9 +4639,7 @@ class TestSubscribeHeatmap:
         mock_dm = await setup_integration(hass, config_entry)
         mock_device_conn = MagicMock()
         mock_device_conn.entities = []
-        mock_device_conn.subscribe_states = AsyncMock()
-        mock_device_conn.unsubscribe_states = MagicMock()
-        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+        mock_dm.async_add_state_stream = AsyncMock(return_value=MagicMock())
 
         from custom_components.eppgrid.websocket_api import websocket_subscribe_heatmap
 
@@ -4659,7 +4648,8 @@ class TestSubscribeHeatmap:
         msg = {"id": 33, "type": "eppgrid/subscribe_heatmap", "mac": "AA:BB:CC:DD:EE:FF"}
 
         await call_async_handler(hass, websocket_subscribe_heatmap, connection, msg)
-        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+        make_on_state = mock_dm.async_add_state_stream.await_args.kwargs["make_on_state"]
+        on_state = make_on_state("AA:BB:CC:DD:EE:FF", mock_device_conn)
         connection.send_message.reset_mock()
 
         on_state(TextSensorState(key=99, state="anything", missing_state=False))
