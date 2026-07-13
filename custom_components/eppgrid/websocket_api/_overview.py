@@ -18,14 +18,12 @@ from homeassistant.core import callback
 from ..const import DOMAIN
 from . import _LOGGER
 from . import _connection_is_closed
-from . import _get_manager
 from . import _require_manager
 from ._devices import _make_grid_target_on_state
 from ._devices import _make_heatmap_on_state
 
 
-async def _start_owned_target_stream(
-    hass: HomeAssistant,
+async def _start_durable_target_stream(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
     manager: Any,
@@ -37,11 +35,13 @@ async def _start_owned_target_stream(
 ) -> None:
     """Shared scaffolding for the non-admin overview subscribe commands.
 
-    Unlike `_start_target_stream` (which assumes its admin caller already
-    opened the session via subscribe_device), these commands own the whole
-    session lifecycle themselves: resolve device_id -> mac, open a refcounted
-    session, subscribe, and degrade to {"available": False} if either step
-    fails — then release on unsubscribe.
+    The card sits on a dashboard for hours, so its stream must outlive the
+    device's `DeviceConnection`: we hand a DURABLE stream to the manager, which
+    owns the session refcount, re-arms the stream on a fresh connection after a
+    device flap, and reports liveness through `on_availability` — which we relay
+    as the `available` events the card already renders (#334). The callback is
+    rebuilt per connection from `make_on_state`, since the device's entity keys
+    are only knowable from the live connection.
     """
     device_id = msg["device_id"]
     mac = manager.mac_for_device_id(device_id)
@@ -60,25 +60,23 @@ async def _start_owned_target_stream(
         config = manager.store.devices.get(mac)
         connection.send_message(websocket_api.event_message(msg["id"], {"snapshot": dict(config) if config else {}}))
 
-    try:
-        device_conn = await manager.async_open_session(mac)
-    except Exception as err:
-        _LOGGER.warning("%s: open session failed for %s: %s", log_prefix, mac, err)
-        device_conn = None
-    if device_conn is None:
-        connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
-        return
+    @callback
+    def _on_availability(available: bool) -> None:
+        connection.send_message(websocket_api.event_message(msg["id"], {"available": available}))
 
     try:
-        on_state = make_on_state(mac, device_conn)
-        await device_conn.subscribe_states(on_state)
+        unsub_stream = await manager.async_add_state_stream(
+            mac,
+            counter_attr=counter_attr,
+            make_on_state=make_on_state,
+            on_availability=_on_availability,
+        )
     except Exception as err:
-        _LOGGER.warning("%s: subscribe failed for %s: %s", log_prefix, mac, err)
-        manager.release_session(mac, device_conn)
+        _LOGGER.warning("%s: stream registration failed for %s: %s", log_prefix, mac, err)
+        unsub_stream = None
+    if unsub_stream is None:
         connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
         return
-    manager.note_target_subscribe(mac, counter_attr)
-    manager.request_pipeline_push(mac)
 
     released = False
 
@@ -88,18 +86,13 @@ async def _start_owned_target_stream(
         if released:
             return
         released = True
-        device_conn.unsubscribe_states(on_state)
-        mgr = _get_manager(hass)
-        if mgr:
-            mgr.note_target_unsubscribe(mac, counter_attr)
-            mgr.request_pipeline_push(mac)
-            mgr.release_session(mac, device_conn)
+        unsub_stream()
 
     connection.subscriptions[msg["id"]] = _unsub
-    # If the connection closed during the awaits above, HA already cleared
-    # connection.subscriptions, so the unsub we just registered will never
-    # fire — invoke it now to release the session ref we took. The `released`
-    # guard makes this safe against a later double-call.
+    # If the connection closed during the await above, HA already cleared
+    # connection.subscriptions, so the unsub we just registered will never fire
+    # — invoke it now so the manager drops the stream and releases its session
+    # reference. The `released` guard makes this safe against a later call.
     if _connection_is_closed(connection):
         _unsub()
 
@@ -148,12 +141,11 @@ async def websocket_overview_subscribe(
     """Stream read-only overview data for a device (non-admin).
 
     Sends one stored-layout snapshot (so the card can draw the room even while
-    offline), then opens a refcounted live session and streams the same
-    {targets, sensors, zones} frames as subscribe_grid_targets. The card never
-    calls subscribe_device, so this command owns the session lifecycle.
+    offline), then registers a durable stream that emits the same
+    {targets, sensors, zones} frames as subscribe_grid_targets — and keeps
+    emitting them across a connection loss, since the manager re-arms it.
     """
-    await _start_owned_target_stream(
-        hass,
+    await _start_durable_target_stream(
         connection,
         msg,
         manager,
@@ -180,12 +172,11 @@ async def websocket_overview_subscribe_heatmap(
 ) -> None:
     """Stream the on-device activity heatmap for a device (non-admin).
 
-    Resolves the card's device_id to a mac and opens a refcounted live
-    session, same lifecycle as websocket_overview_subscribe, but never sends
-    a config snapshot — this command only streams heatmap cells.
+    Resolves the card's device_id to a mac and registers a durable stream, same
+    lifecycle as websocket_overview_subscribe, but never sends a config
+    snapshot — this command only streams heatmap cells.
     """
-    await _start_owned_target_stream(
-        hass,
+    await _start_durable_target_stream(
         connection,
         msg,
         manager,
