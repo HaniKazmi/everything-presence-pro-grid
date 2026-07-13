@@ -579,15 +579,18 @@ class DeviceManager:
             for task in pipeline_push_tasks:
                 task.cancel()
             await asyncio.gather(*pipeline_push_tasks, return_exceptions=True)
-        # Same treatment for the stream-arming backoff tasks — each is parked in an
-        # `asyncio.sleep` that can outlast the whole drain, and resuming would re-enter
-        # `_ensure_streams` against a manager that is tearing its streams down.
-        if self._stream_retry_tasks:
-            retry_tasks = list(self._stream_retry_tasks.values())
-            self._stream_retry_tasks.clear()
-            for task in retry_tasks:
-                task.cancel()
-            await asyncio.gather(*retry_tasks, return_exceptions=True)
+        # The stream-arming backoff tasks get the cancel but NOT the await. The pushes
+        # above can be gathered here because a push task drops out of its dict before the
+        # network write, so a cancel can only ever land in its debounce sleep.
+        # `_stream_retry_tasks[mac]` is deliberately held for the WHOLE of
+        # `_ensure_streams`, so this cancel can land inside a session open, the graceful
+        # disconnect of a stale connection, or a `subscribe_states` — and awaiting that
+        # unwind against a device that has dropped off the network is unbounded, which
+        # would defeat `_stop_timeout` as the hard upper bound on unload. `_spawn` tracks
+        # the task, so Phase 2's drain settles it under that bound instead.
+        for retry_task in self._stream_retry_tasks.values():
+            retry_task.cancel()
+        self._stream_retry_tasks.clear()
         # Same treatment for a pending debounced discovery — it must not
         # fire a full-registry scan against a manager that's shutting down.
         if (pending_discover := self._pending_discover) is not None:
@@ -1833,6 +1836,10 @@ class DeviceManager:
             return
         self._spawn(self._ensure_streams(mac))
 
+    def _unarmed_streams(self, mac: str) -> list[StateStream]:
+        """Streams a client still wants for `mac` that aren't on a connection yet."""
+        return [s for s in self._state_streams.get(mac, []) if not s.closed and not s.armed]
+
     async def _ensure_streams(self, mac: str) -> None:
         """Arm every unarmed stream for `mac`. Idempotent; safe to call often.
 
@@ -1846,7 +1853,7 @@ class DeviceManager:
         async with lock:
             if self._stopping_now():
                 return
-            pending = [s for s in self._state_streams.get(mac, []) if not s.closed and not s.armed]
+            pending = self._unarmed_streams(mac)
             if not pending:
                 return
             if mac not in self.devices or not self._is_device_available(mac):
@@ -1868,9 +1875,18 @@ class DeviceManager:
             # availability transition already happened — so drive a backoff retry.
             # Re-read the list rather than reusing `pending`: an arm can await, and
             # a client may have unsubbed (closing its stream) meanwhile.
-            still_unarmed = [s for s in self._state_streams.get(mac, []) if not s.closed and not s.armed]
-            if still_unarmed:
+            if self._unarmed_streams(mac):
                 self._schedule_stream_retry(mac)
+            elif (retry := self._stream_retry_tasks.get(mac)) is not None and retry is not asyncio.current_task():
+                # Everything armed while a backoff task from an earlier failure was still
+                # sleeping. Retire it: parked, it owns the mac's retry slot for the rest of
+                # its delay, so a device that flaps in that window would have to wait that
+                # delay out instead of rescheduling from the first one. Cancelling here is
+                # safe because we hold `_stream_locks[mac]`: a retry task can only be in its
+                # sleep or blocked on this very lock, never mid-network-I/O. It never cancels
+                # ITSELF — its own pass leaves through the loop's post-arm exit.
+                self._stream_retry_tasks.pop(mac, None)
+                retry.cancel()
 
     def _schedule_stream_retry(self, mac: str) -> None:
         """Keep retrying `_ensure_streams(mac)` while streams remain unarmed.
@@ -1882,8 +1898,10 @@ class DeviceManager:
         backing off. Re-entrant calls (this task's own `_ensure_streams` still finds
         the stream unarmed) therefore no-op against the live task.
 
-        Cancellable: the sleep is the only blocking point, `async_stop` Phase 1 cancels
-        it, and `_spawn` tracks the task so the Phase 2 drain settles it.
+        Cancellable, but not instantly: the task holds its slot across `_ensure_streams`
+        too, so a cancel can land in a session open or a subscribe as well as in the
+        sleep. `async_stop` Phase 1 therefore only REQUESTS the cancel; `_spawn` tracks
+        the task, and the Phase 2 drain settles the unwind under `_stop_timeout`.
         """
         if self._stopping:
             return
@@ -1903,16 +1921,29 @@ class DeviceManager:
                     await asyncio.sleep(delay)
                 except asyncio.CancelledError:
                     return
-                # Stop as soon as there is nothing left to arm — the streams armed,
-                # every client unsubbed, or the device was removed. Never a busy loop:
-                # each pass is gated behind the sleep above.
-                pending = [s for s in self._state_streams.get(mac, []) if not s.closed and not s.armed]
+                # Stop as soon as this backoff has nothing to contribute — the streams
+                # armed, every client unsubbed, the device was removed, or it went
+                # offline. An offline device is `_on_device_available`'s to recover:
+                # `_ensure_streams` early-returns while it is down, so ticking on would
+                # just churn the lock for the life of the config entry, and would hold
+                # `attempt` at the top of the backoff for when it does come back.
+                # Never a busy loop: each pass is gated behind the sleep above.
                 # `_stopping_now`: same post-await re-check as `_ensure_streams` —
                 # not currently flagged by mypy (the `while` loop join widens the
                 # narrowing), but structurally identical, so kept consistent.
-                if not pending or self._stopping_now():
+                if (
+                    not self._unarmed_streams(mac)
+                    or self._stopping_now()
+                    or mac not in self.devices
+                    or not self._is_device_available(mac)
+                ):
                     return
                 await self._ensure_streams(mac)
+                # Leave the moment the pass armed everything, rather than holding the
+                # mac's retry slot through another sleep — a fresh failure in that window
+                # must be able to schedule its own retry from the first delay.
+                if not self._unarmed_streams(mac):
+                    return
 
         task = self._spawn(_retry())
         self._stream_retry_tasks[mac] = task

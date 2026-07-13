@@ -10270,3 +10270,129 @@ class TestStateStreams:
         )
 
         assert manager._stream_retry_tasks == {}
+
+    async def test_retry_stands_down_when_the_device_goes_offline(self, hass, manager):
+        """HA marks the device unavailable a beat AFTER our own connect starts failing.
+
+        From then on the backoff is pure churn — `_ensure_streams` early-returns on an
+        offline device, and `_on_device_available` is what re-arms it. Left ticking, the
+        task wakes every 30s for the life of the config entry and holds `attempt` at the
+        top of the backoff for when the device does come back.
+        """
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (1.0,)
+        manager.async_open_session = AsyncMock(return_value=None)
+        slept: list[float] = []
+        real_sleep = asyncio.sleep  # the patch below replaces the module attribute
+
+        async def fake_sleep(delay: float) -> None:
+            # `async_block_till_done` yields with `sleep(0)` — record only the backoff's
+            # own (always non-zero) waits.
+            if delay:
+                slept.append(delay)
+                # The device drops off the network while the backoff task is parked.
+                manager._is_device_available = MagicMock(return_value=False)
+                if len(slept) > 3:
+                    # Still ticking: break the loop so the assertion below reports the
+                    # bug instead of the test hanging.
+                    manager._state_streams.pop(mac, None)
+            await real_sleep(0)
+
+        with patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=fake_sleep):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+            task = manager._stream_retry_tasks[mac]
+            await hass.async_block_till_done()
+
+        assert slept == [1.0]
+        assert manager.async_open_session.await_count == 1  # the initial arm, no retry pass
+        assert task.done()
+        assert manager._stream_retry_tasks == {}
+
+    async def test_arming_elsewhere_retires_the_sleeping_retry(self, hass, manager):
+        """A parked backoff task owns the mac's retry slot until it wakes.
+
+        Once the streams arm by another path, that slot is dead weight: a device that
+        flaps before the task wakes drives `_on_session_lost` → a failed arm →
+        `_schedule_stream_retry`, which no-ops against the stale task, so recovery waits
+        out its escalated delay instead of rescheduling from the first.
+        """
+        mac, conn = self._armable(manager)
+        manager._stream_retry_delays = (30.0,)
+        manager.async_open_session = AsyncMock(return_value=None)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        task = manager._stream_retry_tasks[mac]
+
+        # The device comes back: the availability transition re-runs the reconciler,
+        # which arms the stream while the backoff task is still sleeping.
+        manager.async_open_session = AsyncMock(return_value=conn)
+        await manager._ensure_streams(mac)
+
+        conn.subscribe_states.assert_awaited_once()
+        assert manager._stream_retry_tasks == {}, "the armed mac still owns a retry slot"
+        # Bounded: a task left parked would only settle after its 30s backoff.
+        await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), timeout=1.0)
+        assert task.done()
+
+    async def test_async_stop_is_bounded_when_a_retry_hangs_in_the_open(self, hass, manager):
+        """Phase 1 must cancel the retries WITHOUT awaiting their unwind.
+
+        `_pending_pushes` can be gathered there because a push task leaves that dict
+        before its network write — a cancel can only ever land in its debounce sleep.
+        `_stream_retry_tasks[mac]` is held across the whole `_ensure_streams` pass, so
+        the cancel can land inside the session open (or its stale-connection
+        disconnect, or `subscribe_states`) against a device that has dropped off the
+        network. An unbounded gather on that unwind would hold unload past
+        `_stop_timeout` — the docstring's hard upper bound. Phase 2's drain is what
+        settles the task, under that bound.
+        """
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (0.0,)
+        manager._stop_timeout = 0.1
+        entered = asyncio.Event()
+        never = asyncio.Event()
+        opens = 0
+
+        async def hanging_open(_mac):
+            nonlocal opens
+            opens += 1
+            if opens == 1:
+                return None  # the initial arm fails, scheduling the retry
+            entered.set()
+            try:
+                await never.wait()
+            except asyncio.CancelledError:
+                # A cancelled `async_open_session` unwinds by disconnecting the stale
+                # connection — a gracious close (not force=True) that hangs when the
+                # device is off the network.
+                await never.wait()
+                raise
+            return None
+
+        manager.async_open_session = hanging_open
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        task = manager._stream_retry_tasks[mac]
+        await asyncio.wait_for(entered.wait(), timeout=2.0)
+
+        # Unbounded, this never returns: the retry's unwind never completes on its own.
+        await asyncio.wait_for(manager.async_stop(), timeout=2.0)
+
+        assert task.done()
+        assert manager._stream_retry_tasks == {}
+        assert all(t.done() for t in manager._pending_tasks), "a task escaped teardown"
