@@ -778,6 +778,55 @@ describe("createSubscriptionStore re-subscribe on closed", () => {
 		expect(unsubLive).toHaveBeenCalledTimes(1);
 	});
 
+	it("does not apply onError when a superseded open rejects late", async () => {
+		// Open #1 hangs in flight; the websocket reconnects, and the swap's open #2
+		// succeeds. Open #1 then rejects, late and superseded: the entry holds a
+		// LIVE subscription, so applying its error state would flip a healthy card
+		// to the offline banner until the next frame corrects it.
+		const onError = vi.fn(
+			(s: {
+				value: number;
+				available: boolean;
+			}): {
+				value: number;
+				available: boolean;
+			} => ({ ...s, available: false }),
+		);
+		const store = createSubscriptionStore<{
+			value: number;
+			available: boolean;
+		}>({
+			wireType: "test/subscribe",
+			initialState: () => ({ value: 0, available: true }),
+			reduce: (state, m) =>
+				"value" in m ? { ...state, value: m.value as number } : null,
+			onError,
+		});
+		let rejectStale!: (err: unknown) => void;
+		const connA = {
+			subscribeMessage: vi.fn(
+				() =>
+					new Promise<() => void>((_res, rej) => {
+						rejectStale = rej;
+					}),
+			),
+		};
+		const connB = { subscribeMessage: vi.fn(async () => vi.fn()) };
+
+		const l = vi.fn();
+		const off1 = store.subscribe({ connection: connA }, "devStaleErr", l);
+		const off2 = store.subscribe({ connection: connB }, "devStaleErr", vi.fn());
+		await vi.advanceTimersByTimeAsync(0);
+		expect(connB.subscribeMessage).toHaveBeenCalledTimes(1);
+
+		rejectStale({ code: "not_ready" });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(onError).not.toHaveBeenCalled();
+		expect(l).not.toHaveBeenCalledWith({ value: 0, available: false });
+		off1();
+		off2();
+	});
+
 	it("retries promptly when a card mounts onto an entry that is mid-backoff", async () => {
 		// A fresh mount is a natural moment to retry: a second dashboard opening on a
 		// device whose entry is asleep on the 30s cap must not wear the offline banner
@@ -817,6 +866,66 @@ describe("createSubscriptionStore re-subscribe on closed", () => {
 
 		// Five joiners, ONE re-open — not one per card.
 		expect(h.attempts()).toBe(before + 1);
+		for (const off of offs) off();
+	});
+
+	it("retries a dead entry when a new card mounts onto it (device removed, then re-added)", async () => {
+		// `device_not_found` is terminal — nothing retries it on its own. But a
+		// re-added device keeps its device_id (the registry keys on the mac
+		// identifier), so a fresh mount is the one signal that a retry might now
+		// succeed. It must revive the entry — for the joining card AND for any
+		// card still mounted on it from before.
+		const store = makeStore();
+		let openCb!: (msg: any) => void;
+		let calls = 0;
+		const subscribeMessage = vi.fn((callback: any) => {
+			calls += 1;
+			if (calls === 1) return Promise.reject({ code: "device_not_found" });
+			openCb = callback;
+			return Promise.resolve(vi.fn());
+		});
+		const hass = { connection: { subscribeMessage } };
+
+		const l1 = vi.fn();
+		const off1 = store.subscribe(hass, "devReAdded", l1);
+		await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFF_MS);
+		// Terminal: the entry parked itself, no retries on its own.
+		expect(subscribeMessage).toHaveBeenCalledTimes(1);
+
+		const l2 = vi.fn();
+		const off2 = store.subscribe(hass, "devReAdded", l2);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(subscribeMessage).toHaveBeenCalledTimes(2);
+
+		// Frames from the revived subscription reach both cards.
+		openCb({ value: 5 });
+		expect(l1).toHaveBeenLastCalledWith({ value: 5, available: true });
+		expect(l2).toHaveBeenLastCalledWith({ value: 5, available: true });
+		off1();
+		off2();
+	});
+
+	it("revives a dead entry exactly once when a storm of cards mounts onto it", async () => {
+		const store = makeStore();
+		let calls = 0;
+		const subscribeMessage = vi.fn(() => {
+			calls += 1;
+			return calls === 1
+				? Promise.reject({ code: "device_not_found" })
+				: Promise.resolve(vi.fn());
+		});
+		const hass = { connection: { subscribeMessage } };
+
+		const offs = [store.subscribe(hass, "devDeadStorm", vi.fn())];
+		await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFF_MS);
+		expect(subscribeMessage).toHaveBeenCalledTimes(1);
+
+		// Five joiners while the revival open is still in flight: ONE re-open.
+		for (let i = 0; i < 5; i++) {
+			offs.push(store.subscribe(hass, "devDeadStorm", vi.fn()));
+		}
+		await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFF_MS);
+		expect(subscribeMessage).toHaveBeenCalledTimes(2);
 		for (const off of offs) off();
 	});
 

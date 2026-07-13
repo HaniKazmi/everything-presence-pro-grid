@@ -74,6 +74,12 @@ interface Entry<TState> {
 	// left, or the connection was swapped and the reconnect path reopens).
 	reopenTimer: ReturnType<typeof setTimeout> | null;
 	reopenAttempts: number;
+	// Parked on a terminal rejection (device_not_found): no subscription, no
+	// timer, nothing retries it on its own. A LATER mount revives it — a
+	// re-added device keeps its device_id (the registry keys on the mac
+	// identifier), so a fresh `subscribe()` is the one signal that a retry
+	// might now succeed. Cleared in openWs, so every open path resets it.
+	dead: boolean;
 }
 
 export interface SubscriptionStoreConfig<TState> {
@@ -198,6 +204,7 @@ export function createSubscriptionStore<TState>(
 	// registry-identity check.
 	function openWs(conn: any, entry: Entry<TState>): void {
 		entry.connection = conn;
+		entry.dead = false;
 		const gen = ++entry.openGen;
 		conn
 			.subscribeMessage((msg: unknown) => handleMsg(entry, msg), {
@@ -217,13 +224,19 @@ export function createSubscriptionStore<TState>(
 				applyHook(entry, onOpen);
 			})
 			.catch((err: unknown) => {
-				applyHook(entry, onError);
-				// Superseded, as above: a stale open must schedule NOTHING. Its retry
-				// would arm a second timer behind the live one's back — orphaning
-				// whichever `entry.reopenTimer` no longer points at, to fire past a
-				// teardown `closeWs` cannot reach it.
+				// Superseded, as above: a stale open must change NOTHING — checked
+				// before the onError hook, because the entry may hold a LIVE
+				// subscription by now (a swap's open succeeded while this one was in
+				// flight), and applying the error state would flip a healthy card to
+				// its offline banner. Its retry would likewise arm a second timer
+				// behind the live one's back — orphaning whichever `entry.reopenTimer`
+				// no longer points at, to fire past a teardown `closeWs` cannot reach.
 				if (entry.openGen !== gen) return;
-				if (isTerminalError(err)) return;
+				applyHook(entry, onError);
+				if (isTerminalError(err)) {
+					entry.dead = true;
+					return;
+				}
 				scheduleReopen(entry);
 			});
 	}
@@ -268,6 +281,7 @@ export function createSubscriptionStore<TState>(
 				openGen: 0,
 				reopenTimer: null,
 				reopenAttempts: 0,
+				dead: false,
 			};
 			registry.set(deviceId, entry);
 			openWs(hass.connection, entry);
@@ -286,6 +300,15 @@ export function createSubscriptionStore<TState>(
 			entry.reopenTimer = null;
 			entry.reopenAttempts = 0;
 			scheduleReopen(entry);
+		} else if (entry.dead) {
+			// Joining an entry a terminal rejection parked. Revive it like a fresh
+			// entry — immediately, not on the backoff: the join IS the retry signal
+			// (the device may have been re-added under the same device_id), and the
+			// cards already on this entry resume streaming with it. openWs clears
+			// `dead`, so a storm of mounts revives exactly once; if the retry
+			// terminal-fails again, the entry parks again.
+			entry.reopenAttempts = 0;
+			openWs(hass.connection, entry);
 		}
 
 		entry.listeners.add(listener);
