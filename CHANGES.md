@@ -8,10 +8,13 @@ firmware downloads, see the
 
 ### Fixes
 
-- **The dashboard card recovers after a device's connection drops.** If a device
-    briefly lost its connection — for example during a Wi-Fi hiccup — the live
-    map and sensor values on a dashboard card used to freeze until you reloaded
-    the dashboard. The card now picks back up on its own.
+- **The dashboard card recovers on its own after a connection drop.** If a
+    device briefly lost its connection — during a Wi-Fi hiccup, a firmware
+    update, or a restart — the live map and sensor values on a dashboard card
+    used to freeze, with no sign anything was wrong, until you reloaded the
+    dashboard. The card now shows that the device is offline and resumes by
+    itself once it is back. The same applies after the integration itself is
+    reloaded or updated.
 
 ## v1.5.1 — 2026-07-04
 
