@@ -215,9 +215,22 @@ class DeviceConnection:
             if self._client is None:
                 raise RuntimeError("Cannot subscribe to states: connection is closed")
             self._state_subscribers.append(cb)
-            if not self._states_subscribed:
-                self._states_subscribed = True
+            if self._states_subscribed:
+                return
+            try:
                 self._client.subscribe_states(self._dispatch_state)
+            except Exception:
+                # `_states_subscribed` may only latch on success. The client call
+                # raises (``APIConnectionError``) when the socket dies under us;
+                # latching first would make every LATER subscriber on this live
+                # connection append its callback and skip the client call, so no
+                # state frame is ever dispatched — a silent freeze. Roll the append
+                # back too: the caller sees the exception, so it must leave no
+                # subscriber behind.
+                with contextlib.suppress(ValueError):
+                    self._state_subscribers.remove(cb)
+                raise
+            self._states_subscribed = True
 
     def unsubscribe_states(self, cb: Any) -> None:
         """Remove a state subscriber."""

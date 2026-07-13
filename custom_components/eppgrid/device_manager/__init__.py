@@ -1748,11 +1748,23 @@ class DeviceManager:
             # The client went away while we were opening — don't leak the ref.
             self.release_session(mac, conn)
             return False
+        cb: Callable[[Any], None] | None = None
         try:
             cb = stream.make_on_state(mac, conn)
             await conn.subscribe_states(cb)
         except Exception as err:
             _LOGGER.debug("State stream: subscribe failed for %s: %s", mac, err)
+            # `DeviceConnection.subscribe_states` appends `cb` to its subscriber
+            # list BEFORE the client call that raises, so a failed subscribe can
+            # still leave `cb` registered. Nothing else would ever remove it: the
+            # stream stays unarmed, so `_disarm_stream` sees `conn is None`. While
+            # another stream keeps the connection alive, the orphan keeps firing
+            # into a dead handler and the next re-arm adds a SECOND callback to the
+            # same connection — every frame delivered twice. Suppressed like
+            # `_disarm_stream`: a raise here must not skip the release below.
+            if cb is not None:
+                with contextlib.suppress(Exception):
+                    conn.unsubscribe_states(cb)
             self.release_session(mac, conn)
             stream.notify(False)
             return False

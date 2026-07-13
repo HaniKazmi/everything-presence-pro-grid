@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from aioesphomeapi import APIConnectionError
 from aioesphomeapi import LogLevel
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
@@ -220,6 +221,44 @@ class TestDeviceConnection:
             cb2 = MagicMock()
             await asyncio.gather(conn.subscribe_states(cb1), conn.subscribe_states(cb2))
             mock_client.subscribe_states.assert_called_once()
+
+    async def test_failed_client_subscribe_does_not_kill_later_subscribers(self) -> None:
+        """A raising ``client.subscribe_states`` must not latch ``_states_subscribed``.
+
+        The client call can raise ``APIConnectionError`` when the socket dies under
+        us — exactly the flap the durable state streams exist to survive. If the flag
+        latched first, every LATER subscriber on this connection would append its
+        callback and skip the client call: the connection is live but no state frame
+        is ever dispatched (silent freeze, #334).
+        """
+        conn = DeviceConnection("192.168.1.100")
+
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], []))
+            mock_client.disconnect = AsyncMock()
+            mock_client.subscribe_states = MagicMock(side_effect=[APIConnectionError("socket closed"), None])
+
+            await conn.async_connect()
+
+            first = MagicMock()
+            with pytest.raises(APIConnectionError):
+                await conn.subscribe_states(first)
+
+            # The failed call leaves no residue: no latched flag, no orphan callback.
+            assert conn._states_subscribed is False
+            assert first not in conn._state_subscribers
+
+            second = MagicMock()
+            await conn.subscribe_states(second)
+
+            # The retry actually reaches the client, so dispatch is alive again.
+            assert mock_client.subscribe_states.call_count == 2
+            assert conn._states_subscribed is True
+            conn._dispatch_state("state")
+            second.assert_called_once_with("state")
+            first.assert_not_called()
 
     async def test_dispatch_state_isolates_subscriber_exceptions(self) -> None:
         """A subscriber raising must not stop later subscribers from receiving
@@ -9163,6 +9202,66 @@ class TestStateStreams:
         assert manager._state_streams[mac][0].armed is False
         manager.release_session.assert_called_once_with(mac, conn)
         assert seen == [False]
+
+    async def test_subscribe_failure_unsubscribes_the_orphaned_callback(self, hass, manager):
+        """A failed subscribe must take its callback back off the connection.
+
+        `DeviceConnection.subscribe_states` appends the callback BEFORE the client
+        call that raises, so a failed subscribe can still leave it registered. The
+        stream is left unarmed (`conn is None`), so `_disarm_stream` can never remove
+        it: while another stream keeps the connection alive, the orphan keeps firing
+        into a dead handler and the next re-arm registers a SECOND callback on the
+        same connection — every frame delivered twice.
+        """
+        mac, conn = self._armable(manager)
+        conn.subscribe_states = AsyncMock(side_effect=RuntimeError("connection is closed"))
+        built: list[Any] = []
+
+        def make_on_state(_mac, _conn):
+            cb = MagicMock()
+            built.append(cb)
+            return cb
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=make_on_state,
+            on_availability=lambda a: None,
+        )
+
+        conn.unsubscribe_states.assert_called_once_with(built[0])
+        manager.release_session.assert_called_once_with(mac, conn)
+
+    async def test_disarm_does_not_decrement_the_subscriber_count(self, hass, manager):
+        """Disarm is a connection-level event, not a client-level one.
+
+        `_target_subs` is per-mac precisely so subscriber counts survive connection
+        replacement. Decrementing on session loss would gate the device's emission
+        pipeline off while a WS client is still subscribed and waiting for the
+        re-arm — the previously-fixed "target disappears" bug.
+        """
+        mac, conn = self._armable(manager)
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        stream = manager._state_streams[mac][0]
+        assert stream.armed is True
+
+        manager._disarm_stream(stream)
+
+        assert stream.armed is False
+        conn.unsubscribe_states.assert_called_once()
+        manager.release_session.assert_called_once_with(mac, conn)
+        # The count is untouched — the client is still subscribed.
+        assert manager._target_subs[mac]["grid_target_subs"] == 1
+
+        # And a second disarm releases nothing further (the ref is already gone).
+        manager._disarm_stream(stream)
+        assert manager.release_session.call_count == 1
+        assert manager._target_subs[mac]["grid_target_subs"] == 1
 
     async def test_open_session_returning_none_leaves_stream_unarmed(self, hass, manager):
         """Device looks available but the connect fails — register, report offline."""
