@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeviceController } from "../../controllers/device-controller.js";
 import type { DeviceInfo } from "../../types.js";
 
@@ -683,10 +683,12 @@ describe("DeviceController", () => {
 			expect(calls[0][1]).toEqual({
 				type: "eppgrid/subscribe_grid_targets",
 				mac: "aa",
+				availability: true,
 			});
 			expect(calls[1][1]).toEqual({
 				type: "eppgrid/subscribe_raw_targets",
 				mac: "aa",
+				availability: true,
 			});
 		});
 
@@ -910,7 +912,11 @@ describe("DeviceController", () => {
 			ctrl.subscribeDisplay("aa");
 			expect(hass.connection.subscribeMessage).toHaveBeenCalledWith(
 				expect.any(Function),
-				{ type: "eppgrid/subscribe_raw_targets", mac: "aa" },
+				{
+					type: "eppgrid/subscribe_raw_targets",
+					mac: "aa",
+					availability: true,
+				},
 			);
 		});
 
@@ -1006,6 +1012,7 @@ describe("DeviceController", () => {
 			expect(subscribeMessage).toHaveBeenCalledWith(expect.any(Function), {
 				type: "eppgrid/subscribe_heatmap",
 				mac: "AA:BB:CC:DD:EE:FF",
+				availability: true,
 			});
 
 			ctrl.setHeatmapEnabled(false);
@@ -1166,6 +1173,7 @@ describe("DeviceController", () => {
 			expect(heatmapCall![1]).toEqual({
 				type: "eppgrid/subscribe_heatmap",
 				mac: "aa",
+				availability: true,
 			});
 		});
 
@@ -1970,6 +1978,187 @@ describe("DeviceController", () => {
 			} finally {
 				vi.useRealTimers();
 			}
+		});
+	});
+
+	// --- Durable stream protocol (#336) ---
+	describe("stream protocol: available / closed", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+			// Deterministic jitter, so the backoff schedule is exactly assertable.
+			vi.spyOn(Math, "random").mockReturnValue(0);
+		});
+		afterEach(() => {
+			vi.useRealTimers();
+			vi.restoreAllMocks();
+		});
+
+		/** Keeps every open's callback + unsub so a re-open can be told from the original. */
+		function makeReopenableHass() {
+			const callbacks: ((msg: any) => void)[] = [];
+			const unsubs: ReturnType<typeof vi.fn>[] = [];
+			const subscribeMessage = vi.fn((_cb: any, msg: any) => {
+				if (msg.type !== "eppgrid/subscribe_grid_targets") {
+					return Promise.resolve(vi.fn());
+				}
+				callbacks.push(_cb);
+				const unsub = vi.fn();
+				unsubs.push(unsub);
+				return Promise.resolve(unsub);
+			});
+			return {
+				hass: { callWS: vi.fn(), connection: { subscribeMessage } },
+				subscribeMessage,
+				unsubs,
+				emit: (msg: any, n = callbacks.length - 1) => callbacks[n]?.(msg),
+				opens: () =>
+					subscribeMessage.mock.calls.filter(
+						(c: any[]) => c[1]?.type === "eppgrid/subscribe_grid_targets",
+					).length,
+			};
+		}
+
+		it("opts in to the availability protocol on subscribe", async () => {
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(h.subscribeMessage).toHaveBeenCalledWith(expect.any(Function), {
+				type: "eppgrid/subscribe_grid_targets",
+				mac: "aa",
+				availability: true,
+			});
+		});
+
+		it("reports availability to the host instead of treating it as a frame", async () => {
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			const onTargetData = vi.fn();
+			ctrl.onAvailability = onAvailability;
+			ctrl.onTargetData = onTargetData;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emit({ available: false });
+
+			expect(onAvailability).toHaveBeenCalledWith("aa", false);
+			// An availability message is NOT a frame — reducing it as one would blank
+			// the live view (`event.targets || []`).
+			expect(onTargetData).not.toHaveBeenCalled();
+		});
+
+		it("does NOT re-subscribe on a mere device flap", async () => {
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			expect(h.opens()).toBe(1);
+
+			h.emit({ available: false });
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			// The manager re-arms the durable stream itself; churning the wire here
+			// would defeat it.
+			expect(h.opens()).toBe(1);
+			expect(h.unsubs[0]).not.toHaveBeenCalled();
+		});
+
+		it("re-subscribes when the manager says the stream is closed", async () => {
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emit({ available: false, closed: true });
+
+			// The dead subscription is dropped immediately...
+			expect(h.unsubs[0]).toHaveBeenCalledTimes(1);
+			// ...and the re-open is delayed (the integration is still reloading).
+			expect(h.opens()).toBe(1);
+
+			await vi.advanceTimersByTimeAsync(120_000);
+			expect(h.opens()).toBe(2);
+		});
+
+		it("delivers frames from the re-opened subscription", async () => {
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			const onTargetData = vi.fn();
+			ctrl.onTargetData = onTargetData;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emit({ available: false, closed: true });
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			onTargetData.mockClear();
+			h.emit({ targets: [{ x: 1, y: 2, status: "active", signal: 9 }] }, 1);
+			expect(onTargetData).toHaveBeenCalledTimes(1);
+		});
+
+		it("backs off between failed re-opens and never gives up", async () => {
+			const times: number[] = [];
+			let openCb!: (msg: any) => void;
+			let calls = 0;
+			const subscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type !== "eppgrid/subscribe_grid_targets") {
+					return Promise.resolve(vi.fn());
+				}
+				times.push(Date.now());
+				calls += 1;
+				if (calls === 1) {
+					openCb = cb;
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.reject(new Error("not_ready"));
+			});
+			ctrl.hass = { callWS: vi.fn(), connection: { subscribeMessage } };
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			openCb({ available: false, closed: true });
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			const delays = times.slice(1).map((t, i) => t - times[i]);
+			expect(delays.slice(0, 4)).toEqual([500, 1000, 2000, 4000]);
+			// Capped, and still retrying — a reload can take a while, and giving up
+			// would leave the panel frozen exactly like #334.
+			expect(Math.max(...delays)).toBeLessThanOrEqual(30_000);
+			expect(delays.length).toBeGreaterThan(4);
+		});
+
+		it("resets the reopen-attempt counter on a fresh subscribeTargets, so a later grid-targets-only failure still latches the banner", async () => {
+			// Simulate a leaked, nonzero reopen-attempt counter left behind by an
+			// abandoned `closed` backoff (e.g. a device switch happened before
+			// the scheduled re-open fired). Without resetting it in
+			// unsubscribeTargets, a later GENUINE first-time subscribe failure
+			// would be mistaken for "still reopening after a manager teardown"
+			// and back off silently forever instead of ever latching
+			// connectionFailed — leaving the panel frozen with no banner,
+			// exactly the bug this protocol exists to prevent.
+			(ctrl as any)._reopenAttempts["eppgrid/subscribe_grid_targets"] = 3;
+
+			// raw-targets always succeeds — isolates the assertion to the
+			// grid-targets stream's own retry/backoff behavior, so this test
+			// can't pass merely because some OTHER stream latched the banner.
+			const subscribeMessage = vi.fn((_cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					return Promise.reject(new Error("boom"));
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = { callWS: vi.fn(), connection: { subscribeMessage } };
+
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			// Drive well past 5 * SUBSCRIBE_RETRY_DELAY_MS (2s each).
+			for (let i = 0; i < 8; i++) {
+				await vi.advanceTimersByTimeAsync(2000);
+			}
+
+			expect(ctrl.connectionFailed).toBe(true);
 		});
 	});
 

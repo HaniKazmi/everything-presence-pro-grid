@@ -10,6 +10,14 @@ import type { DeviceInfo, RawTarget, Target, TargetStatus } from "../types.js";
 const SUBSCRIBE_RETRY_LIMIT = 5;
 const SUBSCRIBE_RETRY_DELAY_MS = 2000;
 
+// Re-open backoff for a stream the manager tore down (`closed`). Mirrors the card's
+// schedule (frontend/src/card/subscription-store.ts) — an integration reload can take
+// a while, so this backs off exponentially and NEVER gives up: giving up would leave
+// the panel frozen, which is the bug (#334/#336). Distinct from SUBSCRIBE_RETRY_*,
+// which covers a rejected *initial* subscribe and does latch a banner after 5 tries.
+const REOPEN_BASE_MS = 500;
+const REOPEN_CAP_MS = 30_000;
+
 /**
  * Structured target/sensor/zone data delivered by the grid-targets subscription.
  */
@@ -60,6 +68,9 @@ export class DeviceController implements ReactiveController {
 	/** Selected device transitioned to available. Host decides whether to
 	 * reopen the session (config already loaded) or load config fresh. */
 	onSelectedAvailable?: (mac: string) => void;
+	/** The device behind a live stream dropped (false) or came back (true).
+	 *  Drives the panel's offline banner and its stale-live-data clear. */
+	onAvailability?: (mac: string, available: boolean) => void;
 	/** Host's unsaved-edits state. While true, _applyDeviceList defers the
 	 * auto-switch to another device when the selected mac disappears from a
 	 * non-empty push — switching would make the host load the replacement
@@ -76,6 +87,16 @@ export class DeviceController implements ReactiveController {
 	private _targetRetryTimer?: ReturnType<typeof setTimeout>;
 	private _displayRetryTimer?: ReturnType<typeof setTimeout>;
 	private _heatmapRetryTimer?: ReturnType<typeof setTimeout>;
+	// Per-stream re-open attempt count, keyed by stream.type. Zero/absent means
+	// "not re-opening" — the `_subscribeStream` catch uses that to tell a
+	// rejected re-open (keep backing off, never give up) from a rejected
+	// *initial* subscribe (the capped SUBSCRIBE_RETRY_LIMIT path). Reset to 0
+	// by a successful open AND by every intentional teardown
+	// (unsubscribeTargets/unsubscribeDisplay/_unsubscribeHeatmap) — otherwise a
+	// pending re-open abandoned by a device switch would leak into the next,
+	// unrelated subscribe and mistake a genuine failure for "still reopening",
+	// backing off forever instead of ever latching the banner.
+	private _reopenAttempts: Record<string, number> = {};
 	// Heatmap subscription *intent* — true between setHeatmapEnabled(true) and
 	// setHeatmapEnabled(false)/teardown. Mirrors `_wantDeviceListSub`: a
 	// connection swap or resubscribe (subscribeTargets) needs to know whether
@@ -549,6 +570,7 @@ export class DeviceController implements ReactiveController {
 			clearTimeout(this._targetRetryTimer);
 			this._targetRetryTimer = undefined;
 		}
+		this._reopenAttempts["eppgrid/subscribe_grid_targets"] = 0;
 		safeUnsub(this._unsubTargets);
 		this._unsubTargets = undefined;
 	}
@@ -662,8 +684,32 @@ export class DeviceController implements ReactiveController {
 		attempt = 1,
 	): void {
 		const claim = this._claimGen(stream.genField);
+		const handleMsg = (msg: any): void => {
+			// The durable-stream protocol (#336). A frame carries the stream's
+			// payload field; anything else is protocol. Reducing a protocol
+			// message as a frame would blank the live view (`event.targets || []`).
+			if (msg?.closed) {
+				// The manager dropped the stream (config-entry reload/unload,
+				// device removed). Our subscription is still open but nothing
+				// will ever revive it — re-subscribe. Ordinary `available: false`
+				// must NOT do this: the manager re-arms a flapped stream itself.
+				this.onAvailability?.(mac, false);
+				this._reopenStream(conn, mac, stream);
+				return;
+			}
+			if ("available" in msg) {
+				this.onAvailability?.(mac, !!msg.available);
+				return;
+			}
+			stream.onEvent(msg);
+		};
+
 		conn
-			.subscribeMessage(stream.onEvent, { type: stream.type, mac })
+			.subscribeMessage(handleMsg, {
+				type: stream.type,
+				mac,
+				availability: true,
+			})
 			.then((unsub: () => void) => {
 				if (claim.stale()) {
 					// Torn down (or resubscribed) while the subscribe was in
@@ -672,6 +718,7 @@ export class DeviceController implements ReactiveController {
 					return;
 				}
 				this[stream.unsubField] = unsub;
+				this._reopenAttempts[stream.type] = 0;
 				if (this._connectionFailed) {
 					// An earlier attempt exhausted its retries and latched the
 					// connection banner — a subscribe succeeding now means the
@@ -686,6 +733,13 @@ export class DeviceController implements ReactiveController {
 				// which would leave the stream silently dead. Retry on a timer,
 				// then surface connection-failed.
 				if (claim.stale()) return;
+				if ((this._reopenAttempts[stream.type] ?? 0) > 0) {
+					// Re-opening after a manager teardown — keep backing off,
+					// don't latch the banner and don't stop after 5 (a reload
+					// can take a while).
+					this._reopenStream(conn, mac, stream);
+					return;
+				}
 				if (attempt >= SUBSCRIBE_RETRY_LIMIT) {
 					// Out of retries — surface the same connection-failed
 					// state the session-open path uses so the panel shows the
@@ -711,12 +765,43 @@ export class DeviceController implements ReactiveController {
 			});
 	}
 
+	/**
+	 * Re-subscribe a stream the manager tore down (`closed`). Bumps the
+	 * generation (dropping the dead subscription), then re-opens on an
+	 * exponential backoff that never gives up: an integration reload can take
+	 * a while, and giving up would leave the panel frozen — the bug this
+	 * protocol exists to prevent (#334/#336).
+	 */
+	private _reopenStream(
+		conn: any,
+		mac: string,
+		stream: Parameters<DeviceController["_subscribeStream"]>[2],
+	): void {
+		const dead = this[stream.unsubField];
+		this[stream.genField]++;
+		safeUnsub(dead);
+		this[stream.unsubField] = undefined;
+
+		const attempt = (this._reopenAttempts[stream.type] ?? 0) + 1;
+		this._reopenAttempts[stream.type] = attempt;
+		const delay = Math.min(REOPEN_BASE_MS * 2 ** (attempt - 1), REOPEN_CAP_MS);
+
+		const pending = this[stream.timerField];
+		if (pending) clearTimeout(pending);
+		this[stream.timerField] = setTimeout(() => {
+			this[stream.timerField] = undefined;
+			if (this._hass?.connection !== conn) return;
+			this._subscribeStream(conn, mac, stream);
+		}, delay);
+	}
+
 	unsubscribeDisplay(): void {
 		this._displayGen++;
 		if (this._displayRetryTimer) {
 			clearTimeout(this._displayRetryTimer);
 			this._displayRetryTimer = undefined;
 		}
+		this._reopenAttempts["eppgrid/subscribe_raw_targets"] = 0;
 		safeUnsub(this._unsubDisplay);
 		this._unsubDisplay = undefined;
 	}
@@ -759,6 +844,7 @@ export class DeviceController implements ReactiveController {
 			clearTimeout(this._heatmapRetryTimer);
 			this._heatmapRetryTimer = undefined;
 		}
+		this._reopenAttempts["eppgrid/subscribe_heatmap"] = 0;
 		safeUnsub(this._unsubHeatmap);
 		this._unsubHeatmap = undefined;
 	}
