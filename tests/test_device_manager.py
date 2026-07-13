@@ -10537,11 +10537,18 @@ class TestOverviewStreamRecovery:
     """
 
     class FakeDeviceConnection:
-        """DeviceConnection stand-in: real subscriber bookkeeping, no network."""
+        """DeviceConnection stand-in: real subscriber bookkeeping, no network.
 
-        def __init__(self) -> None:
+        `key` is per-connection: the entity key map is only knowable from the live
+        connection and a device can renumber its entities across an OTA, so a
+        replacement connection is given a DIFFERENT key. A re-arm that reused the
+        dead connection's callback (or its cached key map) would decode nothing.
+        """
+
+        def __init__(self, key: int = 1) -> None:
+            self.key = key
             self.entities = [
-                TextSensorInfo(object_id="target_1_position", key=1, name="Target 1 Position"),
+                TextSensorInfo(object_id="target_1_position", key=key, name="Target 1 Position"),
             ]
             self.subscribers: list[Any] = []
             self.connected = True
@@ -10556,7 +10563,7 @@ class TestOverviewStreamRecovery:
                 self.subscribers.remove(cb)
 
         def emit_target(self, position: str) -> None:
-            state = TextSensorState(key=1, state=position, missing_state=False)
+            state = TextSensorState(key=self.key, state=position, missing_state=False)
             for cb in list(self.subscribers):
                 cb(state)
 
@@ -10577,7 +10584,9 @@ class TestOverviewStreamRecovery:
 
         # Two successive device connections: the original, and its replacement
         # after the flap.
-        conns = [self.FakeDeviceConnection(), self.FakeDeviceConnection()]
+        # The replacement renumbers its entities (an OTA can): the rebuilt callback
+        # must come from connection #2, not the dead one's key map.
+        conns = [self.FakeDeviceConnection(key=1), self.FakeDeviceConnection(key=2)]
         opened: list[Any] = []
 
         async def _open(_mac):
