@@ -10,7 +10,6 @@ from collections.abc import AsyncIterator
 from collections.abc import Callable
 from collections.abc import Coroutine
 from dataclasses import dataclass
-from functools import partial
 from typing import Any
 
 from aioesphomeapi import APIConnectionError
@@ -666,10 +665,7 @@ class DeviceManager:
             for stream in list(streams):
                 stream.conn = None
                 stream.cb = None
-                if not stream.closed:
-                    stream.closed = True
-                    stream.notify(False)
-                    stream.notify_closed()
+                stream.mark_closed()
         self._state_streams.clear()
         self._stream_locks.clear()
 
@@ -1471,10 +1467,7 @@ class DeviceManager:
         # client's callback, which is free to unsub other streams and re-enter `_close`.
         for stream in list(self._state_streams.pop(mac, [])):
             self._disarm_stream(stream)
-            if not stream.closed:
-                stream.closed = True
-                stream.notify(False)
-                stream.notify_closed()
+            stream.mark_closed()
         self._stream_locks.pop(mac, None)
         # Nothing can ever arm this device's streams again, so the backoff has
         # nothing left to retry — it would otherwise sit sleeping until its next
@@ -1808,7 +1801,10 @@ class DeviceManager:
                     streams.remove(stream)
                 if not streams:
                     self._state_streams.pop(mac, None)
-            self.note_target_unsubscribe(mac, counter_attr)
+            # Read the counter key back off the record, not the parameter: the record
+            # is what the subscribe was booked against, so it stays the one place the
+            # key lives.
+            self.note_target_unsubscribe(stream.mac, stream.counter_attr)
             self.request_pipeline_push(mac)
 
         try:
@@ -1843,8 +1839,8 @@ class DeviceManager:
         self.release_session(stream.mac, conn)
 
     @callback
-    def _on_session_lost(self, mac: str) -> None:
-        """A session's API connection stopped — disarm its streams and re-arm.
+    def _on_session_lost(self, conn: DeviceConnection) -> None:
+        """`conn`'s API connection stopped — disarm the streams it carried, then re-arm.
 
         Reaches us from `DeviceConnection.on_stop`, which aioesphomeapi runs as an EAGER
         task: inline within our own `client.disconnect()` for a self-initiated close —
@@ -1856,6 +1852,12 @@ class DeviceManager:
         and then, through `async_open_session`, `_session_locks[mac]`. `_spawn` runs it on
         a fresh task and tracks it, so async_stop's drain still catches it.
 
+        The hook carries the connection, not just its mac, because that detached delivery
+        means a stale on_stop from a REPLACED connection can arrive after its successor
+        armed these streams: only the streams this EXACT connection carried may be
+        disarmed. Tearing down a successor's would flap the client False→True and release
+        a session ref that belongs to the live connection.
+
         Covers both an unexpected drop and our own force-close: `_ensure_streams`
         no-ops while the device is offline, and `_on_device_available` re-runs it
         when the device comes back.
@@ -1863,19 +1865,14 @@ class DeviceManager:
         Subscriber counts are untouched — they belong to the client, not the
         connection (see `_target_subs`).
         """
+        mac = conn.mac
         streams = self._state_streams.get(mac)
         if not streams:
             return
         # Iterate a copy: `notify` runs the client's callback, which is free to
         # unsub in response — that removes the stream from this very list.
         for stream in list(streams):
-            # The hook carries no connection identity, only the mac. Detached
-            # delivery means a stale on_stop from a REPLACED connection can arrive
-            # after its successor armed these streams; disarming then would flap the
-            # client False→True and release a session ref that belongs to the live
-            # connection.
-            conn = stream.conn
-            if conn is not None and conn.connected:
+            if stream.conn is not conn:
                 continue
             self._disarm_stream(stream)
             if not stream.closed:
@@ -2020,57 +2017,61 @@ class DeviceManager:
         """Open/reuse a session and register this stream's callback on it."""
         mac = stream.mac
         try:
-            conn = await self.async_open_session(mac)
+            opened = await self.async_open_session(mac)
         except Exception as err:
             _LOGGER.debug("State stream: open session failed for %s: %s", mac, err)
-            conn = None
-        if conn is None:
+            opened = None
+        if opened is None:
             stream.notify(False)
             return False
-        if stream.closed_now():
-            # The client went away while we were opening — don't leak the ref.
-            self.release_session(mac, conn)
-            return False
+        conn: DeviceConnection = opened
+
         cb: Callable[[Any], None] | None = None
+
+        def _abandon() -> None:
+            """Take the callback back off the connection and give the session ref back.
+
+            Every failed exit below owes both. The unsubscribe is defence in depth:
+            `DeviceConnection.subscribe_states` appends `cb` before the client call that
+            can raise and rolls that append back itself, so it is normally a no-op — but
+            nothing else could ever remove a `cb` that DID survive, because the stream
+            stays unarmed and `_disarm_stream` would see `conn is None`. While another
+            stream keeps the connection alive, such an orphan would keep firing into a
+            dead handler, and the next re-arm would add a SECOND callback to the same
+            connection: every frame delivered twice. Suppressed like `_disarm_stream`'s —
+            a raise from a connection that died under us must not skip the release and
+            leak the ref that opened it, pinning the connection open for the life of the
+            manager. `cb` is read at call time, so this covers the pre-subscribe exit too.
+            """
+            if cb is not None:
+                with contextlib.suppress(Exception):
+                    conn.unsubscribe_states(cb)
+            self.release_session(mac, conn)
+
+        if stream.closed_now():
+            # The client went away while we were opening.
+            _abandon()
+            return False
         try:
             cb = stream.make_on_state(mac, conn)
             await conn.subscribe_states(cb)
         except Exception as err:
             _LOGGER.debug("State stream: subscribe failed for %s: %s", mac, err)
-            # Defence in depth. `DeviceConnection.subscribe_states` appends `cb`
-            # before the client call that can raise, and rolls that append back
-            # itself, so this is normally a no-op — but nothing else could ever
-            # remove a `cb` that did survive: the stream stays unarmed, so
-            # `_disarm_stream` sees `conn is None`. While another stream keeps the
-            # connection alive, such an orphan would keep firing into a dead
-            # handler and the next re-arm would add a SECOND callback to the same
-            # connection — every frame delivered twice. Suppressed like
-            # `_disarm_stream`: a raise here must not skip the release below.
-            if cb is not None:
-                with contextlib.suppress(Exception):
-                    conn.unsubscribe_states(cb)
-            self.release_session(mac, conn)
+            _abandon()
             stream.notify(False)
             return False
         except BaseException:
             # Cancellation, in practice: `DeviceConnection.subscribe_states` can suspend
             # on its `_subscribe_lock`, so a CancelledError can land in that await with
             # `stream.conn` still None. `async_add_state_stream`'s rollback then finds an
-            # unarmed stream and releases nothing — leaking the ref taken above, which
-            # would pin this connection open for the life of the manager. Release it here
-            # instead, and re-raise unconditionally: a swallowed CancelledError breaks
-            # task cancellation. `notify` is skipped — the client is going away with us.
-            if cb is not None:
-                with contextlib.suppress(Exception):
-                    conn.unsubscribe_states(cb)
-            self.release_session(mac, conn)
+            # unarmed stream and releases nothing — hence `_abandon` here. Re-raise
+            # unconditionally: a swallowed CancelledError breaks task cancellation.
+            # `notify` is skipped — the client is going away with us.
+            _abandon()
             raise
         if stream.closed_now():
-            # Suppressed like `_disarm_stream`: a raise from a connection that
-            # died under us must not skip the release below and leak the ref.
-            with contextlib.suppress(Exception):
-                conn.unsubscribe_states(cb)
-            self.release_session(mac, conn)
+            # The client went away while we were subscribing.
+            _abandon()
             return False
         stream.conn = conn
         stream.cb = cb
@@ -2404,7 +2405,7 @@ class DeviceManager:
                 static_presence_cache=self._static_presence_cache,
                 # Durable state streams hold no connection of their own: this hook
                 # is how they learn the one under them died (see `_on_session_lost`).
-                on_stop=partial(self._on_session_lost, mac),
+                on_stop=self._on_session_lost,
             )
             await asyncio.wait_for(conn.async_connect(), timeout=30)
             # Re-check after the connect: if HA flipped the device offline while we

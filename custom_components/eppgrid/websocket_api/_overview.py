@@ -67,14 +67,11 @@ async def _start_durable_target_stream(
         config = manager.store.devices.get(mac)
         connection.send_message(websocket_api.event_message(msg["id"], {"snapshot": dict(config) if config else {}}))
 
-    # True only while `async_add_state_stream` below is in flight. It appends the
-    # stream to the manager's list BEFORE awaiting its arm pass, so during that
-    # await ANY task can notify through it — not just the arm pass itself. See
-    # `_on_availability`.
-    registering: bool = True
-    # The last liveness the manager reported during that window, for the heatmap
-    # subscription's one-shot replay below. None = it never reported.
-    initial_available: bool | None = None
+    # The last liveness the manager reported, for the heatmap subscription's one-shot
+    # replay below. None = it never reported. Only ever READ in the synchronous stretch
+    # right after `async_add_state_stream` returns, so what it holds there is exactly the
+    # outcome of the registration window — a later notification cannot be observed.
+    last_available: bool | None = None
 
     @callback
     def _on_availability(available: bool) -> None:
@@ -100,13 +97,12 @@ async def _start_durable_target_stream(
         from here would be wrong, though: a session loss racing the registration window
         (aioesphomeapi fires `on_stop` eagerly, including a stale one from a replaced
         connection) can notify False through the still-unarmed stream, and the arm can
-        then succeed — a case where `main` sent nothing at all. So record the window's
-        outcome and let the caller replay it once, below, only if it settled offline.
+        then succeed — a case where `main` sent nothing at all. So record the liveness
+        and let the caller replay it once, below, only if registration settled offline.
         """
-        nonlocal initial_available
+        nonlocal last_available
+        last_available = available
         if not send_availability:
-            if registering:
-                initial_available = available
             return
         connection.send_message(websocket_api.event_message(msg["id"], {"available": available}))
 
@@ -145,13 +141,12 @@ async def _start_durable_target_stream(
     except Exception as err:
         _LOGGER.warning("%s: stream registration failed for %s: %s", log_prefix, mac, err)
         unsub_stream = None
-    registering = False
     if unsub_stream is None:
-        # Covers the recorded `initial_available` too — nothing was registered, so this
+        # Covers the recorded `last_available` too — nothing was registered, so this
         # single event is all the client gets either way.
         connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
         return
-    if not send_availability and initial_available is False:
+    if not send_availability and last_available is False:
         connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
 
     released = False

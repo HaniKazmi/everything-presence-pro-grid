@@ -988,10 +988,21 @@ class TestDeviceConnection:
         with pytest.raises((TimeoutError, asyncio.TimeoutError)):
             await conn.async_execute_service("slow", {}, timeout=0.05, return_response=True)
 
+    def test_mac_is_exposed_read_only(self):
+        """`_on_session_lost` reads the mac back off the connection the hook hands it.
+
+        Standalone connections (no manager) fall back to the host, matching the key the
+        static-presence skip cache uses.
+        """
+        assert DeviceConnection("192.168.1.100", mac="AA:BB:CC:DD:EE:01").mac == "AA:BB:CC:DD:EE:01"
+        assert DeviceConnection("192.168.1.100").mac == "192.168.1.100"
+
     async def test_on_stop_callback_fires_when_connection_drops(self):
-        """The owner is told when the APIClient stops, after references are released."""
-        seen: list[bool] = []
-        conn = DeviceConnection("192.168.1.100", on_stop=lambda: seen.append(conn.connected))
+        """The owner is told which connection stopped, after its references are released."""
+        seen: list[Any] = []
+        conn = DeviceConnection(
+            "192.168.1.100", mac="AA:BB:CC:DD:EE:01", on_stop=lambda c: seen.append((c, c.connected))
+        )
 
         with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_client_cls:
             client = mock_client_cls.return_value
@@ -1001,8 +1012,10 @@ class TestDeviceConnection:
             on_stop = client.connect.call_args.kwargs["on_stop"]
             await on_stop(False)
 
-        # Fired exactly once, and _release_references ran first (connected already False).
-        assert seen == [False]
+        # Fired exactly once, carrying THIS connection (the manager matches streams
+        # against it by identity), and _release_references ran first (connected already
+        # False).
+        assert seen == [(conn, False)]
 
     async def test_on_stop_callback_exception_is_swallowed(self):
         """A raising callback must not propagate into aioesphomeapi's stop path."""
@@ -9224,6 +9237,26 @@ class TestStateStream:
         assert streams == [first]
         assert streams[0] is first
 
+    def test_mark_closed_flags_notifies_and_is_idempotent(self):
+        """The shared terminal tail of async_stop and _on_device_removed.
+
+        Both signals, in order — offline THEN gone — and both at most once: the
+        teardown loops walk every stream, and a client that unsubs from its own
+        callback can re-enter a path that marks the stream closed again.
+        """
+        seen: list[bool] = []
+        closed: list[bool] = []
+        stream = self._stream(on_availability=seen.append)
+        stream.on_closed = lambda: closed.append(True)
+        stream.notify(True)
+
+        stream.mark_closed()
+        stream.mark_closed()
+
+        assert stream.closed is True
+        assert seen == [True, False]
+        assert closed == [True]
+
 
 async def _settle(rounds: int = 20) -> None:
     """Drain the loop's ready queue without advancing time.
@@ -9267,6 +9300,7 @@ class TestStateStreams:
         manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
         manager._is_device_available = MagicMock(return_value=True)
         conn = MagicMock()
+        conn.mac = mac
         conn.entities = []
         conn.connected = True
         conn.subscribe_states = AsyncMock()
@@ -9863,7 +9897,7 @@ class TestStateStreams:
 
         # The device's API connection dies: aioesphomeapi fires on_stop.
         conn.connected = False
-        manager._on_session_lost(mac)
+        manager._on_session_lost(conn)
         await hass.async_block_till_done()
 
         # Re-armed against the REPLACEMENT connection, with a callback rebuilt
@@ -9893,7 +9927,7 @@ class TestStateStreams:
 
         manager._is_device_available = MagicMock(return_value=False)
         conn.connected = False
-        manager._on_session_lost(mac)
+        manager._on_session_lost(conn)
         await hass.async_block_till_done()
 
         assert manager.async_open_session.await_count == 1  # no reopen attempt
@@ -9908,7 +9942,7 @@ class TestStateStreams:
         assert seen == [True, False, True]
 
     async def test_closed_stream_is_not_rearmed(self, hass, manager):
-        mac, _conn = self._armable(manager)
+        mac, conn = self._armable(manager)
         unsub = await manager.async_add_state_stream(
             mac,
             counter_attr="grid_target_subs",
@@ -9918,7 +9952,7 @@ class TestStateStreams:
         unsub()
         manager.async_open_session.reset_mock()
 
-        manager._on_session_lost(mac)
+        manager._on_session_lost(conn)
         await hass.async_block_till_done()
 
         manager.async_open_session.assert_not_awaited()
@@ -9936,9 +9970,12 @@ class TestStateStreams:
             conn.connected = True
             await manager.async_open_session(mac)
 
+        # The bare bound method, not a `partial` closing over a mac: the connection
+        # hands ITSELF to the hook, so the manager can match streams by identity.
         on_stop = conn_cls.call_args.kwargs["on_stop"]
-        on_stop()
-        manager._on_session_lost.assert_called_once_with(mac)
+        assert on_stop is manager._on_session_lost
+        on_stop(conn)
+        manager._on_session_lost.assert_called_once_with(conn)
 
     async def test_device_removed_drops_streams(self, hass, manager):
         mac, _conn = self._armable(manager)
@@ -10019,7 +10056,7 @@ class TestStateStreams:
         )
 
         conn.connected = False
-        manager._on_session_lost(mac)
+        manager._on_session_lost(conn)
         await hass.async_block_till_done()
 
         assert closed == []
@@ -10154,7 +10191,7 @@ class TestStateStreams:
 
         manager._is_device_available = MagicMock(return_value=False)
         conn.connected = False
-        manager._on_session_lost(mac)
+        manager._on_session_lost(conn)
         await hass.async_block_till_done()
         assert manager._state_streams[mac][0].armed is False
 
@@ -10184,7 +10221,7 @@ class TestStateStreams:
         conn.connected = False
 
         with patch.object(manager, "_spawn") as spawn:
-            manager._on_session_lost(mac)
+            manager._on_session_lost(conn)
 
         spawn.assert_not_called()
         # The streams are still torn down and the clients still told.
@@ -10222,7 +10259,7 @@ class TestStateStreams:
         manager._stopping = True  # park the reconcile — it's covered elsewhere
         conn.connected = False
 
-        manager._on_session_lost(mac)
+        manager._on_session_lost(conn)
 
         # The self-unsubbing client is gone; the survivor is disarmed and informed.
         survivor = manager._state_streams[mac][0]
@@ -10234,11 +10271,12 @@ class TestStateStreams:
     async def test_session_loss_leaves_a_stream_armed_on_a_live_connection_alone(self, hass, manager):
         """A stale on_stop must not tear down its successor's streams.
 
-        The hook is keyed by mac alone, and aioesphomeapi delivers it as a detached
-        task — so a callback from a connection that has already been replaced can
-        land while the streams are armed on the LIVE replacement. Disarming those
-        would flap the client False→True and decrement a session ref that belongs
-        to the fresh connection.
+        aioesphomeapi delivers the hook as a detached task, so a callback from a
+        connection that has already been REPLACED can land while the streams are armed
+        on the live replacement. Disarming those would flap the client False→True and
+        decrement a session ref that belongs to the fresh connection. The hook carries
+        the dead connection itself, so the match is by identity — it never has to infer
+        "is this stale?" from the successor's liveness.
         """
         mac, conn = self._armable(manager)
         seen: list[bool] = []
@@ -10251,14 +10289,20 @@ class TestStateStreams:
         )
         assert seen == [True]
 
-        # `conn` is still connected: this on_stop came from a dead predecessor.
-        manager._on_session_lost(mac)
+        # The stop comes from a dead PREDECESSOR on the same mac; the stream is armed
+        # on `conn`, its live successor.
+        dead = MagicMock()
+        dead.mac = mac
+        dead.connected = False
+        manager._on_session_lost(dead)
         await hass.async_block_till_done()
 
         assert manager._state_streams[mac][0].armed is True
+        assert manager._state_streams[mac][0].conn is conn
         assert seen == [True]
         manager.release_session.assert_not_called()
         conn.unsubscribe_states.assert_not_called()
+        dead.unsubscribe_states.assert_not_called()
 
     async def test_device_removed_mid_arm_releases_instead_of_rearming(self, hass, manager):
         """A drop must mark its streams closed, or an in-flight arm re-arms them.
@@ -10325,6 +10369,7 @@ class TestStateStreams:
 
         with patch("custom_components.eppgrid.device_manager.DeviceConnection") as conn_cls:
             conn = conn_cls.return_value
+            conn.mac = mac
             conn.entities = []
             conn.connected = True
             conn.async_connect = AsyncMock()
@@ -10334,7 +10379,7 @@ class TestStateStreams:
             async def _disconnect() -> None:
                 # The detached on_stop lands while the Phase-3 gather is in flight.
                 conn.connected = False
-                manager._on_session_lost(mac)
+                manager._on_session_lost(conn)
 
             conn.async_disconnect = AsyncMock(side_effect=_disconnect)
 
@@ -10377,7 +10422,7 @@ class TestStateStreams:
 
         await manager.async_stop()
         conn.connected = False
-        manager._on_session_lost(mac)  # detached delivery, after teardown
+        manager._on_session_lost(conn)  # detached delivery, after teardown
 
         assert manager._state_streams == {}
         assert seen == [True, False]
@@ -10891,8 +10936,9 @@ class TestOverviewStreamRecovery:
         dead connection's callback (or its cached key map) would decode nothing.
         """
 
-        def __init__(self, key: int = 1) -> None:
+        def __init__(self, key: int = 1, mac: str = "AA:BB:CC:DD:EE:01") -> None:
             self.key = key
+            self.mac = mac
             self.entities = [
                 TextSensorInfo(object_id="target_1_position", key=key, name="Target 1 Position"),
             ]
@@ -10964,7 +11010,7 @@ class TestOverviewStreamRecovery:
         # The device flaps: its API connection dies, taking every state
         # subscriber with it (exactly what `_release_references` does).
         conns[0].kill()
-        manager._on_session_lost(mac)
+        manager._on_session_lost(conns[0])
         # `_settle`, not `async_block_till_done`: the latter would also await the
         # debounced pipeline push's real-time sleep.
         await _settle()

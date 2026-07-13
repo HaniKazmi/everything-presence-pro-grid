@@ -84,7 +84,7 @@ class DeviceConnection:
         *,
         mac: str | None = None,
         static_presence_cache: dict[str, dict[str, Any]] | None = None,
-        on_stop: Callable[[], None] | None = None,
+        on_stop: Callable[[DeviceConnection], None] | None = None,
     ) -> None:
         self._host = host
         self._port = port
@@ -109,11 +109,19 @@ class DeviceConnection:
         )
         # See OtaWatcherState — shared per-connection OTA watcher bookkeeping.
         self.ota: OtaWatcherState = OtaWatcherState()
-        # Owner hook fired after the APIClient stops (expected or not). The
-        # manager uses it to re-arm durable state streams: `_release_references`
-        # drops every state subscriber, so without a signal a live client would
-        # silently receive nothing until it resubscribed.
+        # Owner hook fired after the APIClient stops (expected or not), passed THIS
+        # connection. The manager uses it to re-arm durable state streams:
+        # `_release_references` drops every state subscriber, so without a signal a live
+        # client would silently receive nothing until it resubscribed. It carries the
+        # connection itself because a device's connections are replaced across a flap,
+        # and aioesphomeapi's stop delivery is detached — so a hook that named only the
+        # device could not tell a dead connection's stop from a live successor's.
         self._on_stop_cb = on_stop
+
+    @property
+    def mac(self) -> str:
+        """The device this connection belongs to (falls back to host when unset)."""
+        return self._mac
 
     @property
     def entities(self) -> list:
@@ -136,7 +144,7 @@ class DeviceConnection:
             if self._on_stop_cb is None:
                 return
             try:
-                self._on_stop_cb()
+                self._on_stop_cb(self)
             except Exception:
                 # Never propagate into aioesphomeapi's stop path.
                 _LOGGER.exception("DeviceConnection on_stop callback raised")
@@ -226,9 +234,9 @@ class DeviceConnection:
                 # connection append its callback and skip the client call, so no
                 # state frame is ever dispatched — a silent freeze. Roll the append
                 # back too: the caller sees the exception, so it must leave no
-                # subscriber behind.
-                with contextlib.suppress(ValueError):
-                    self._state_subscribers.remove(cb)
+                # subscriber behind. `unsubscribe_states` is sync and takes no lock,
+                # so calling it under `_subscribe_lock` cannot deadlock.
+                self.unsubscribe_states(cb)
                 raise
             self._states_subscribed = True
 

@@ -98,3 +98,22 @@ class StateStream:
             self.on_closed()
         except Exception:
             _LOGGER.exception("State-stream closed callback raised")
+
+    def mark_closed(self) -> None:
+        """Terminal teardown: the manager no longer holds this stream.
+
+        The shared tail of `async_stop`'s Phase 3 and `_on_device_removed` — which
+        DETACH the stream differently (one nulls `conn`/`cb` directly, bypassing the
+        refcounts it is about to drop wholesale; the other goes through
+        `_disarm_stream`) but end identically. Flipping `closed` is what stops an
+        `_arm_stream` still in flight from resuming past its `closed_now()` guards and
+        re-arming onto a connection being torn down. Then both notifications, in order
+        and both required: `notify(False)` because the stream is no longer live, and
+        `notify_closed` because — unlike an offline device, which comes back and re-arms
+        — nothing here will ever revive it. Idempotent via the `closed` flag.
+        """
+        if self.closed:
+            return
+        self.closed = True
+        self.notify(False)
+        self.notify_closed()
