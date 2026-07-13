@@ -11380,3 +11380,98 @@ class TestOverviewStreamRecovery:
         connection.subscriptions[2]()
         await manager.async_stop()
         await hass.async_block_till_done()
+
+
+class TestPanelStreamRecovery:
+    """The panel's live streams must survive a device flap — issue #336.
+
+    The card got this in #334/#335; the panel was left on the hand-rolled path, so its
+    live view, zone editor, calibration wizard and heatmap froze silently when our
+    session socket died while HA still believed the device was available.
+    """
+
+    async def test_panel_keeps_streaming_after_a_device_flap(self, hass, manager):
+        from custom_components.eppgrid.websocket_api._devices import _make_grid_target_on_state
+        from custom_components.eppgrid.websocket_api._devices import _start_panel_stream
+
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._store.devices = {mac: {}}
+        manager._is_device_available = MagicMock(return_value=True)
+
+        # The replacement renumbers its entities (an OTA can): a re-arm that reused the
+        # dead conn's key map would decode nothing.
+        conns = [
+            TestOverviewStreamRecovery.FakeDeviceConnection(key=1),
+            TestOverviewStreamRecovery.FakeDeviceConnection(key=2),
+        ]
+        opened: list[Any] = []
+
+        async def _open(_mac):
+            conn = conns[len(opened)]
+            opened.append(conn)
+            return conn
+
+        manager.async_open_session = AsyncMock(side_effect=_open)
+        manager.release_session = MagicMock(return_value=None)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {
+            "id": 1,
+            "type": "eppgrid/subscribe_grid_targets",
+            "mac": mac,
+            "availability": True,
+        }
+
+        await _start_panel_stream(
+            connection,
+            msg,
+            manager,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, dc: _make_grid_target_on_state(connection, msg["id"], m, dc),
+            log_prefix="test",
+        )
+
+        assert len(opened) == 1
+        assert len(conns[0].subscribers) == 1
+
+        # The device flaps: its API connection dies, taking every state subscriber with
+        # it (exactly what `_release_references` does).
+        conns[0].kill()
+        manager._on_session_lost(conns[0])
+        # `_settle`, not `async_block_till_done`: the latter would also await the
+        # debounced pipeline push's real-time sleep.
+        await _settle()
+
+        # Re-armed on the REPLACEMENT connection, callback rebuilt from the factory.
+        assert len(opened) == 2
+        assert len(conns[1].subscribers) == 1
+
+        # The panel was told the device dropped and came back.
+        events = [
+            c.args[0]["event"]
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and "available" in c.args[0].get("event", {})
+        ]
+        assert {"available": False} in events
+        assert {"available": True} in events
+
+        # A frame on the new connection reaches the panel.
+        connection.send_message.reset_mock()
+        conns[1].emit_target("100,200,active")
+        target_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and "targets" in c.args[0].get("event", {})
+        ]
+        assert target_events, "expected the panel to receive a frame after the flap"
+
+        # The subscriber count survived the flap — taken once at registration, never
+        # re-taken. Decrementing it on connection loss would silence the device's
+        # pipeline for a still-subscribed client ("target disappears").
+        assert manager._target_subs[mac]["grid_target_subs"] == 1
+
+        connection.subscriptions[1]()
+        await manager.async_stop()
+        await hass.async_block_till_done()
