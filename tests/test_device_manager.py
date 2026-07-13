@@ -9034,6 +9034,16 @@ class TestStateStream:
         stream.notify(True)  # must not raise
 
 
+async def _settle(rounds: int = 20) -> None:
+    """Drain the loop's ready queue without advancing time.
+
+    Lets already-scheduled tasks run up to their next real await (a gate, a lock)
+    so a test can assert on a precise interleaving.
+    """
+    for _ in range(rounds):
+        await asyncio.sleep(0)
+
+
 class TestStateStreams:
     """Durable frontend state streams: arm, close, and refcount behaviour."""
 
@@ -9285,3 +9295,144 @@ class TestStateStreams:
 
         manager.async_open_session.assert_not_awaited()
         assert manager._state_streams[mac][0].armed is False
+
+    async def test_two_streams_on_one_mac_are_independent(self, hass, manager):
+        """Unsubbing one client must not disturb the other's stream or its count."""
+        mac, conn = self._armable(manager)
+
+        unsub_grid = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        unsub_heatmap = await manager.async_add_state_stream(
+            mac,
+            counter_attr="heatmap_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        grid, heatmap = manager._state_streams[mac]
+        assert grid.armed is True
+        assert heatmap.armed is True
+        assert conn.subscribe_states.await_count == 2
+
+        unsub_grid()
+
+        # The survivor keeps its callback, its session ref, and its count: the mac
+        # is only deregistered when the LAST stream goes.
+        assert manager._state_streams[mac] == [heatmap]
+        assert heatmap.armed is True
+        assert manager._target_subs[mac]["heatmap_subs"] == 1
+        assert manager._target_subs[mac]["grid_target_subs"] == 0
+        assert manager.release_session.call_count == 1
+        assert conn.unsubscribe_states.call_count == 1
+
+        # And the reconciler leaves the still-armed survivor alone.
+        await manager._ensure_streams(mac)
+        assert conn.subscribe_states.await_count == 2
+        assert manager.async_open_session.await_count == 2
+
+        unsub_heatmap()
+        assert mac not in manager._state_streams
+        assert mac not in manager._target_subs
+        assert manager.release_session.call_count == 2
+
+    async def test_stream_lock_identity_survives_unsub_to_empty(self, hass, manager):
+        """The per-mac lock object must never be swapped out.
+
+        An `_ensure_streams` pass can be holding (or waiting on) the lock across an
+        await when the mac's last stream unsubs. Popping the lock there lets the next
+        pass mint a fresh one and run *concurrently* with the old holder — see
+        `test_waiter_on_the_old_lock_cannot_double_arm` for what that costs.
+        """
+        mac, _conn = self._armable(manager)
+
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        first_lock = manager._stream_locks[mac]
+
+        unsub()
+        assert mac not in manager._state_streams
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        assert manager._stream_locks[mac] is first_lock
+
+    async def test_waiter_on_the_old_lock_cannot_double_arm(self, hass, manager):
+        """The interleaving a swapped-out lock would allow, end to end.
+
+        Pass A is parked in `async_open_session` holding the mac's lock; pass B is
+        queued on it; the mac's last stream unsubs; a new client adds a stream. With a
+        stable lock the newcomer serializes behind B and the new stream is armed
+        exactly once. A fresh lock lets the newcomer arm in parallel with B: two
+        callbacks on one connection (every frame delivered twice), one of them
+        orphaned, and a session ref that is never released.
+        """
+        mac, conn = self._armable(manager)
+        gates: list[asyncio.Event] = []
+
+        async def gated_open(_mac):
+            gate = asyncio.Event()
+            gates.append(gate)
+            await gate.wait()
+            return conn
+
+        manager._is_device_available = MagicMock(return_value=False)
+        unsub_first = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        manager._is_device_available = MagicMock(return_value=True)
+        manager.async_open_session = AsyncMock(side_effect=gated_open)
+
+        # A: takes the mac's lock, parks in the open for the first stream.
+        holder = asyncio.create_task(manager._ensure_streams(mac))
+        await _settle()
+        assert len(gates) == 1
+        # B: queued on that same lock object.
+        waiter = asyncio.create_task(manager._ensure_streams(mac))
+        await _settle()
+
+        # The only client goes away — the mac's stream list empties while A is parked.
+        unsub_first()
+        assert mac not in manager._state_streams
+
+        # A new client arrives for the same mac, still while A is parked.
+        adder = asyncio.create_task(
+            manager.async_add_state_stream(
+                mac,
+                counter_attr="heatmap_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+        )
+        await _settle()
+
+        gates[0].set()  # A resumes, finds its stream closed, hands the lock to B
+        await _settle()
+        # B is now arming the new stream. The newcomer must still be waiting on the
+        # lock, not opening a second session for the same stream.
+        opens_after_handoff = len(gates)
+
+        for gate in gates:
+            gate.set()
+        await asyncio.gather(holder, waiter, adder)
+
+        assert opens_after_handoff == 2
+        assert conn.subscribe_states.await_count == 1
+        assert manager._state_streams[mac][0].armed is True
+        # One release: the ref A took for the stream that closed under it.
+        assert manager.release_session.call_count == 1

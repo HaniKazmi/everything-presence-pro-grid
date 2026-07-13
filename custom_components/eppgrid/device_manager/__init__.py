@@ -218,7 +218,16 @@ class DeviceManager:
         # freezing until the card element remounts (#334).
         self._state_streams: dict[str, list[StateStream]] = {}
         # Serializes `_ensure_streams` per mac so two triggers (session lost +
-        # device available) can't both arm the same stream.
+        # device available) can't both arm the same stream. Entries are NEVER
+        # dropped when a mac's last stream unsubs — only when the device itself
+        # goes away — because serialization is by lock *identity*: a pass can be
+        # holding (or queued on) this lock across an `async_open_session` await
+        # while the stream list empties, and swapping in a fresh lock would let
+        # the next pass run concurrently with that holder. Both would then arm
+        # the same stream: two callbacks on one connection (every frame
+        # delivered twice, one callback orphaned) and a session ref that is
+        # never released. Same rule as `_session_locks` / `_push_locks` /
+        # `_ota_locks`.
         self._stream_locks: dict[str, asyncio.Lock] = {}
         # Skip cache for the static-presence (DFRobot) reconfigure, keyed by mac.
         # Lives HERE, at the manager/mac level, NOT on the ephemeral
@@ -1672,7 +1681,6 @@ class DeviceManager:
                     streams.remove(stream)
                 if not streams:
                     self._state_streams.pop(mac, None)
-                    self._stream_locks.pop(mac, None)
             self.note_target_unsubscribe(mac, counter_attr)
             self.request_pipeline_push(mac)
 
@@ -1749,7 +1757,10 @@ class DeviceManager:
             stream.notify(False)
             return False
         if stream.closed:
-            conn.unsubscribe_states(cb)
+            # Suppressed like `_disarm_stream`: a raise from a connection that
+            # died under us must not skip the release below and leak the ref.
+            with contextlib.suppress(Exception):
+                conn.unsubscribe_states(cb)
             self.release_session(mac, conn)
             return False
         stream.conn = conn
