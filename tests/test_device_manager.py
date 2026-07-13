@@ -9925,3 +9925,114 @@ class TestStateStreams:
 
         assert manager._state_streams == {}
         assert seen == [True, False]
+
+    async def test_async_stop_ignores_a_release_from_an_arm_parked_across_teardown(self, hass, manager):
+        """A parked `_arm_stream` must not schedule a close past the Phase-2 drain.
+
+        The arm is awaited by its caller (`async_add_state_stream`, i.e. the WS handler),
+        so it is NOT in `_pending_tasks` and the drain never waits for it. Phase 3 marks
+        its stream closed; when the arm resumes inside the disconnect gather it takes the
+        `stream.closed` branch and calls `release_session` — with `_active_connections`
+        not yet cleared, that identity-matches, takes the last ref and schedules a close:
+        a task created AFTER the drain, disconnecting a connection already mid-disconnect.
+
+        Runs the real `async_open_session` / `release_session` / `schedule_close_session`
+        (the `_armable` helper mocks the last two, which is why the rest of the suite is
+        blind to this).
+        """
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._is_device_available = MagicMock(return_value=True)
+        manager.request_pipeline_push = MagicMock()
+        manager._push_pipeline_to_device = AsyncMock()
+        gate = asyncio.Event()
+        seen: list[bool] = []
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as conn_cls:
+            conn = conn_cls.return_value
+            conn.entities = []
+            conn.connected = True
+            conn.async_connect = AsyncMock()
+            conn.unsubscribe_states = MagicMock()
+
+            async def _gated_subscribe(_cb) -> None:
+                await gate.wait()
+
+            conn.subscribe_states = AsyncMock(side_effect=_gated_subscribe)
+
+            async def _disconnect() -> None:
+                # Mid-gather: `_active_connections` and `_session_refcounts` still hold
+                # this conn. Let the parked arm resume right here.
+                conn.connected = False
+                gate.set()
+                await _settle()
+
+            conn.async_disconnect = AsyncMock(side_effect=_disconnect)
+
+            adder = asyncio.create_task(
+                manager.async_add_state_stream(
+                    mac,
+                    counter_attr="grid_target_subs",
+                    make_on_state=lambda m, c: lambda s: None,
+                    on_availability=seen.append,
+                )
+            )
+            await _settle()
+            stream = manager._state_streams[mac][0]
+            assert stream.armed is False  # parked inside subscribe_states
+            assert manager._active_connections[mac] is conn
+            assert manager._session_refcounts[mac] == 1
+
+            with patch.object(manager, "schedule_close_session", wraps=manager.schedule_close_session) as sched:
+                await manager.async_stop()
+                await adder
+                await hass.async_block_till_done()
+
+        sched.assert_not_called()
+        assert conn.async_disconnect.await_count == 1
+        assert manager._pending_closes == {}
+        # The arm still took its callback back off the connection it was parked on.
+        conn.unsubscribe_states.assert_called_once()
+        assert stream.closed is True
+        assert stream.armed is False
+        assert seen == [False]  # never armed, so the client was only ever told False
+
+    async def test_open_session_racing_teardown_does_not_strand_a_connection(self, hass, manager):
+        """An open parked in `async_connect` must not land a live conn past teardown.
+
+        `release_session` no-ops while stopping — teardown owns the refcounts and the
+        disconnects — so a connection stored into `_active_connections` AFTER Phase 3
+        cleared it would be closed by nobody: a live ESPHome connection (and its session
+        ref) surviving unload. Teardown therefore has to own the tail of an in-flight
+        open too, and refuse a fresh one outright.
+        """
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._is_device_available = MagicMock(return_value=True)
+        gate = asyncio.Event()
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as conn_cls:
+            conn = conn_cls.return_value
+            conn.entities = []
+            conn.connected = True
+            conn.async_disconnect = AsyncMock()
+
+            async def _connect() -> None:
+                await gate.wait()
+
+            conn.async_connect = AsyncMock(side_effect=_connect)
+
+            opener = asyncio.create_task(manager.async_open_session(mac))
+            await _settle()
+            assert manager._active_connections == {}  # parked inside async_connect
+
+            await manager.async_stop()
+            gate.set()
+            assert await opener is None
+            # And a fresh open after teardown never even builds a connection.
+            assert await manager.async_open_session(mac) is None
+
+        assert conn_cls.call_count == 1
+        assert manager._active_connections == {}
+        assert manager._session_refcounts == {}
+        conn.async_disconnect.assert_awaited_once()  # the parked open cleaned up after itself

@@ -509,10 +509,10 @@ class DeviceManager:
            awaited again to settle.
         3. Drop the durable state streams, THEN disconnect all active
            connections in parallel, each bounded by ``_disconnect_timeout``.
-           On timeout we force the local cleanup via ``_release_references()``
-           because aioesphomeapi's ``_on_stop`` only fires after
-           ``client.disconnect()`` finishes — a cancelled ``wait_for`` would
-           otherwise leave the ``DeviceConnection`` half-initialised.
+           On timeout we force the local cleanup via ``_release_references()``:
+           a ``wait_for`` cancelled BEFORE the connection actually stopped means
+           aioesphomeapi never gets to schedule its ``on_stop`` task at all, so
+           nothing else would ever release the ``DeviceConnection``'s references.
         """
         self._stopping = True
 
@@ -1413,9 +1413,11 @@ class DeviceManager:
         # flight from resuming past its `stream.closed` guards and re-arming onto the
         # connection we just tore down — leaving a callback on a dead connection and a
         # client whose last signal is `available=True` for a device that is gone.
-        # This is the ONLY place `_stream_locks[mac]` may be popped: the mac has no
-        # streams left, so no `_ensure_streams` pass can mint a second lock object
-        # for it and run concurrently with a pass still holding the old one.
+        # Safe to pop the lock even with an `_ensure_streams` pass still holding it:
+        # every stream in that pass's snapshot is now `closed`, so it releases instead
+        # of arming (its `release_session` identity-mismatches the live conn). A re-added
+        # device mints a fresh lock and a disjoint set of streams — the two passes cannot
+        # both arm.
         for stream in self._state_streams.pop(mac, []):
             self._disarm_stream(stream)
             if not stream.closed:
@@ -2131,7 +2133,15 @@ class DeviceManager:
         Each successful call takes one subscriber reference on the session
         (see `_session_refcounts`); callers must pair it with exactly one
         `release_session(mac, conn)` when they no longer need the session.
+
+        Refuses to open while stopping: `release_session` no-ops during teardown
+        (async_stop owns the refcounts and the disconnects), so a connection that
+        reached `_active_connections` after Phase 3 cleared it would be closed by
+        nobody — a live connection surviving unload. Callers all treat None as
+        "device not available".
         """
+        if self._stopping:
+            return None
         dev = self.devices.get(mac)
         if dev is None or dev.host is None:
             return None
@@ -2173,11 +2183,12 @@ class DeviceManager:
                 on_stop=partial(self._on_session_lost, mac),
             )
             await asyncio.wait_for(conn.async_connect(), timeout=30)
-            # Re-check availability after the connect: if HA flipped the
-            # device offline while we were inside async_connect, storing the
-            # new conn would strand a live session against a device the rest
-            # of the system already considers gone.
-            if not self._is_device_available(mac):
+            # Re-check after the connect: if HA flipped the device offline while we
+            # were inside async_connect, storing the new conn would strand a live
+            # session against a device the rest of the system already considers gone.
+            # Same for a teardown that began while we were parked there — Phase 3 has
+            # already cleared `_active_connections`, so this conn would be stranded.
+            if self._stopping or not self._is_device_available(mac):
                 await conn.async_disconnect()
                 return None
             self._active_connections[mac] = conn
@@ -2211,6 +2222,11 @@ class DeviceManager:
         Returns the scheduled close task when this release was the last
         reference (the session is now closing); None otherwise.
         """
+        if self._stopping:
+            # Teardown owns the refcounts and the disconnects (async_stop Phase 3).
+            # A close scheduled here lands after the Phase-2 drain and races a second
+            # disconnect against the one already in flight.
+            return None
         if self._active_connections.get(mac) is not conn:
             return None
         count = self._session_refcounts.get(mac, 0)
