@@ -45,6 +45,7 @@ from ._helpers import _resolve_zone_name
 from ._helpers import _sync_firmware_repair_issue
 from ._helpers import is_valid_zone_slots_shape
 from ._helpers import strip_unsupported_pipeline_fields
+from ._streams import StateStream
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -208,6 +209,35 @@ class DeviceManager:
         # `async_open_session` re-pushes the pipeline on reopen so emission
         # resumes without a page refresh.
         self._target_subs: dict[str, dict[str, int]] = {}
+        # Durable frontend state streams, keyed by mac. A `DeviceConnection` is
+        # disposable — it dies on a device flap and `_release_references` drops
+        # every state subscriber with it — but a WS client's subscription is not:
+        # it stays open until the client goes away. These streams are the unit we
+        # re-arm across that replacement (see `_ensure_streams`), which is what
+        # keeps the dashboard card streaming after a flap instead of silently
+        # freezing until the card element remounts (#334).
+        self._state_streams: dict[str, list[StateStream]] = {}
+        # Serializes `_ensure_streams` per mac so two triggers (session lost +
+        # device available) can't both arm the same stream. Entries are NEVER
+        # dropped when a mac's last stream unsubs — only when the device itself
+        # goes away — because serialization is by lock *identity*: a pass can be
+        # holding (or queued on) this lock across an `async_open_session` await
+        # while the stream list empties, and swapping in a fresh lock would let
+        # the next pass run concurrently with that holder. Both would then arm
+        # the same stream: two callbacks on one connection (every frame
+        # delivered twice, one callback orphaned) and a session ref that is
+        # never released. Same rule as `_session_locks` / `_push_locks` /
+        # `_ota_locks`.
+        self._stream_locks: dict[str, asyncio.Lock] = {}
+        # Retry backoff for arming streams when HA reports the device available but
+        # our own API connect fails (the ESP32's API slots are limited, and HA's
+        # entity state lags a reboot). Without it a stream would sit unarmed until
+        # the next availability transition — which may never come. ONE task per mac
+        # drives the whole sequence (`_schedule_stream_retry`); the last delay
+        # repeats for as long as unarmed streams remain. Instance attributes so
+        # tests can shrink the delays.
+        self._stream_retry_delays: tuple[float, ...] = (1.0, 3.0, 9.0, 30.0)
+        self._stream_retry_tasks: dict[str, asyncio.Task] = {}
         # Skip cache for the static-presence (DFRobot) reconfigure, keyed by mac.
         # Lives HERE, at the manager/mac level, NOT on the ephemeral
         # `DeviceConnection` (same rationale as `_target_subs`): re-running the
@@ -280,6 +310,20 @@ class DeviceManager:
     def store(self) -> EPPGridStore:
         """The persistent store backing this manager (no setter; the store object itself is mutable)."""
         return self._store
+
+    def _stopping_now(self) -> bool:
+        """Read `_stopping` fresh.
+
+        The plain attribute is narrowed to False by mypy after an early-return
+        check and stays narrowed across awaits, so every post-await re-check
+        would be flagged unreachable — but `_stopping` can flip during exactly
+        those awaits, which is what the re-checks exist to catch. Deliberately
+        a method, not a property: mypy narrows a property read the same way
+        it narrows a plain attribute, so a second re-check later in the same
+        function (e.g. `async_open_session`'s two re-checks) would still be
+        flagged. A call expression is not narrowed.
+        """
+        return self._stopping
 
     # -- public wrappers ----------------------------------------------------
     # Thin pass-throughs over private implementation methods, so external
@@ -485,12 +529,12 @@ class DeviceManager:
            network I/O with no internal stop-time timeout, so a hung
            device must not block unload — survivors are cancelled and
            awaited again to settle.
-        3. Disconnect all active connections in parallel, each bounded by
-           ``_disconnect_timeout``. On timeout we force the local cleanup
-           via ``_release_references()`` because aioesphomeapi's
-           ``_on_stop`` only fires after ``client.disconnect()`` finishes
-           — a cancelled ``wait_for`` would otherwise leave the
-           ``DeviceConnection`` half-initialised.
+        3. Drop the durable state streams, THEN disconnect all active
+           connections in parallel, each bounded by ``_disconnect_timeout``.
+           On timeout we force the local cleanup via ``_release_references()``:
+           a ``wait_for`` cancelled BEFORE the connection actually stopped means
+           aioesphomeapi never gets to schedule its ``on_stop`` task at all, so
+           nothing else would ever release the ``DeviceConnection``'s references.
         """
         self._stopping = True
 
@@ -534,6 +578,18 @@ class DeviceManager:
             for task in pipeline_push_tasks:
                 task.cancel()
             await asyncio.gather(*pipeline_push_tasks, return_exceptions=True)
+        # The stream-arming backoff tasks get the cancel but NOT the await. The pushes
+        # above can be gathered here because a push task drops out of its dict before the
+        # network write, so a cancel can only ever land in its debounce sleep.
+        # `_stream_retry_tasks[mac]` is deliberately held for the WHOLE of
+        # `_ensure_streams`, so this cancel can land inside a session open, the graceful
+        # disconnect of a stale connection, or a `subscribe_states` — and awaiting that
+        # unwind against a device that has dropped off the network is unbounded, which
+        # would defeat `_stop_timeout` as the hard upper bound on unload. `_spawn` tracks
+        # the task, so Phase 2's drain settles it under that bound instead.
+        for retry_task in self._stream_retry_tasks.values():
+            retry_task.cancel()
+        self._stream_retry_tasks.clear()
         # Same treatment for a pending debounced discovery — it must not
         # fire a full-registry scan against a manager that's shutting down.
         if (pending_discover := self._pending_discover) is not None:
@@ -583,7 +639,36 @@ class DeviceManager:
         await _drain(list(self._pending_closes.values()), "_pending_closes")
         self._pending_closes.clear()
 
-        # Phase 3: bounded parallel disconnect.
+        # Phase 3: drop the streams, then disconnect.
+        #
+        # The streams must go BEFORE the disconnects. aioesphomeapi runs on_stop as an
+        # EAGER task — inline within our own `client.disconnect()` for this self-initiated
+        # close, arbitrary (from the read loop) for an unexpected drop — so
+        # `_on_session_lost` can land at any point: mid-gather, where `_disarm_stream` →
+        # `release_session` would take the last session ref and schedule a close AFTER the
+        # Phase-2 drain (a task escaping teardown, racing a second disconnect against the
+        # one in flight); or after `_state_streams` is gone, where it early-returns and the
+        # clients are never told their stream died. Dropping the streams first is what
+        # keeps both cases safe. Marking each stream closed also stops an `_arm_stream`
+        # still in flight (an un-tracked one, awaited by `async_add_state_stream`) from
+        # re-arming it onto a connection we are tearing down. Tearing down here — rather
+        # than through `_disarm_stream` — deliberately bypasses `release_session`: the
+        # refcounts are dropped wholesale below.
+        #
+        # `notify_closed` is what separates this from a device flap on the wire: the
+        # client's subscription is still open, but the stream behind it is gone and the
+        # fresh manager a reload brings up knows nothing of it, so only the client can
+        # revive it (by re-subscribing). Iterate copies of both the dict and each list —
+        # `notify_closed` hands control to the client, which may unsub other streams (on
+        # any mac) in response, re-entering `_close` and mutating what we are walking.
+        for streams in list(self._state_streams.values()):
+            for stream in list(streams):
+                stream.conn = None
+                stream.cb = None
+                stream.mark_closed()
+        self._state_streams.clear()
+        self._stream_locks.clear()
+
         async def _safe_disconnect(conn: DeviceConnection) -> None:
             try:
                 await asyncio.wait_for(conn.async_disconnect(), timeout=self._disconnect_timeout)
@@ -1361,6 +1446,34 @@ class DeviceManager:
                 unsub = self._entry_update_unsubs.pop(dev.esphome_config_entry_id, None)
                 if unsub is not None:
                     unsub()
+        # Drop the device's streams: nothing can ever arm them again. This is the
+        # authoritative teardown, not a fallback — the close above fires on_stop, and
+        # aioesphomeapi runs on_stop as an EAGER task: inline within our own
+        # `client.disconnect()`, so `_on_session_lost` has most likely already run by
+        # the time we reach here (`notify` de-dupes either way). Marking each stream
+        # closed is what stops an `_arm_stream` still in flight from resuming past its
+        # `stream.closed` guards and re-arming onto the connection we just tore down —
+        # leaving a callback on a dead connection and a client whose last signal is
+        # `available=True` for a device that is gone.
+        # Safe to pop the lock even with an `_ensure_streams` pass still holding it:
+        # every stream in that pass's snapshot is now `closed`, so it releases instead
+        # of arming (its release is balanced against the ref its own `async_open_session`
+        # took). A re-added device mints a fresh lock and a disjoint set of streams —
+        # the two passes cannot both arm.
+        # `notify_closed` on top of `notify(False)`: an offline device eventually comes
+        # back and re-arms the stream, but a REMOVED one never will — the client must
+        # re-subscribe (against a re-added device) or give up. Iterate a copy: the list
+        # is already detached from `_state_streams`, but `notify_closed` runs the
+        # client's callback, which is free to unsub other streams and re-enter `_close`.
+        for stream in list(self._state_streams.pop(mac, [])):
+            self._disarm_stream(stream)
+            stream.mark_closed()
+        self._stream_locks.pop(mac, None)
+        # Nothing can ever arm this device's streams again, so the backoff has
+        # nothing left to retry — it would otherwise sit sleeping until its next
+        # tick (up to the last delay) past the device's lifetime.
+        if (retry := self._stream_retry_tasks.pop(mac, None)) is not None and not retry.done():
+            retry.cancel()
         self._build_flags.pop(mac, None)
         self._session_locks.pop(mac, None)
         self._ota_locks.pop(mac, None)
@@ -1372,12 +1485,14 @@ class DeviceManager:
         self._failed_pushes.discard(mac)
         self._pushing.discard(mac)
         self._last_repair_sync.pop(mac, None)
-        # Cancel the pending debounced push (it would push to a device that
+        # Cancel the pending debounced pushes (they would push to a device that
         # no longer exists) and the entity-update-clear timer (its mac entry
         # in `_entity_update_macs` is already gone; the timer would leak past
         # the device's lifetime otherwise).
         if (pending_push := self._pending_pushes.pop(mac, None)) is not None:
             pending_push.cancel()
+        if (pending_pipeline := self._pending_pipeline_pushes.pop(mac, None)) is not None:
+            pending_pipeline.cancel()
         if (cancel_clear := self._entity_update_clear_cancels.pop(mac, None)) is not None:
             cancel_clear()
         # Clear any Repairs issues we raised for this device — they'd
@@ -1407,6 +1522,13 @@ class DeviceManager:
                 device_name=dev.name,
                 fw_ver=self.read_firmware_version(dev.device_id),
             )
+
+        # Re-arm durable frontend streams FIRST: a card that sat on a dashboard
+        # through the flap must resume streaming even if the config push below is
+        # skipped (entity-update guard) or fails and retries with backoff — that
+        # path can take many seconds, and until then the card shows nothing.
+        if self._state_streams.get(mac):
+            self._spawn(self._ensure_streams(mac))
 
         # Skip push if we caused this reconnect via entity registry updates.
         # Don't clear the guard here — multiple entities cycle through
@@ -1611,10 +1733,378 @@ class DeviceManager:
         if sum(counts.values()) == 0:
             self._target_subs.pop(mac, None)
 
+    async def async_add_state_stream(
+        self,
+        mac: str,
+        *,
+        counter_attr: str,
+        make_on_state: Callable[[str, Any], Callable[[Any], None]],
+        on_availability: Callable[[bool], None],
+        on_closed: Callable[[], None] | None = None,
+    ) -> Callable[[], None] | None:
+        """Register a durable state stream for `mac` and arm it if possible.
+
+        Returns an idempotent unsub callable, or None when `mac` is unknown.
+
+        The stream survives connection replacement: the manager re-arms it (see
+        `_ensure_streams`) whenever a session comes back, rebuilding the callback
+        from `make_on_state` against the new connection. Callers therefore must
+        NOT hold a `DeviceConnection` themselves.
+
+        `on_availability` reports liveness — the device dropped, the device came back
+        — for a stream the manager still holds. `on_closed` reports that the manager
+        no longer holds it at all (config entry unload/reload, device removed):
+        nothing here can revive it, so a caller that still wants frames must
+        re-subscribe. The two are distinct precisely because they are
+        indistinguishable to the client otherwise, and re-subscribing on a mere flap
+        would churn the wire and defeat the durable stream.
+
+        The subscriber count is taken here and released in unsub — NOT on
+        arm/disarm. `_target_subs` is per-mac precisely so it survives a flap;
+        decrementing it on connection loss would silence the device's pipeline
+        for a client that is still subscribed.
+
+        Registration is all-or-nothing: if the arm pass below raises or is
+        cancelled, the stream is rolled back before the exception propagates.
+        """
+        if mac not in self.devices:
+            return None
+
+        stream = StateStream(
+            mac=mac,
+            counter_attr=counter_attr,
+            make_on_state=make_on_state,
+            on_availability=on_availability,
+            on_closed=on_closed,
+        )
+        self._state_streams.setdefault(mac, []).append(stream)
+        self.note_target_subscribe(mac, counter_attr)
+        self.request_pipeline_push(mac)
+
+        @callback
+        def _close() -> None:
+            """Deregister the stream: disarm it, drop it, release its subscriber count.
+
+            Idempotent (the `closed` flag), which is what makes it safe as both the
+            caller's unsub and the rollback below — and safe when `async_stop` or
+            `_on_device_removed` already closed the stream out from under us.
+
+            Deliberately does NOT fire `notify_closed`: that signal means "the manager
+            dropped your stream, re-subscribe if you still want one", and here the
+            CALLER dropped it. Telling it to re-subscribe would loop.
+            """
+            if stream.closed:
+                return
+            stream.closed = True
+            self._disarm_stream(stream)
+            streams = self._state_streams.get(mac)
+            if streams is not None:
+                with contextlib.suppress(ValueError):
+                    streams.remove(stream)
+                if not streams:
+                    self._state_streams.pop(mac, None)
+                    # Last stream for the mac: the backoff has nothing left to arm, and a
+                    # task parked on its (escalated) delay would own the mac's retry slot
+                    # until it woke — so a client that re-subscribes in that window and
+                    # fails to arm would find `_schedule_stream_retry` no-op against the
+                    # stale task and wait the old delay out instead of backing off from
+                    # the first. Identity-checked because this is the CLIENT's callback:
+                    # it re-enters from inside the retry task itself whenever that task's
+                    # `_ensure_streams` pass notifies a client that unsubs in response, and
+                    # cancelling there would kill the task mid-pass from within itself. Its
+                    # own exit is the loop's post-arm check, and `_drop` clears the slot.
+                    retry = self._stream_retry_tasks.get(mac)
+                    if retry is not None and retry is not asyncio.current_task():
+                        self._stream_retry_tasks.pop(mac, None)
+                        retry.cancel()
+            # Read the counter key back off the record, not the parameter: the record
+            # is what the subscribe was booked against, so it stays the one place the
+            # key lives.
+            self.note_target_unsubscribe(stream.mac, stream.counter_attr)
+            self.request_pipeline_push(mac)
+
+        try:
+            await self._ensure_streams(mac)
+        except BaseException:
+            # The caller only gets its teardown handle on the happy path, so a stream
+            # left registered here could NEVER be closed: its subscriber count would
+            # pin the device to the fast pipeline for the life of the manager, and a
+            # later re-arm would push frames into a WS subscription id nobody owns.
+            # `CancelledError` is the live case — this runs inside the WS handler's
+            # task — hence `BaseException`, not `Exception`. The rollback IS this
+            # stream's close, pairing exactly once with the subscribe above.
+            _close()
+            raise
+
+        return _close
+
+    def _disarm_stream(self, stream: StateStream) -> None:
+        """Drop a stream's callback from its connection and release its session ref.
+
+        Safe on an unarmed stream, and safe when the connection is already dead:
+        `release_session` identity-checks against the active session, so a ref
+        that a force-close already reset is not double-released.
+        """
+        conn, cb = stream.conn, stream.cb
+        stream.conn = None
+        stream.cb = None
+        if conn is None:
+            return
+        with contextlib.suppress(Exception):
+            conn.unsubscribe_states(cb)
+        self.release_session(stream.mac, conn)
+
+    @callback
+    def _on_session_lost(self, conn: DeviceConnection) -> None:
+        """`conn`'s API connection stopped — disarm the streams it carried, then re-arm.
+
+        Reaches us from `DeviceConnection.on_stop`, which aioesphomeapi runs as an EAGER
+        task: inline within our own `client.disconnect()` for a self-initiated close —
+        which can fire this callback WHILE we are still inside `async_close_session`,
+        `_session_locks[mac]` held by that very call — arbitrary, from the read loop, for
+        an unexpected drop. Either way this can land at any point after the connection
+        died, including while we hold `_session_locks[mac]` somewhere up the stack. The
+        reconcile must not be awaited here — `_ensure_streams` takes `_stream_locks[mac]`
+        and then, through `async_open_session`, `_session_locks[mac]`. `_spawn` runs it on
+        a fresh task and tracks it, so async_stop's drain still catches it.
+
+        The hook carries the connection, not just its mac, because that detached delivery
+        means a stale on_stop from a REPLACED connection can arrive after its successor
+        armed these streams: only the streams this EXACT connection carried may be
+        disarmed. Tearing down a successor's would flap the client False→True and release
+        a session ref that belongs to the live connection.
+
+        Covers both an unexpected drop and our own force-close: `_ensure_streams`
+        no-ops while the device is offline, and `_on_device_available` re-runs it
+        when the device comes back.
+
+        Subscriber counts are untouched — they belong to the client, not the
+        connection (see `_target_subs`).
+        """
+        mac = conn.mac
+        streams = self._state_streams.get(mac)
+        if not streams:
+            return
+        # Iterate a copy: `notify` runs the client's callback, which is free to
+        # unsub in response — that removes the stream from this very list.
+        for stream in list(streams):
+            if stream.conn is not conn:
+                continue
+            self._disarm_stream(stream)
+            if not stream.closed:
+                stream.notify(False)
+        if self._stopping:
+            return
+        self._spawn(self._ensure_streams(mac))
+
+    def _unarmed_streams(self, mac: str) -> list[StateStream]:
+        """Streams a client still wants for `mac` that aren't on a connection yet."""
+        return [s for s in self._state_streams.get(mac, []) if not s.closed and not s.armed]
+
+    async def _ensure_streams(self, mac: str) -> None:
+        """Arm every unarmed stream for `mac`. Idempotent; safe to call often.
+
+        This is the single reconciler behind stream recovery: it runs when a
+        stream is added, when a session is lost (device flap, forced close), and
+        when the device comes back online.
+        """
+        if self._stopping or not self._state_streams.get(mac):
+            return
+        lock = self._stream_locks.setdefault(mac, asyncio.Lock())
+        async with lock:
+            if self._stopping_now():
+                return
+            pending = self._unarmed_streams(mac)
+            if not pending:
+                return
+            if mac not in self.devices or not self._is_device_available(mac):
+                # Device is gone or offline. Nothing to arm — the availability
+                # transition re-runs us.
+                for stream in pending:
+                    stream.notify(False)
+                return
+            armed_any = False
+            try:
+                for stream in pending:
+                    if await self._arm_stream(stream):
+                        armed_any = True
+            finally:
+                # `finally`, not a plain tail: the pass belongs to EVERY stream in
+                # `pending`, but it runs inside whichever caller triggered it — in
+                # practice a WS handler's task, via `async_add_state_stream`, which HA
+                # cancels when the client goes away. `_arm_stream` propagates that
+                # cancellation, and the caller's rollback closes only ITS OWN stream, so
+                # without reconciling on the way out another client's stream would be
+                # left registered-but-unarmed on an available device with no retry armed
+                # — #334's failure mode, until the next flap. `_schedule_stream_retry`
+                # no-ops while stopping, so the shutdown path stays clean.
+                if armed_any:
+                    # Counts are already recorded; the device's pipeline was set from
+                    # the defaults on reconnect, so re-push it now that we're live.
+                    self.request_pipeline_push(mac)
+                # Anything still unarmed means the device looked available but our own
+                # connect (or subscribe) failed (or, on the exception path, that the arm
+                # pass never got to it). No further trigger is coming — the availability
+                # transition already happened — so drive a backoff retry. Re-read the
+                # list rather than reusing `pending`: an arm can await, and a client may
+                # have unsubbed (closing its stream) meanwhile.
+                if self._unarmed_streams(mac):
+                    self._schedule_stream_retry(mac)
+                elif (retry := self._stream_retry_tasks.get(mac)) is not None and retry is not asyncio.current_task():
+                    # Everything armed while a backoff task from an earlier failure was still
+                    # sleeping. Retire it: parked, it owns the mac's retry slot for the rest of
+                    # its delay, so a device that flaps in that window would have to wait that
+                    # delay out instead of rescheduling from the first one. Cancelling here is
+                    # safe because we hold `_stream_locks[mac]`: a retry task can only be in its
+                    # sleep or blocked on this very lock, never mid-network-I/O. It never cancels
+                    # ITSELF — its own pass leaves through the loop's post-arm exit.
+                    self._stream_retry_tasks.pop(mac, None)
+                    retry.cancel()
+
+    def _schedule_stream_retry(self, mac: str) -> None:
+        """Keep retrying `_ensure_streams(mac)` while streams remain unarmed.
+
+        ONE task per mac drives the entire backoff sequence, and it re-checks its own
+        exit conditions on every tick. A task per `_ensure_streams` pass would instead
+        restart the delays at their first entry each time it re-scheduled — a failing
+        connect would then be re-attempted at that shortest interval forever, never
+        backing off. Re-entrant calls (this task's own `_ensure_streams` still finds
+        the stream unarmed) therefore no-op against the live task.
+
+        Cancellable, but not instantly: the task holds its slot across `_ensure_streams`
+        too, so a cancel can land in a session open or a subscribe as well as in the
+        sleep. `async_stop` Phase 1 therefore only REQUESTS the cancel; `_spawn` tracks
+        the task, and the Phase 2 drain settles the unwind under `_stop_timeout`.
+        """
+        if self._stopping:
+            return
+        existing = self._stream_retry_tasks.get(mac)
+        if existing is not None and not existing.done():
+            return
+
+        async def _retry() -> None:
+            delays = self._stream_retry_delays
+            attempt = 0
+            while not self._stopping:
+                # Hold at the last delay for as long as unarmed streams remain: the
+                # device may be rebooting, or out of API slots, for a long time.
+                delay = delays[min(attempt, len(delays) - 1)]
+                attempt += 1
+                try:
+                    await asyncio.sleep(delay)
+                except asyncio.CancelledError:
+                    return
+                # Stop as soon as this backoff has nothing to contribute — the streams
+                # armed, every client unsubbed, the device was removed, or it went
+                # offline. An offline device is `_on_device_available`'s to recover:
+                # `_ensure_streams` early-returns while it is down, so ticking on would
+                # just churn the lock for the life of the config entry, and would hold
+                # `attempt` at the top of the backoff for when it does come back.
+                # Never a busy loop: each pass is gated behind the sleep above.
+                # `_stopping_now`: same post-await re-check as `_ensure_streams` —
+                # not currently flagged by mypy (the `while` loop join widens the
+                # narrowing), but structurally identical, so kept consistent.
+                if (
+                    not self._unarmed_streams(mac)
+                    or self._stopping_now()
+                    or mac not in self.devices
+                    or not self._is_device_available(mac)
+                ):
+                    return
+                await self._ensure_streams(mac)
+                # Leave the moment the pass armed everything, rather than holding the
+                # mac's retry slot through another sleep — a fresh failure in that window
+                # must be able to schedule its own retry from the first delay.
+                if not self._unarmed_streams(mac):
+                    return
+
+        task = self._spawn(_retry())
+        self._stream_retry_tasks[mac] = task
+
+        def _drop(_: asyncio.Task) -> None:
+            # Identity-checked: a later task may already own the slot (this one was
+            # cancelled and replaced), and `async_stop` clears the dict wholesale.
+            if self._stream_retry_tasks.get(mac) is task:
+                self._stream_retry_tasks.pop(mac, None)
+
+        task.add_done_callback(_drop)
+
+    async def _arm_stream(self, stream: StateStream) -> bool:
+        """Open/reuse a session and register this stream's callback on it."""
+        mac = stream.mac
+        try:
+            opened = await self.async_open_session(mac)
+        except Exception as err:
+            _LOGGER.debug("State stream: open session failed for %s: %s", mac, err)
+            opened = None
+        if opened is None:
+            stream.notify(False)
+            return False
+        conn: DeviceConnection = opened
+
+        cb: Callable[[Any], None] | None = None
+
+        def _abandon() -> None:
+            """Take the callback back off the connection and give the session ref back.
+
+            Every failed exit below owes both. The unsubscribe is defence in depth:
+            `DeviceConnection.subscribe_states` appends `cb` before the client call that
+            can raise and rolls that append back itself, so it is normally a no-op — but
+            nothing else could ever remove a `cb` that DID survive, because the stream
+            stays unarmed and `_disarm_stream` would see `conn is None`. While another
+            stream keeps the connection alive, such an orphan would keep firing into a
+            dead handler, and the next re-arm would add a SECOND callback to the same
+            connection: every frame delivered twice. Suppressed like `_disarm_stream`'s —
+            a raise from a connection that died under us must not skip the release and
+            leak the ref that opened it, pinning the connection open for the life of the
+            manager. `cb` is read at call time, so this covers the pre-subscribe exit too.
+            """
+            if cb is not None:
+                with contextlib.suppress(Exception):
+                    conn.unsubscribe_states(cb)
+            self.release_session(mac, conn)
+
+        if stream.closed_now():
+            # The client went away while we were opening.
+            _abandon()
+            return False
+        try:
+            cb = stream.make_on_state(mac, conn)
+            await conn.subscribe_states(cb)
+        except Exception as err:
+            _LOGGER.debug("State stream: subscribe failed for %s: %s", mac, err)
+            _abandon()
+            stream.notify(False)
+            return False
+        except BaseException:
+            # Cancellation, in practice: `DeviceConnection.subscribe_states` can suspend
+            # on its `_subscribe_lock`, so a CancelledError can land in that await with
+            # `stream.conn` still None. `async_add_state_stream`'s rollback then finds an
+            # unarmed stream and releases nothing — hence `_abandon` here. Re-raise
+            # unconditionally: a swallowed CancelledError breaks task cancellation.
+            # `notify` is skipped — the client is going away with us.
+            _abandon()
+            raise
+        if stream.closed_now():
+            # The client went away while we were subscribing.
+            _abandon()
+            return False
+        stream.conn = conn
+        stream.cb = cb
+        stream.notify(True)
+        return True
+
     async def _push_pipeline_to_device(self, mac: str) -> None:
         """Recompute pipeline intervals and push to device."""
-        config = self._store.devices.get(mac, {})
+        # No live session — nothing to push to; the device picks the pipeline up on its
+        # next full push. Checked FIRST: `read_firmware_version` below scans every one of
+        # the device's registry entries, and a card mounting against an OFFLINE device
+        # requests a push all the same, so the wasted scan is not hypothetical.
         session = self.get_session(mac)
+        if session is None:
+            return
+
+        config = self._store.devices.get(mac, {})
         # Subscriber counts come from the per-mac map, NOT `session`: a freshly
         # reopened connection's own counters are zero even while clients are
         # subscribed (see `_target_subs`).
@@ -1629,14 +2119,12 @@ class DeviceManager:
         fw_ver = self.read_firmware_version(dev.device_id if dev is not None else None)
         strip_unsupported_pipeline_fields(pipeline, fw_ver)
 
-        # Push via session if available, otherwise skip (device will get it on next full push)
-        if session is not None and session.connected:
-            try:
-                await session.async_execute_service("epp_set_pipeline", pipeline)
-                _LOGGER.info("Pushed pipeline to %s", mac)
-            except HomeAssistantError:
-                # Service not available on older firmware — silently skip.
-                _LOGGER.debug("Device %s does not expose epp_set_pipeline", mac)
+        try:
+            await session.async_execute_service("epp_set_pipeline", pipeline)
+            _LOGGER.info("Pushed pipeline to %s", mac)
+        except HomeAssistantError:
+            # Service not available on older firmware — silently skip.
+            _LOGGER.debug("Device %s does not expose epp_set_pipeline", mac)
 
     @contextlib.asynccontextmanager
     async def _temp_connection(self, mac: str) -> AsyncIterator[DeviceConnection]:
@@ -1820,8 +2308,20 @@ class DeviceManager:
         try:
             async with self._temp_connection(mac) as conn:
                 await conn.async_push_config(config)
-                # Push pipeline directly (no subscribers on temp connections)
-                pipeline = _compute_pipeline(config, 0, 0, 0)
+                # The emission pipeline is DEVICE-global, and the subscriber counts are
+                # per-mac (see `_target_subs`) precisely so they outlive any one
+                # connection: a temp connection must therefore push the SAME pipeline a
+                # session would. This branch runs with clients streaming — a reconnect
+                # reaches the push before the re-arm pass has stored its session — and
+                # both writers land on the device with last-write-wins, so hard-coding
+                # zeros here would silence a stream the card still believes is live.
+                counts = self._target_subs.get(mac, {})
+                pipeline = _compute_pipeline(
+                    config,
+                    counts.get("raw_target_subs", 0),
+                    counts.get("grid_target_subs", 0),
+                    counts.get("heatmap_subs", 0),
+                )
                 # (`fw_ver` is already known-"compatible" here, so this strip is
                 # a no-op today — kept for defense if the gating above changes.)
                 strip_unsupported_pipeline_fields(pipeline, fw_ver)
@@ -1873,7 +2373,15 @@ class DeviceManager:
         Each successful call takes one subscriber reference on the session
         (see `_session_refcounts`); callers must pair it with exactly one
         `release_session(mac, conn)` when they no longer need the session.
+
+        Refuses to open while stopping: `release_session` no-ops during teardown
+        (async_stop owns the refcounts and the disconnects), so a connection that
+        reached `_active_connections` after Phase 3 cleared it would be closed by
+        nobody — a live connection surviving unload. Callers all treat None as
+        "device not available".
         """
+        if self._stopping:
+            return None
         dev = self.devices.get(mac)
         if dev is None or dev.host is None:
             return None
@@ -1890,8 +2398,21 @@ class DeviceManager:
         # simply runs after we release — which is correct: it pops
         # `_active_connections` and disconnects whatever we stored.
         await self._await_pending_close(mac)
+        if self._stopping_now():
+            # Teardown can begin while we were parked on the pending-close
+            # await above. Re-check here too — otherwise we'd fall through to
+            # a full connect + noise handshake (up to 30s) started during/
+            # after unload, only to be torn down by the post-connect guard
+            # below: a wasted API connection slot and an untracked coroutine
+            # outliving async_stop.
+            return None
         lock = self._session_locks.setdefault(mac, asyncio.Lock())
         async with lock:
+            if self._stopping_now():
+                # Same rationale as above: a shutdown that lands while we were
+                # queued on this lock (e.g. a contended session) must not let
+                # us proceed to construct a DeviceConnection.
+                return None
             if mac in self._active_connections:
                 conn = self._active_connections[mac]
                 if conn.connected:
@@ -1910,13 +2431,20 @@ class DeviceManager:
                 noise_psk=_extract_noise_psk(dev.esphome_config_entry_id, self._hass),
                 mac=mac,
                 static_presence_cache=self._static_presence_cache,
+                # Durable state streams hold no connection of their own: this hook
+                # is how they learn the one under them died (see `_on_session_lost`).
+                on_stop=self._on_session_lost,
             )
             await asyncio.wait_for(conn.async_connect(), timeout=30)
-            # Re-check availability after the connect: if HA flipped the
-            # device offline while we were inside async_connect, storing the
-            # new conn would strand a live session against a device the rest
-            # of the system already considers gone.
-            if not self._is_device_available(mac):
+            # Re-check after the connect: if HA flipped the device offline while we
+            # were inside async_connect, storing the new conn would strand a live
+            # session against a device the rest of the system already considers gone.
+            # Same for a teardown that began while we were parked there — Phase 3 has
+            # already cleared `_active_connections`, so this conn would be stranded.
+            # `_stopping_now`: same post-await re-check as above — not currently
+            # flagged by mypy (the `or` keeps the branch reachable via the other
+            # operand), but structurally identical, so kept consistent.
+            if self._stopping_now() or not self._is_device_available(mac):
                 await conn.async_disconnect()
                 return None
             self._active_connections[mac] = conn
@@ -1931,10 +2459,18 @@ class DeviceManager:
             # this mac — they survive the connection swap (see `_target_subs`) —
             # re-push the pipeline so target/zone emission resumes immediately
             # instead of staying silent until a page refresh re-subscribes.
-            # Spawned (not awaited) to avoid an extra round-trip inside the
-            # session lock; the push reads the just-stored connection.
+            #
+            # DEBOUNCED, not spawned directly: a card mounts by opening
+            # `overview/subscribe` then `overview/subscribe_heatmap` back-to-back, and
+            # each records its subscriber count BEFORE arming the stream that opens this
+            # session. A direct push would fire an immediate `epp_set_pipeline` carrying
+            # the counts as they stood mid-mount, and the arm pass's debounced push would
+            # then send the settled ones — two round-trips against a device whose API
+            # slots are scarcest exactly when it is recovering. `_request_pipeline_push`
+            # collapses them into ONE push with the final counts; its delay is invisible
+            # here, since this is fire-and-forget either way.
             if self._target_subs.get(mac):
-                self._spawn(self._push_pipeline_to_device(mac))
+                self._request_pipeline_push(mac)
             return conn
 
     @callback
@@ -1949,7 +2485,16 @@ class DeviceManager:
 
         Returns the scheduled close task when this release was the last
         reference (the session is now closing); None otherwise.
+
+        While stopping, always returns `None` — `async_stop` owns the
+        refcounts and the disconnects, so a close scheduled here would
+        escape the Phase-2 drain.
         """
+        if self._stopping:
+            # Teardown owns the refcounts and the disconnects (async_stop Phase 3).
+            # A close scheduled here lands after the Phase-2 drain and races a second
+            # disconnect against the one already in flight.
+            return None
         if self._active_connections.get(mac) is not conn:
             return None
         count = self._session_refcounts.get(mac, 0)

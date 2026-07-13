@@ -3,13 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+from collections.abc import Callable
+from typing import Any
+from unittest.mock import ANY
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from aioesphomeapi import APIConnectionError
 from aioesphomeapi import LogLevel
+from aioesphomeapi import TextSensorInfo
+from aioesphomeapi import TextSensorState
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
@@ -219,6 +226,44 @@ class TestDeviceConnection:
             cb2 = MagicMock()
             await asyncio.gather(conn.subscribe_states(cb1), conn.subscribe_states(cb2))
             mock_client.subscribe_states.assert_called_once()
+
+    async def test_failed_client_subscribe_does_not_kill_later_subscribers(self) -> None:
+        """A raising ``client.subscribe_states`` must not latch ``_states_subscribed``.
+
+        The client call can raise ``APIConnectionError`` when the socket dies under
+        us — exactly the flap the durable state streams exist to survive. If the flag
+        latched first, every LATER subscriber on this connection would append its
+        callback and skip the client call: the connection is live but no state frame
+        is ever dispatched (silent freeze, #334).
+        """
+        conn = DeviceConnection("192.168.1.100")
+
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], []))
+            mock_client.disconnect = AsyncMock()
+            mock_client.subscribe_states = MagicMock(side_effect=[APIConnectionError("socket closed"), None])
+
+            await conn.async_connect()
+
+            first = MagicMock()
+            with pytest.raises(APIConnectionError):
+                await conn.subscribe_states(first)
+
+            # The failed call leaves no residue: no latched flag, no orphan callback.
+            assert conn._states_subscribed is False
+            assert first not in conn._state_subscribers
+
+            second = MagicMock()
+            await conn.subscribe_states(second)
+
+            # The retry actually reaches the client, so dispatch is alive again.
+            assert mock_client.subscribe_states.call_count == 2
+            assert conn._states_subscribed is True
+            conn._dispatch_state("state")
+            second.assert_called_once_with("state")
+            first.assert_not_called()
 
     async def test_dispatch_state_isolates_subscriber_exceptions(self) -> None:
         """A subscriber raising must not stop later subscribers from receiving
@@ -944,6 +989,63 @@ class TestDeviceConnection:
         with pytest.raises((TimeoutError, asyncio.TimeoutError)):
             await conn.async_execute_service("slow", {}, timeout=0.05, return_response=True)
 
+    def test_mac_is_exposed_read_only(self):
+        """`_on_session_lost` reads the mac back off the connection the hook hands it.
+
+        Standalone connections (no manager) fall back to the host, matching the key the
+        static-presence skip cache uses.
+        """
+        assert DeviceConnection("192.168.1.100", mac="AA:BB:CC:DD:EE:01").mac == "AA:BB:CC:DD:EE:01"
+        assert DeviceConnection("192.168.1.100").mac == "192.168.1.100"
+
+    async def test_on_stop_callback_fires_when_connection_drops(self):
+        """The owner is told which connection stopped, after its references are released."""
+        seen: list[Any] = []
+        conn = DeviceConnection(
+            "192.168.1.100", mac="AA:BB:CC:DD:EE:01", on_stop=lambda c: seen.append((c, c.connected))
+        )
+
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_client_cls:
+            client = mock_client_cls.return_value
+            client.connect = AsyncMock()
+            client.list_entities_services = AsyncMock(return_value=([], []))
+            await conn.async_connect()
+            on_stop = client.connect.call_args.kwargs["on_stop"]
+            await on_stop(False)
+
+        # Fired exactly once, carrying THIS connection (the manager matches streams
+        # against it by identity), and _release_references ran first (connected already
+        # False).
+        assert seen == [(conn, False)]
+
+    async def test_on_stop_callback_exception_is_swallowed(self):
+        """A raising callback must not propagate into aioesphomeapi's stop path."""
+        conn = DeviceConnection("192.168.1.100", on_stop=MagicMock(side_effect=RuntimeError("boom")))
+
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_client_cls:
+            client = mock_client_cls.return_value
+            client.connect = AsyncMock()
+            client.list_entities_services = AsyncMock(return_value=([], []))
+            await conn.async_connect()
+            on_stop = client.connect.call_args.kwargs["on_stop"]
+            await on_stop(True)  # must not raise
+
+        assert conn.connected is False
+
+    async def test_no_on_stop_callback_is_fine(self):
+        """A connection constructed without on_stop still releases cleanly."""
+        conn = DeviceConnection("192.168.1.100")
+
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_client_cls:
+            client = mock_client_cls.return_value
+            client.connect = AsyncMock()
+            client.list_entities_services = AsyncMock(return_value=([], []))
+            await conn.async_connect()
+            on_stop = client.connect.call_args.kwargs["on_stop"]
+            await on_stop(False)
+
+        assert conn.connected is False
+
 
 # ---------------------------------------------------------------------------
 # DeviceManager tests
@@ -1570,10 +1672,13 @@ class TestDeviceManager:
             mock_conn.connected = True
 
             await manager.async_open_session(mac)
-            # The re-push is spawned as a tracked task — wait for it.
+            # Debounced, not pushed inline: the counts a mounting card is still
+            # adding to must settle first (see `_request_pipeline_push`).
+            mock_push.assert_not_awaited()
+            # The re-push runs from a tracked task — wait for the trailing edge.
             await hass.async_block_till_done()
 
-        mock_push.assert_awaited_with(mac)
+        mock_push.assert_awaited_once_with(mac)
 
     async def test_open_session_no_repush_without_subscribers(
         self, hass: HomeAssistant, manager: DeviceManager
@@ -1796,6 +1901,66 @@ class TestDeviceManager:
         mock_conn.async_disconnect.assert_awaited_once()
         assert mac not in manager._active_connections
         assert len(avail_calls) >= 2, "expected pre-lock + post-connect availability checks"
+
+    async def test_open_session_stopping_while_awaiting_pending_close_returns_none(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """`_stopping` must be re-checked after `_await_pending_close`: teardown
+        beginning while a call is parked there must not let it fall through to a
+        full connect + noise handshake started during/after unload — burning an
+        API connection slot and leaving an untracked coroutine past async_stop."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        close_release = asyncio.Event()
+
+        async def slow_close() -> None:
+            await close_release.wait()
+
+        pending_task = asyncio.create_task(slow_close())
+        manager._pending_closes[mac] = pending_task
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls:
+            mock_conn = mock_conn_cls.return_value
+            mock_conn.async_connect = AsyncMock()
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn.connected = True
+
+            task = asyncio.create_task(manager.async_open_session(mac))
+            await asyncio.sleep(0)  # let it start awaiting the pending close
+            manager._stopping = True
+            close_release.set()
+            result = await asyncio.wait_for(task, timeout=2.0)
+
+        assert result is None
+        assert mock_conn_cls.call_count == 0, "must not construct a DeviceConnection after _stopping is set"
+
+    async def test_open_session_stopping_mid_session_lock_returns_none(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """`_stopping` must be re-checked after acquiring `_session_locks[mac]`:
+        teardown beginning while a call is queued on a contended session lock
+        must not let it proceed to construct a DeviceConnection."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        lock = manager._session_locks.setdefault(mac, asyncio.Lock())
+        await lock.acquire()
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls:
+            mock_conn = mock_conn_cls.return_value
+            mock_conn.async_connect = AsyncMock()
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn.connected = True
+
+            task = asyncio.create_task(manager.async_open_session(mac))
+            await asyncio.sleep(0)  # let it queue on the lock
+            manager._stopping = True
+            lock.release()
+            result = await asyncio.wait_for(task, timeout=2.0)
+
+        assert result is None
+        assert mock_conn_cls.call_count == 0, "must not construct a DeviceConnection after _stopping is set"
 
     async def test_multiple_state_changes_push_config_once(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Multiple entities becoming available should only push config once."""
@@ -2718,6 +2883,9 @@ class TestNoisePsk:
             noise_psk="abcdef==",
             mac="AA:BB:CC:DD:EE:FF",
             static_presence_cache=manager._static_presence_cache,
+            # A `partial` — identity-compared, so pinned by its own test
+            # (`test_open_session_passes_on_stop_hook`) rather than here.
+            on_stop=ANY,
         )
 
 
@@ -5067,6 +5235,83 @@ class TestEventCallbacks:
         pipeline = mock_conn.async_execute_service.await_args.args[1]
         assert "heatmap_interval" not in pipeline
 
+    async def test_push_config_temp_connection_carries_the_live_subscriber_counts(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """The emission pipeline is DEVICE-global, so the temp-connection push must
+        carry the same subscriber counts a session push would: `_target_subs` is
+        per-mac precisely so it outlives any one connection. A card can be streaming
+        (counts held) while this branch runs — `_on_device_available` reaches the
+        push before the re-arm pass has stored its session — and pushing zeros there
+        turns target/zone emission OFF for a stream the client believes is live."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"settings": {"target_update_rate_ms": 500, "target_xy": True}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        # One card subscribed to the grid stream and the heatmap.
+        manager._target_subs[mac] = {"raw_target_subs": 0, "grid_target_subs": 1, "heatmap_subs": 1}
+
+        mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_execute_service = AsyncMock()
+        mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
+        mock_conn.async_disconnect = AsyncMock()
+
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=mock_conn,
+            ),
+        ):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        pipeline = mock_conn.async_execute_service.await_args.args[1]
+        assert pipeline["display_interval"] == 200
+        assert pipeline["zone_state_interval"] == 1000
+        assert pipeline["heatmap_interval"] == 2000
+
+    async def test_push_config_temp_and_session_paths_push_the_same_pipeline(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """The two pipeline writers must not disagree. Both paths can run for the
+        same mac within the same reconnect (the temp push while the session is still
+        connecting, the session push once it lands), and last-write-wins: if they
+        computed different payloads, the device's emission would depend on which
+        connect finished last."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"settings": {"zone_presence": True, "zone_update_rate_ms": 2000}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._target_subs[mac] = {"raw_target_subs": 1, "grid_target_subs": 1, "heatmap_subs": 0}
+
+        temp_conn = MagicMock()
+        temp_conn.async_connect = AsyncMock()
+        temp_conn.async_push_config = AsyncMock()
+        temp_conn.async_execute_service = AsyncMock()
+        temp_conn.async_fetch_build_flags = AsyncMock(return_value={})
+        temp_conn.async_disconnect = AsyncMock()
+
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=temp_conn,
+            ),
+        ):
+            assert await manager._push_config_to_device(mac) is True
+        temp_pipeline = temp_conn.async_execute_service.await_args.args[1]
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.async_execute_service = AsyncMock()
+        manager._active_connections[mac] = session_conn
+        with patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION):
+            await manager._push_pipeline_to_device(mac)
+        session_pipeline = session_conn.async_execute_service.await_args.args[1]
+
+        assert temp_pipeline == session_pipeline
+
     async def test_push_config_skips_disconnected_session(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
@@ -5760,6 +6005,31 @@ class TestEventCallbacks:
         mock_push.assert_not_awaited()
         assert mac not in manager._entity_update_clear_cancels
         assert mac not in manager._entity_update_macs
+
+    async def test_on_device_removed_cancels_the_pending_pipeline_push(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Same invariant as the debounced config push: nothing may still be
+        scheduled to push to a device that no longer exists."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._device_id_to_mac["dev123"] = mac
+        manager._request_pipeline_push(mac, delay=0.01)
+        assert mac in manager._pending_pipeline_pushes
+        pending = manager._pending_pipeline_pushes[mac]
+
+        with (
+            patch.object(manager, "async_close_session", new_callable=AsyncMock),
+            patch.object(manager, "_push_pipeline_to_device", new_callable=AsyncMock) as mock_push,
+        ):
+            await manager._on_device_removed(mac)
+            await hass.async_block_till_done()
+
+        assert mac not in manager._pending_pipeline_pushes
+        # The debounce task swallows its CancelledError (returns cleanly), so
+        # assert on the observable effect: the push body never ran.
+        assert pending.done()
+        mock_push.assert_not_awaited()
 
     async def test_on_device_removed_notifies_subscribers(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device removal fires device list callbacks."""
@@ -8941,3 +9211,2103 @@ def test_mac_for_device_id_maps_registry_id_to_mac(hass):
 
     assert mgr.mac_for_device_id("dev1") == "AA:BB:CC:DD:EE:01"
     assert mgr.mac_for_device_id("nope") is None
+
+
+class TestStateStream:
+    """Tests for the durable state-stream record."""
+
+    def _stream(self, on_availability=None):
+        from custom_components.eppgrid.device_manager._streams import StateStream
+
+        return StateStream(
+            mac="AA:BB:CC:DD:EE:01",
+            counter_attr="grid_target_subs",
+            make_on_state=lambda mac, conn: lambda state: None,
+            on_availability=on_availability or (lambda available: None),
+        )
+
+    def test_starts_unarmed(self):
+        stream = self._stream()
+        assert stream.armed is False
+        assert stream.closed is False
+
+    def test_armed_once_a_connection_is_bound(self):
+        stream = self._stream()
+        stream.conn = MagicMock()
+        stream.cb = lambda state: None
+        assert stream.armed is True
+
+    def test_notify_dedupes_repeated_values(self):
+        seen: list[bool] = []
+        stream = self._stream(on_availability=seen.append)
+        stream.notify(True)
+        stream.notify(True)
+        stream.notify(False)
+        stream.notify(False)
+        stream.notify(True)
+        assert seen == [True, False, True]
+
+    def test_notify_fires_on_first_false(self):
+        """Initial state is unknown, so the first notify always emits."""
+        seen: list[bool] = []
+        stream = self._stream(on_availability=seen.append)
+        stream.notify(False)
+        assert seen == [False]
+
+    def test_notify_swallows_callback_errors(self):
+        stream = self._stream(on_availability=MagicMock(side_effect=RuntimeError("ws closed")))
+        stream.notify(True)  # must not raise
+
+    def test_notify_closed_fires_the_owner_callback(self):
+        from custom_components.eppgrid.device_manager._streams import StateStream
+
+        fired: list[bool] = []
+        stream = StateStream(
+            mac="AA:BB:CC:DD:EE:01",
+            counter_attr="grid_target_subs",
+            make_on_state=lambda mac, conn: lambda state: None,
+            on_availability=lambda available: None,
+            on_closed=lambda: fired.append(True),
+        )
+        stream.notify_closed()
+        assert fired == [True]
+
+    def test_notify_closed_fires_at_most_once(self):
+        """The teardown paths can both reach a stream (device removed during unload)."""
+        from custom_components.eppgrid.device_manager._streams import StateStream
+
+        fired: list[bool] = []
+        stream = StateStream(
+            mac="AA:BB:CC:DD:EE:01",
+            counter_attr="grid_target_subs",
+            make_on_state=lambda mac, conn: lambda state: None,
+            on_availability=lambda available: None,
+            on_closed=lambda: fired.append(True),
+        )
+        stream.notify_closed()
+        stream.notify_closed()
+        assert fired == [True]
+
+    def test_notify_closed_without_a_callback_is_a_noop(self):
+        """`on_closed` is optional — an older caller registers no handler."""
+        self._stream().notify_closed()  # must not raise
+
+    def test_notify_closed_swallows_callback_errors(self):
+        from custom_components.eppgrid.device_manager._streams import StateStream
+
+        stream = StateStream(
+            mac="AA:BB:CC:DD:EE:01",
+            counter_attr="grid_target_subs",
+            make_on_state=lambda mac, conn: lambda state: None,
+            on_availability=lambda available: None,
+            on_closed=MagicMock(side_effect=RuntimeError("ws closed")),
+        )
+        stream.notify_closed()  # must not raise
+
+    def test_records_with_matching_fields_are_still_distinct(self):
+        """The record is used with IDENTITY semantics — `eq=False` is load-bearing.
+
+        `async_add_state_stream`'s close does `streams.remove(stream)`, which removes the
+        first EQUAL element, not the identical one. Structural equality (a dataclass's
+        default) would therefore drop the WRONG record for two streams on a mac whose
+        fields happen to match — the survivor would keep a callback on the connection
+        with no owner, and the subscriber count would go out of step. Today's callers
+        build per-WS-command closures so no two streams ever match, but the manager API
+        is general: a caller sharing a module-level callback pair would hit it.
+        """
+        from custom_components.eppgrid.device_manager._streams import StateStream
+
+        def make_on_state(mac, conn):
+            return lambda state: None
+
+        def on_availability(available):
+            return None
+
+        # Same callables in both records: structurally equal, distinct subscriptions.
+        fields = {
+            "mac": "AA:BB:CC:DD:EE:01",
+            "counter_attr": "grid_target_subs",
+            "make_on_state": make_on_state,
+            "on_availability": on_availability,
+        }
+        first, second = StateStream(**fields), StateStream(**fields)
+
+        assert first != second
+        assert len({first, second}) == 2  # hashable, by identity
+
+        streams = [first, second]
+        streams.remove(second)
+        assert streams == [first]
+        assert streams[0] is first
+
+    def test_mark_closed_flags_notifies_and_is_idempotent(self):
+        """The shared terminal tail of async_stop and _on_device_removed.
+
+        Both signals, in order — offline THEN gone — and both at most once: the
+        teardown loops walk every stream, and a client that unsubs from its own
+        callback can re-enter a path that marks the stream closed again.
+        """
+        seen: list[bool] = []
+        closed: list[bool] = []
+        stream = self._stream(on_availability=seen.append)
+        stream.on_closed = lambda: closed.append(True)
+        stream.notify(True)
+
+        stream.mark_closed()
+        stream.mark_closed()
+
+        assert stream.closed is True
+        assert seen == [True, False]
+        assert closed == [True]
+
+
+async def _settle(rounds: int = 20) -> None:
+    """Drain the loop's ready queue without advancing time.
+
+    Lets already-scheduled tasks run up to their next real await (a gate, a lock)
+    so a test can assert on a precise interleaving.
+    """
+    for _ in range(rounds):
+        await asyncio.sleep(0)
+
+
+class TestStateStreams:
+    """Durable frontend state streams: arm, close, and refcount behaviour."""
+
+    @pytest.fixture(autouse=True)
+    async def _cancel_stream_retries(self, manager):
+        """Cancel any stream-arming backoff task a test leaves behind.
+
+        A stream left unarmed on an available device schedules a retry that keeps
+        running by design (#334) — in production `async_stop` cancels it. Tests that
+        drive those failure paths without a manager teardown would otherwise leave a
+        task sleeping on the backoff past the end of the test.
+        """
+        yield
+        tasks = list(manager._stream_retry_tasks.values())
+        manager._stream_retry_tasks.clear()
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    def _armable(self, manager):
+        """Give the manager one available device and a stubbed session open.
+
+        The conn starts `connected=True` — a stream armed on it is armed on a LIVE
+        connection. A test that drives a session loss must flip it to False first:
+        `DeviceConnection._on_stop` calls `_release_references()` (which clears
+        `connected`) before it invokes the manager's hook.
+        """
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._is_device_available = MagicMock(return_value=True)
+        conn = MagicMock()
+        conn.mac = mac
+        conn.entities = []
+        conn.connected = True
+        conn.subscribe_states = AsyncMock()
+        conn.unsubscribe_states = MagicMock()
+        manager.async_open_session = AsyncMock(return_value=conn)
+        manager.release_session = MagicMock(return_value=None)
+        manager.request_pipeline_push = MagicMock()
+        return mac, conn
+
+    async def test_add_stream_arms_against_the_live_session(self, hass, manager):
+        mac, conn = self._armable(manager)
+        built: list[Any] = []
+        seen: list[bool] = []
+
+        def make_on_state(stream_mac, device_conn):
+            built.append((stream_mac, device_conn))
+            return lambda state: None
+
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=make_on_state,
+            on_availability=seen.append,
+        )
+
+        assert unsub is not None
+        manager.async_open_session.assert_awaited_once_with(mac)
+        assert built == [(mac, conn)]
+        conn.subscribe_states.assert_awaited_once()
+        assert seen == [True]
+        # The subscriber count is taken once, at add.
+        assert manager._target_subs[mac]["grid_target_subs"] == 1
+
+    async def test_unknown_mac_returns_none(self, hass, manager):
+        unsub = await manager.async_add_state_stream(
+            "AA:BB:CC:DD:EE:99",
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        assert unsub is None
+
+    async def test_unsub_disarms_releases_and_decrements(self, hass, manager):
+        mac, conn = self._armable(manager)
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        unsub()
+
+        conn.unsubscribe_states.assert_called_once()
+        manager.release_session.assert_called_once_with(mac, conn)
+        assert mac not in manager._target_subs
+        assert mac not in manager._state_streams
+
+    async def test_unsub_is_idempotent(self, hass, manager):
+        mac, conn = self._armable(manager)
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        unsub()
+        unsub()
+
+        assert conn.unsubscribe_states.call_count == 1
+        assert manager.release_session.call_count == 1
+
+    async def test_add_stream_rolls_back_when_the_arm_pass_raises(self, hass, manager):
+        """Registration is all-or-nothing: no unsub handle means no registration.
+
+        The caller only receives its teardown handle on the happy path, so a stream
+        left behind here could never be torn down: its subscriber count would pin the
+        device to the fast pipeline for the life of the manager, and a later re-arm
+        would push frames into a WS subscription id nobody owns.
+        """
+        mac, _conn = self._armable(manager)
+        manager._ensure_streams = AsyncMock(side_effect=RuntimeError("boom"))
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+
+        assert mac not in manager._state_streams
+        assert mac not in manager._target_subs
+
+    async def test_add_stream_rolls_back_when_cancelled(self, hass, manager):
+        """Same rollback on cancellation — the WS handler task can be cancelled mid-await."""
+        mac, _conn = self._armable(manager)
+        manager._ensure_streams = AsyncMock(side_effect=asyncio.CancelledError())
+
+        with pytest.raises(asyncio.CancelledError):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+
+        assert mac not in manager._state_streams
+        assert mac not in manager._target_subs
+
+    async def test_add_stream_rollback_disarms_a_stream_that_already_armed(self, hass, manager):
+        """A failure AFTER the arm must also drop the callback and release the session ref."""
+        mac, conn = self._armable(manager)
+        real_ensure_streams = manager._ensure_streams
+
+        async def _arm_then_raise(stream_mac):
+            await real_ensure_streams(stream_mac)
+            raise RuntimeError("boom")
+
+        manager._ensure_streams = _arm_then_raise
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+
+        conn.unsubscribe_states.assert_called_once()
+        manager.release_session.assert_called_once_with(mac, conn)
+        assert mac not in manager._state_streams
+        assert mac not in manager._target_subs
+
+    async def test_offline_device_registers_the_stream_unarmed(self, hass, manager):
+        """No session yet — the stream still registers so it can arm on recovery."""
+        mac, _conn = self._armable(manager)
+        manager._is_device_available = MagicMock(return_value=False)
+        seen: list[bool] = []
+
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        assert unsub is not None
+        manager.async_open_session.assert_not_awaited()
+        assert seen == [False]
+        assert manager._state_streams[mac][0].armed is False
+        # Unsub on an unarmed stream releases nothing but still deregisters.
+        unsub()
+        manager.release_session.assert_not_called()
+        assert mac not in manager._state_streams
+
+    async def test_subscribe_failure_leaves_stream_unarmed_and_releases(self, hass, manager):
+        mac, conn = self._armable(manager)
+        conn.subscribe_states = AsyncMock(side_effect=RuntimeError("connection is closed"))
+        seen: list[bool] = []
+
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        assert unsub is not None
+        assert manager._state_streams[mac][0].armed is False
+        manager.release_session.assert_called_once_with(mac, conn)
+        assert seen == [False]
+
+    async def test_subscribe_failure_unsubscribes_the_orphaned_callback(self, hass, manager):
+        """A failed subscribe must take its callback back off the connection.
+
+        `DeviceConnection.subscribe_states` rolls back its own append on failure, so
+        against a real connection this cleanup is a no-op — it pins `_arm_stream`'s
+        own contract rather than relying on that connection-internal invariant. A
+        callback that did survive could never be removed: the stream is left unarmed
+        (`conn is None`), so `_disarm_stream` skips it; while another stream keeps
+        the connection alive, the orphan would keep firing into a dead handler and
+        the next re-arm would register a SECOND callback on the same connection —
+        every frame delivered twice.
+        """
+        mac, conn = self._armable(manager)
+        conn.subscribe_states = AsyncMock(side_effect=RuntimeError("connection is closed"))
+        built: list[Any] = []
+
+        def make_on_state(_mac, _conn):
+            cb = MagicMock()
+            built.append(cb)
+            return cb
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=make_on_state,
+            on_availability=lambda a: None,
+        )
+
+        conn.unsubscribe_states.assert_called_once_with(built[0])
+        manager.release_session.assert_called_once_with(mac, conn)
+
+    async def test_cancelled_subscribe_releases_the_session_ref(self, hass, manager):
+        """A cancellation inside `subscribe_states` must not leak the session ref.
+
+        `DeviceConnection.subscribe_states` can suspend on its `_subscribe_lock`, so a
+        CancelledError can land in that await with the stream still unarmed
+        (`stream.conn is None`). `async_add_state_stream`'s rollback would then see
+        nothing to disarm and release nothing — one session ref pinning the device's
+        connection open for the life of the manager, and the "registration is
+        all-or-nothing" contract broken.
+        """
+        mac, conn = self._armable(manager)
+        conn.subscribe_states = AsyncMock(side_effect=asyncio.CancelledError())
+
+        with pytest.raises(asyncio.CancelledError):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+
+        conn.unsubscribe_states.assert_called_once()
+        # Exactly once: the arm pass releases the ref it took, and the rollback's
+        # `_disarm_stream` (which sees an unarmed stream) must not release it again.
+        manager.release_session.assert_called_once_with(mac, conn)
+        assert mac not in manager._state_streams
+        assert mac not in manager._target_subs
+
+    async def test_disarm_does_not_decrement_the_subscriber_count(self, hass, manager):
+        """Disarm is a connection-level event, not a client-level one.
+
+        `_target_subs` is per-mac precisely so subscriber counts survive connection
+        replacement. Decrementing on session loss would gate the device's emission
+        pipeline off while a WS client is still subscribed and waiting for the
+        re-arm — the previously-fixed "target disappears" bug.
+        """
+        mac, conn = self._armable(manager)
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        stream = manager._state_streams[mac][0]
+        assert stream.armed is True
+
+        manager._disarm_stream(stream)
+
+        assert stream.armed is False
+        conn.unsubscribe_states.assert_called_once()
+        manager.release_session.assert_called_once_with(mac, conn)
+        # The count is untouched — the client is still subscribed.
+        assert manager._target_subs[mac]["grid_target_subs"] == 1
+
+        # And a second disarm releases nothing further (the ref is already gone).
+        manager._disarm_stream(stream)
+        assert manager.release_session.call_count == 1
+        assert manager._target_subs[mac]["grid_target_subs"] == 1
+
+    async def test_open_session_returning_none_leaves_stream_unarmed(self, hass, manager):
+        """Device looks available but the connect fails — register, report offline."""
+        mac, _conn = self._armable(manager)
+        manager.async_open_session = AsyncMock(return_value=None)
+        seen: list[bool] = []
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        assert manager._state_streams[mac][0].armed is False
+        manager.release_session.assert_not_called()
+        assert seen == [False]
+
+    async def test_open_session_raising_leaves_stream_unarmed(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        manager.async_open_session = AsyncMock(side_effect=RuntimeError("connect timed out"))
+        seen: list[bool] = []
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        assert manager._state_streams[mac][0].armed is False
+        assert seen == [False]
+
+    async def test_close_during_open_releases_the_session_ref(self, hass, manager):
+        """The WS client went away mid-open: the ref we just took must not leak."""
+        mac, conn = self._armable(manager)
+
+        async def open_then_close(_mac):
+            # Simulate the client's unsub landing while we were connecting.
+            manager._state_streams[mac][0].closed = True
+            return conn
+
+        manager.async_open_session = AsyncMock(side_effect=open_then_close)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        manager.release_session.assert_called_once_with(mac, conn)
+        conn.subscribe_states.assert_not_awaited()
+        assert manager._state_streams[mac][0].armed is False
+
+    async def test_close_during_subscribe_unsubscribes_and_releases(self, hass, manager):
+        """Same race, one await later: the callback we just registered must come off."""
+        mac, conn = self._armable(manager)
+
+        async def subscribe_then_close(_cb):
+            manager._state_streams[mac][0].closed = True
+
+        conn.subscribe_states = AsyncMock(side_effect=subscribe_then_close)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        conn.unsubscribe_states.assert_called_once()
+        manager.release_session.assert_called_once_with(mac, conn)
+        assert manager._state_streams[mac][0].armed is False
+
+    async def test_ensure_streams_is_a_noop_when_nothing_is_pending(self, hass, manager):
+        """An already-armed stream is not re-armed by a second reconciler pass."""
+        mac, conn = self._armable(manager)
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        await manager._ensure_streams(mac)
+
+        manager.async_open_session.assert_awaited_once()
+        assert conn.subscribe_states.await_count == 1
+
+    async def test_ensure_streams_does_not_arm_while_stopping(self, hass, manager):
+        """Shutdown must not open new sessions — including for unknown macs."""
+        mac, _conn = self._armable(manager)
+        manager._is_device_available = MagicMock(return_value=False)
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        manager._is_device_available = MagicMock(return_value=True)
+        manager._stopping = True
+
+        await manager._ensure_streams(mac)
+        await manager._ensure_streams("AA:BB:CC:DD:EE:99")
+
+        manager.async_open_session.assert_not_awaited()
+        assert manager._state_streams[mac][0].armed is False
+
+    async def test_stopping_mid_lock_aborts_the_arm(self, hass, manager):
+        """`_stopping` is re-checked after the lock: a shutdown that lands while
+        another pass holds it must not arm a stream behind async_stop's back."""
+        mac, _conn = self._armable(manager)
+        manager._is_device_available = MagicMock(return_value=False)
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        manager._is_device_available = MagicMock(return_value=True)
+
+        lock = manager._stream_locks.setdefault(mac, asyncio.Lock())
+        await lock.acquire()
+        task = asyncio.create_task(manager._ensure_streams(mac))
+        await asyncio.sleep(0)  # let the task queue on the lock
+        manager._stopping = True
+        lock.release()
+        await task
+
+        manager.async_open_session.assert_not_awaited()
+        assert manager._state_streams[mac][0].armed is False
+
+    async def test_two_streams_on_one_mac_are_independent(self, hass, manager):
+        """Unsubbing one client must not disturb the other's stream or its count."""
+        mac, conn = self._armable(manager)
+
+        unsub_grid = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        unsub_heatmap = await manager.async_add_state_stream(
+            mac,
+            counter_attr="heatmap_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        grid, heatmap = manager._state_streams[mac]
+        assert grid.armed is True
+        assert heatmap.armed is True
+        assert conn.subscribe_states.await_count == 2
+
+        unsub_grid()
+
+        # The survivor keeps its callback, its session ref, and its count: the mac
+        # is only deregistered when the LAST stream goes.
+        assert manager._state_streams[mac] == [heatmap]
+        assert heatmap.armed is True
+        assert manager._target_subs[mac]["heatmap_subs"] == 1
+        assert manager._target_subs[mac]["grid_target_subs"] == 0
+        assert manager.release_session.call_count == 1
+        assert conn.unsubscribe_states.call_count == 1
+
+        # And the reconciler leaves the still-armed survivor alone.
+        await manager._ensure_streams(mac)
+        assert conn.subscribe_states.await_count == 2
+        assert manager.async_open_session.await_count == 2
+
+        unsub_heatmap()
+        assert mac not in manager._state_streams
+        assert mac not in manager._target_subs
+        assert manager.release_session.call_count == 2
+
+    async def test_unsub_removes_the_identical_record_not_a_matching_one(self, hass, manager):
+        """Two streams whose fields match: the unsub must drop the one it belongs to.
+
+        The registry stores streams in a list and the close does `list.remove`, which
+        goes by equality. A future caller sharing a module-level callback pair between
+        two streams on one mac (nothing in the API forbids it) would otherwise have the
+        WRONG record removed: the survivor keeps a callback on the connection with no
+        owner, and its subscriber count is released while it is still streaming.
+        """
+        mac, _conn = self._armable(manager)
+
+        def make_on_state(_mac, _conn):
+            return on_state
+
+        def on_state(state):
+            return None
+
+        def on_availability(available):
+            return None
+
+        shared = {
+            "counter_attr": "grid_target_subs",
+            "make_on_state": make_on_state,
+            "on_availability": on_availability,
+        }
+        await manager.async_add_state_stream(mac, **shared)
+        unsub_second = await manager.async_add_state_stream(mac, **shared)
+        first, second = manager._state_streams[mac]
+
+        unsub_second()
+
+        assert manager._state_streams[mac] == [first]
+        assert manager._state_streams[mac][0] is first
+        assert first.armed is True
+        assert second.armed is False
+        assert manager._target_subs[mac]["grid_target_subs"] == 1
+
+    async def test_stream_lock_identity_survives_unsub_to_empty(self, hass, manager):
+        """The per-mac lock object must never be swapped out.
+
+        An `_ensure_streams` pass can be holding (or waiting on) the lock across an
+        await when the mac's last stream unsubs. Popping the lock there lets the next
+        pass mint a fresh one and run *concurrently* with the old holder — see
+        `test_waiter_on_the_old_lock_cannot_double_arm` for what that costs.
+        """
+        mac, _conn = self._armable(manager)
+
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        first_lock = manager._stream_locks[mac]
+
+        unsub()
+        assert mac not in manager._state_streams
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        assert manager._stream_locks[mac] is first_lock
+
+    async def test_waiter_on_the_old_lock_cannot_double_arm(self, hass, manager):
+        """The interleaving a swapped-out lock would allow, end to end.
+
+        Pass A is parked in `async_open_session` holding the mac's lock; pass B is
+        queued on it; the mac's last stream unsubs; a new client adds a stream. With a
+        stable lock the newcomer serializes behind B and the new stream is armed
+        exactly once. A fresh lock lets the newcomer arm in parallel with B: two
+        callbacks on one connection (every frame delivered twice), one of them
+        orphaned, and a session ref that is never released.
+        """
+        mac, conn = self._armable(manager)
+        gates: list[asyncio.Event] = []
+
+        async def gated_open(_mac):
+            gate = asyncio.Event()
+            gates.append(gate)
+            await gate.wait()
+            return conn
+
+        manager._is_device_available = MagicMock(return_value=False)
+        unsub_first = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        manager._is_device_available = MagicMock(return_value=True)
+        manager.async_open_session = AsyncMock(side_effect=gated_open)
+
+        # A: takes the mac's lock, parks in the open for the first stream.
+        holder = asyncio.create_task(manager._ensure_streams(mac))
+        await _settle()
+        assert len(gates) == 1
+        # B: queued on that same lock object.
+        waiter = asyncio.create_task(manager._ensure_streams(mac))
+        await _settle()
+
+        # The only client goes away — the mac's stream list empties while A is parked.
+        unsub_first()
+        assert mac not in manager._state_streams
+
+        # A new client arrives for the same mac, still while A is parked.
+        adder = asyncio.create_task(
+            manager.async_add_state_stream(
+                mac,
+                counter_attr="heatmap_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+        )
+        await _settle()
+
+        gates[0].set()  # A resumes, finds its stream closed, hands the lock to B
+        await _settle()
+        # B is now arming the new stream. The newcomer must still be waiting on the
+        # lock, not opening a second session for the same stream.
+        opens_after_handoff = len(gates)
+
+        for gate in gates:
+            gate.set()
+        await asyncio.gather(holder, waiter, adder)
+
+        assert opens_after_handoff == 2
+        assert conn.subscribe_states.await_count == 1
+        assert manager._state_streams[mac][0].armed is True
+        # One release: the ref A took for the stream that closed under it.
+        assert manager.release_session.call_count == 1
+
+    async def test_session_loss_disarms_then_rearms_on_a_fresh_connection(self, hass, manager):
+        """The card's stream must survive a device flap — issue #334."""
+        mac, conn = self._armable(manager)
+        conn2 = MagicMock()
+        conn2.entities = []
+        conn2.connected = True
+        conn2.subscribe_states = AsyncMock()
+        conn2.unsubscribe_states = MagicMock()
+        manager.async_open_session = AsyncMock(side_effect=[conn, conn2])
+        built: list[Any] = []
+        seen: list[bool] = []
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: built.append(c) or (lambda s: None),
+            on_availability=seen.append,
+        )
+        assert built == [conn]
+
+        # The device's API connection dies: aioesphomeapi fires on_stop.
+        conn.connected = False
+        manager._on_session_lost(conn)
+        await hass.async_block_till_done()
+
+        # Re-armed against the REPLACEMENT connection, with a callback rebuilt
+        # from the factory (entity keys are only knowable from the live conn).
+        assert built == [conn, conn2]
+        conn2.subscribe_states.assert_awaited_once()
+        assert seen == [True, False, True]
+        # The count survives the flap: taken once at add, never re-taken.
+        assert manager._target_subs[mac]["grid_target_subs"] == 1
+
+    async def test_session_loss_while_device_offline_waits_for_availability(self, hass, manager):
+        """Offline device: don't hammer it — arm when it comes back."""
+        mac, conn = self._armable(manager)
+        conn2 = MagicMock()
+        conn2.entities = []
+        conn2.connected = True
+        conn2.subscribe_states = AsyncMock()
+        manager.async_open_session = AsyncMock(side_effect=[conn, conn2])
+        seen: list[bool] = []
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        manager._is_device_available = MagicMock(return_value=False)
+        conn.connected = False
+        manager._on_session_lost(conn)
+        await hass.async_block_till_done()
+
+        assert manager.async_open_session.await_count == 1  # no reopen attempt
+        assert seen == [True, False]
+        assert manager._state_streams[mac][0].armed is False
+
+        # Device comes back — the availability hook re-runs the reconciler.
+        manager._is_device_available = MagicMock(return_value=True)
+        await manager._ensure_streams(mac)
+
+        assert manager.async_open_session.await_count == 2
+        assert seen == [True, False, True]
+
+    async def test_closed_stream_is_not_rearmed(self, hass, manager):
+        mac, conn = self._armable(manager)
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        unsub()
+        manager.async_open_session.reset_mock()
+
+        manager._on_session_lost(conn)
+        await hass.async_block_till_done()
+
+        manager.async_open_session.assert_not_awaited()
+
+    async def test_open_session_passes_on_stop_hook(self, hass, manager):
+        """A session connection must tell the manager when it dies."""
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._is_device_available = MagicMock(return_value=True)
+        manager._on_session_lost = MagicMock()
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as conn_cls:
+            conn = conn_cls.return_value
+            conn.async_connect = AsyncMock()
+            conn.connected = True
+            await manager.async_open_session(mac)
+
+        # The bare bound method, not a `partial` closing over a mac: the connection
+        # hands ITSELF to the hook, so the manager can match streams by identity.
+        on_stop = conn_cls.call_args.kwargs["on_stop"]
+        assert on_stop is manager._on_session_lost
+        on_stop(conn)
+        manager._on_session_lost.assert_called_once_with(conn)
+
+    async def test_device_removed_drops_streams(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        seen: list[bool] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        await manager._on_device_removed(mac)
+
+        assert mac not in manager._state_streams
+        assert seen == [True, False]
+
+    async def test_async_stop_tells_the_client_its_stream_is_gone(self, hass, manager):
+        """A config-entry reload kills the stream the card is still subscribed to.
+
+        The card cannot tell that apart from a device flap, so the manager must
+        say so — otherwise the card sits on the offline banner until it remounts.
+        """
+        mac, _conn = self._armable(manager)
+        closed: list[bool] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append(True),
+        )
+
+        await manager.async_stop()
+
+        assert closed == [True]
+
+    async def test_device_removal_tells_the_client_its_stream_is_gone(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        closed: list[bool] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append(True),
+        )
+
+        await manager._on_device_removed(mac)
+
+        assert closed == [True]
+
+    async def test_client_unsub_does_not_fire_the_closed_signal(self, hass, manager):
+        """The client tore it down itself — telling it to re-subscribe would loop."""
+        mac, _conn = self._armable(manager)
+        closed: list[bool] = []
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append(True),
+        )
+
+        unsub()
+
+        assert closed == []
+
+    async def test_device_flap_does_not_fire_the_closed_signal(self, hass, manager):
+        """A flap is what durable streams exist to survive — the stream is NOT gone."""
+        mac, conn = self._armable(manager)
+        closed: list[bool] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append(True),
+        )
+
+        conn.connected = False
+        manager._on_session_lost(conn)
+        await hass.async_block_till_done()
+
+        assert closed == []
+
+    async def test_a_raising_closed_callback_does_not_break_the_stop_loop(self, hass, manager):
+        """A websocket that died mid-teardown must not strand the OTHER clients.
+
+        Both streams here are on one mac, so a raise out of the first one's callback
+        would abandon the second inside the same drop loop — it would keep its
+        subscription open against a manager that no longer has its stream.
+        """
+        mac, _conn = self._armable(manager)
+        closed: list[str] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=MagicMock(side_effect=RuntimeError("ws already closed")),
+        )
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="heatmap_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append("second"),
+        )
+
+        await manager.async_stop()
+
+        assert closed == ["second"]
+        assert manager._state_streams == {}
+
+    async def test_a_raising_closed_callback_does_not_break_the_removal_loop(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        closed: list[str] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=MagicMock(side_effect=RuntimeError("ws already closed")),
+        )
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="heatmap_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append("second"),
+        )
+
+        await manager._on_device_removed(mac)
+
+        assert closed == ["second"]
+        assert mac not in manager._state_streams
+
+    async def test_a_client_unsubbing_from_its_closed_callback_does_not_break_the_stop_loop(self, hass, manager):
+        """The signal's whole point is to make the client react — including re-entrantly.
+
+        A client holding streams on two devices can unsub one from inside the other's
+        `on_closed`. That re-enters `_close`, which drops the second mac's now-empty
+        list from `_state_streams` — the very dict async_stop's drop loop is walking.
+        Iterating a live view would raise `RuntimeError: dictionary changed size during
+        iteration` out of async_stop, aborting the unload with connections still open.
+        """
+        mac_a, conn = self._armable(manager)
+        mac_b = "AA:BB:CC:DD:EE:02"
+        manager.devices[mac_b] = ManagedDevice(mac=mac_b, name="Kitchen", host="192.168.1.51")
+        manager.async_open_session = AsyncMock(return_value=conn)
+
+        closed: list[str] = []
+        unsubs: dict[str, Any] = {}
+
+        def _unsub_the_other() -> None:
+            closed.append(mac_a)
+            unsubs[mac_b]()
+
+        # `mac_a` first: async_stop walks `_state_streams` in insertion order, so its
+        # callback must run while `mac_b`'s entry is still in the dict being walked.
+        await manager.async_add_state_stream(
+            mac_a,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=_unsub_the_other,
+        )
+        unsubs[mac_b] = await manager.async_add_state_stream(
+            mac_b,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append(mac_b),
+        )
+
+        await manager.async_stop()
+
+        assert closed == [mac_a]  # mac_b's stream was closed BY the client, so no signal
+        assert manager._state_streams == {}
+
+    async def test_async_stop_drops_streams(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        await manager.async_stop()
+
+        assert manager._state_streams == {}
+
+    async def test_device_available_rearms_streams_before_the_config_push(self, hass, manager):
+        """The availability transition is the recovery trigger for a stream whose
+        device was still offline when its session died (`_ensure_streams` no-ops
+        then). It must run ahead of the config push — here the entity-update guard
+        skips that push entirely, and the card must stream regardless."""
+        mac, conn = self._armable(manager)
+        conn2 = MagicMock()
+        conn2.entities = []
+        conn2.connected = True
+        conn2.subscribe_states = AsyncMock()
+        manager.async_open_session = AsyncMock(side_effect=[conn, conn2])
+        seen: list[bool] = []
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        manager._is_device_available = MagicMock(return_value=False)
+        conn.connected = False
+        manager._on_session_lost(conn)
+        await hass.async_block_till_done()
+        assert manager._state_streams[mac][0].armed is False
+
+        manager._is_device_available = MagicMock(return_value=True)
+        manager._entity_update_macs.add(mac)
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as push:
+            await manager._on_device_available(mac)
+            await hass.async_block_till_done()
+
+        push.assert_not_awaited()
+        assert manager._state_streams[mac][0].armed is True
+        assert seen == [True, False, True]
+
+    async def test_session_loss_while_stopping_spawns_nothing(self, hass, manager):
+        """async_stop disconnects every session in Phase 3 — AFTER its Phase 2 task
+        drain. A reconcile spawned from those on_stop callbacks would escape the
+        drain and outlive the config entry (which HA's test harness fails on)."""
+        mac, conn = self._armable(manager)
+        seen: list[bool] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+        manager._stopping = True
+        conn.connected = False
+
+        with patch.object(manager, "_spawn") as spawn:
+            manager._on_session_lost(conn)
+
+        spawn.assert_not_called()
+        # The streams are still torn down and the clients still told.
+        assert manager._state_streams[mac][0].armed is False
+        assert seen == [True, False]
+
+    async def test_session_loss_survives_a_client_unsubbing_from_its_own_callback(self, hass, manager):
+        """`notify` runs client code, which may unsub in response — removing the
+        stream from the very list `_on_session_lost` is walking. Walking that list
+        live would skip the NEXT stream: it would keep a callback on the dead
+        connection and never hear about the outage."""
+        mac, conn = self._armable(manager)
+        unsubs: list[Any] = []
+        other: list[bool] = []
+
+        def quit_on_loss(available: bool) -> None:
+            if not available:
+                unsubs[0]()
+
+        unsubs.append(
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=quit_on_loss,
+            )
+        )
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="heatmap_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=other.append,
+        )
+        assert other == [True]
+        manager._stopping = True  # park the reconcile — it's covered elsewhere
+        conn.connected = False
+
+        manager._on_session_lost(conn)
+
+        # The self-unsubbing client is gone; the survivor is disarmed and informed.
+        survivor = manager._state_streams[mac][0]
+        assert survivor.counter_attr == "heatmap_subs"
+        assert survivor.armed is False
+        assert other == [True, False]
+        assert conn.unsubscribe_states.call_count == 2
+
+    async def test_session_loss_leaves_a_stream_armed_on_a_live_connection_alone(self, hass, manager):
+        """A stale on_stop must not tear down its successor's streams.
+
+        aioesphomeapi delivers the hook as a detached task, so a callback from a
+        connection that has already been REPLACED can land while the streams are armed
+        on the live replacement. Disarming those would flap the client False→True and
+        decrement a session ref that belongs to the fresh connection. The hook carries
+        the dead connection itself, so the match is by identity — it never has to infer
+        "is this stale?" from the successor's liveness.
+        """
+        mac, conn = self._armable(manager)
+        seen: list[bool] = []
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+        assert seen == [True]
+
+        # The stop comes from a dead PREDECESSOR on the same mac; the stream is armed
+        # on `conn`, its live successor.
+        dead = MagicMock()
+        dead.mac = mac
+        dead.connected = False
+        manager._on_session_lost(dead)
+        await hass.async_block_till_done()
+
+        assert manager._state_streams[mac][0].armed is True
+        assert manager._state_streams[mac][0].conn is conn
+        assert seen == [True]
+        manager.release_session.assert_not_called()
+        conn.unsubscribe_states.assert_not_called()
+        dead.unsubscribe_states.assert_not_called()
+
+    async def test_device_removed_mid_arm_releases_instead_of_rearming(self, hass, manager):
+        """A drop must mark its streams closed, or an in-flight arm re-arms them.
+
+        `_arm_stream` is parked inside `subscribe_states` when the device is removed.
+        Unless the drop marks the stream closed, the arm resumes past both of its
+        `stream.closed` guards: it registers a callback on a torn-down connection and
+        tells the client `available=True` for a device that no longer exists.
+        """
+        mac, conn = self._armable(manager)
+        gate = asyncio.Event()
+        seen: list[bool] = []
+
+        async def gated_subscribe(_cb):
+            await gate.wait()
+
+        conn.subscribe_states = AsyncMock(side_effect=gated_subscribe)
+
+        adder = asyncio.create_task(
+            manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=seen.append,
+            )
+        )
+        await _settle()
+        stream = manager._state_streams[mac][0]
+        assert stream.armed is False  # parked inside subscribe_states
+
+        await manager._on_device_removed(mac)
+        assert mac not in manager._state_streams
+        assert seen == [False]
+
+        gate.set()  # the arm resumes into a manager that has dropped the device
+        await adder
+        await hass.async_block_till_done()
+
+        assert stream.armed is False
+        assert seen == [False]  # never told the removed device was live
+        conn.unsubscribe_states.assert_called_once()
+        manager.release_session.assert_called_once_with(mac, conn)
+
+    async def test_async_stop_drops_streams_before_disconnecting(self, hass, manager):
+        """Teardown must not route stream drops through `release_session`.
+
+        aioesphomeapi delivers on_stop as a detached task, so `_on_session_lost` can
+        land inside async_stop's Phase-3 disconnect gather — with `_state_streams` and
+        `_active_connections` both still populated. `release_session` then identity-
+        matches, sees the last ref, and schedules a close AFTER the Phase-2 drain
+        emptied `_pending_closes`: a task escaping teardown (which is exactly what the
+        `_stopping` guard exists to prevent), racing a second disconnect against the
+        one already in flight.
+
+        Runs the real `async_open_session` / `release_session` (the `_armable` helper
+        mocks both, which is why the rest of the suite is blind to this).
+        """
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._is_device_available = MagicMock(return_value=True)
+        manager.request_pipeline_push = MagicMock()
+        manager._push_pipeline_to_device = AsyncMock()
+        seen: list[bool] = []
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as conn_cls:
+            conn = conn_cls.return_value
+            conn.mac = mac
+            conn.entities = []
+            conn.connected = True
+            conn.async_connect = AsyncMock()
+            conn.subscribe_states = AsyncMock()
+            conn.unsubscribe_states = MagicMock()
+
+            async def _disconnect() -> None:
+                # The detached on_stop lands while the Phase-3 gather is in flight.
+                conn.connected = False
+                manager._on_session_lost(conn)
+
+            conn.async_disconnect = AsyncMock(side_effect=_disconnect)
+
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=seen.append,
+            )
+            stream = manager._state_streams[mac][0]
+            assert manager._active_connections[mac] is conn
+            assert manager._session_refcounts[mac] == 1
+
+            with patch.object(manager, "schedule_close_session", wraps=manager.schedule_close_session) as sched:
+                await manager.async_stop()
+                await hass.async_block_till_done()
+
+        # No close scheduled past the drain, and no second disconnect racing Phase 3.
+        sched.assert_not_called()
+        assert conn.async_disconnect.await_count == 1
+        assert manager._pending_closes == {}
+        assert manager._state_streams == {}
+        assert stream.closed is True
+        assert stream.armed is False
+        assert seen == [True, False]  # the client was told its stream died
+
+    async def test_async_stop_notifies_streams_when_session_loss_lands_late(self, hass, manager):
+        """The other half of the same race: on_stop is detached, so it can land after
+        teardown has finished. If async_stop dropped `_state_streams` without telling
+        the clients, `_on_session_lost` early-returns and the card is never told its
+        stream died — issue #334's failure mode, reintroduced by the teardown."""
+        mac, conn = self._armable(manager)
+        seen: list[bool] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        await manager.async_stop()
+        conn.connected = False
+        manager._on_session_lost(conn)  # detached delivery, after teardown
+
+        assert manager._state_streams == {}
+        assert seen == [True, False]
+
+    async def test_async_stop_ignores_a_release_from_an_arm_parked_across_teardown(self, hass, manager):
+        """A parked `_arm_stream` must not schedule a close past the Phase-2 drain.
+
+        The arm is awaited by its caller (`async_add_state_stream`, i.e. the WS handler),
+        so it is NOT in `_pending_tasks` and the drain never waits for it. Phase 3 marks
+        its stream closed; when the arm resumes inside the disconnect gather it takes the
+        `stream.closed` branch and calls `release_session` — with `_active_connections`
+        not yet cleared, that identity-matches, takes the last ref and schedules a close:
+        a task created AFTER the drain, disconnecting a connection already mid-disconnect.
+
+        Runs the real `async_open_session` / `release_session` / `schedule_close_session`
+        (the `_armable` helper mocks the last two, which is why the rest of the suite is
+        blind to this).
+        """
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._is_device_available = MagicMock(return_value=True)
+        manager.request_pipeline_push = MagicMock()
+        manager._push_pipeline_to_device = AsyncMock()
+        gate = asyncio.Event()
+        seen: list[bool] = []
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as conn_cls:
+            conn = conn_cls.return_value
+            conn.entities = []
+            conn.connected = True
+            conn.async_connect = AsyncMock()
+            conn.unsubscribe_states = MagicMock()
+
+            async def _gated_subscribe(_cb) -> None:
+                await gate.wait()
+
+            conn.subscribe_states = AsyncMock(side_effect=_gated_subscribe)
+
+            async def _disconnect() -> None:
+                # Mid-gather: `_active_connections` and `_session_refcounts` still hold
+                # this conn. Let the parked arm resume right here.
+                conn.connected = False
+                gate.set()
+                await _settle()
+
+            conn.async_disconnect = AsyncMock(side_effect=_disconnect)
+
+            adder = asyncio.create_task(
+                manager.async_add_state_stream(
+                    mac,
+                    counter_attr="grid_target_subs",
+                    make_on_state=lambda m, c: lambda s: None,
+                    on_availability=seen.append,
+                )
+            )
+            await _settle()
+            stream = manager._state_streams[mac][0]
+            assert stream.armed is False  # parked inside subscribe_states
+            assert manager._active_connections[mac] is conn
+            assert manager._session_refcounts[mac] == 1
+
+            with patch.object(manager, "schedule_close_session", wraps=manager.schedule_close_session) as sched:
+                await manager.async_stop()
+                await adder
+                await hass.async_block_till_done()
+
+        sched.assert_not_called()
+        assert conn.async_disconnect.await_count == 1
+        assert manager._pending_closes == {}
+        # The arm still took its callback back off the connection it was parked on.
+        conn.unsubscribe_states.assert_called_once()
+        assert stream.closed is True
+        assert stream.armed is False
+        assert seen == [False]  # never armed, so the client was only ever told False
+
+    async def test_open_session_racing_teardown_does_not_strand_a_connection(self, hass, manager):
+        """An open parked in `async_connect` must not land a live conn past teardown.
+
+        `release_session` no-ops while stopping — teardown owns the refcounts and the
+        disconnects — so a connection stored into `_active_connections` AFTER Phase 3
+        cleared it would be closed by nobody: a live ESPHome connection (and its session
+        ref) surviving unload. Teardown therefore has to own the tail of an in-flight
+        open too, and refuse a fresh one outright.
+        """
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._is_device_available = MagicMock(return_value=True)
+        gate = asyncio.Event()
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as conn_cls:
+            conn = conn_cls.return_value
+            conn.entities = []
+            conn.connected = True
+            conn.async_disconnect = AsyncMock()
+
+            async def _connect() -> None:
+                await gate.wait()
+
+            conn.async_connect = AsyncMock(side_effect=_connect)
+
+            opener = asyncio.create_task(manager.async_open_session(mac))
+            await _settle()
+            assert manager._active_connections == {}  # parked inside async_connect
+
+            await manager.async_stop()
+            gate.set()
+            assert await opener is None
+            # And a fresh open after teardown never even builds a connection.
+            assert await manager.async_open_session(mac) is None
+
+        assert conn_cls.call_count == 1
+        assert manager._active_connections == {}
+        assert manager._session_refcounts == {}
+        conn.async_disconnect.assert_awaited_once()  # the parked open cleaned up after itself
+
+    # -- retry backoff (device available, our own connect fails) ------------
+
+    async def test_failed_open_retries_until_it_arms(self, hass, manager):
+        mac, conn = self._armable(manager)
+        manager._stream_retry_delays = (0.0,)
+        manager.async_open_session = AsyncMock(side_effect=[None, conn])
+        seen: list[bool] = []
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+        assert seen == [False]
+
+        await asyncio.sleep(0)
+        await hass.async_block_till_done()
+
+        assert manager.async_open_session.await_count == 2
+        conn.subscribe_states.assert_awaited_once()
+        assert seen == [False, True]
+
+    async def test_retry_stops_once_the_stream_is_closed(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (0.0,)
+        manager.async_open_session = AsyncMock(return_value=None)
+
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        unsub()
+        await hass.async_block_till_done()
+
+        assert mac not in manager._stream_retry_tasks
+
+    async def test_only_one_retry_task_per_mac(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (30.0,)
+        manager.async_open_session = AsyncMock(return_value=None)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        first = manager._stream_retry_tasks[mac]
+        await manager._ensure_streams(mac)
+
+        assert manager._stream_retry_tasks[mac] is first
+        first.cancel()
+
+    async def test_async_stop_cancels_retry_tasks(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (30.0,)
+        manager.async_open_session = AsyncMock(return_value=None)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        task = manager._stream_retry_tasks[mac]
+
+        await manager.async_stop()
+
+        assert task.cancelled() or task.done()
+        assert manager._stream_retry_tasks == {}
+
+    async def test_retry_backoff_escalates_and_holds_at_the_last_delay(self, hass, manager):
+        """One task drives the whole backoff — a fresh task per pass would reset it.
+
+        Re-entering the schedule from each `_ensure_streams` pass would restart the
+        sequence at its first delay: a permanently-failing connect would then poll the
+        device forever at that interval instead of backing off.
+        """
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (1.0, 3.0)
+        manager.async_open_session = AsyncMock(return_value=None)
+        slept: list[float] = []
+        real_sleep = asyncio.sleep  # the patch below replaces the module attribute
+
+        async def fake_sleep(delay: float) -> None:
+            # Patching the module attribute catches every sleeper on the loop, and
+            # `async_block_till_done` yields with `sleep(0)` — record only the
+            # backoff's own (always non-zero) waits.
+            if delay:
+                slept.append(delay)
+                if len(slept) == 4:
+                    # Let the retry loop exit: the client's WS subscription went away.
+                    manager._state_streams.pop(mac, None)
+            await real_sleep(0)
+
+        with patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=fake_sleep):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+            await hass.async_block_till_done()
+
+        assert slept == [1.0, 3.0, 3.0, 3.0]
+        assert mac not in manager._stream_retry_tasks
+
+    async def test_device_removed_cancels_the_retry(self, hass, manager):
+        """Nothing can arm a removed device's streams — the backoff must not outlive it."""
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (30.0,)
+        manager.async_open_session = AsyncMock(return_value=None)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        task = manager._stream_retry_tasks[mac]
+
+        await manager._on_device_removed(mac)
+        await hass.async_block_till_done()
+
+        assert manager._stream_retry_tasks == {}
+        assert task.done()
+
+    async def test_no_retry_is_scheduled_while_stopping(self, hass, manager):
+        """async_stop cancels the retries in Phase 1 — one spawned after that (from a
+        reconcile still settling in the Phase 2 drain) would outlive the config entry."""
+        mac, _conn = self._armable(manager)
+        manager._stopping = True
+
+        with patch.object(manager, "_spawn") as spawn:
+            manager._schedule_stream_retry(mac)
+
+        spawn.assert_not_called()
+        assert manager._stream_retry_tasks == {}
+
+    async def test_offline_device_does_not_schedule_a_retry(self, hass, manager):
+        """The availability transition already re-runs the reconciler — polling an
+        offline device on top of that is pure churn."""
+        mac, _conn = self._armable(manager)
+        manager._is_device_available = MagicMock(return_value=False)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        assert manager._stream_retry_tasks == {}
+
+    async def test_cancelled_arm_still_leaves_a_retry_for_the_other_streams(self, hass, manager):
+        """A cancelled arm pass must not strand ANOTHER client's stream unarmed.
+
+        The reconciler arms every unarmed stream for the mac, so the pass belongs to all
+        of them — but it runs inside whichever WS handler triggered it, and that handler's
+        task can be cancelled (the user closes the tab) while it is parked in the open for
+        someone else's stream. `async_add_state_stream`'s rollback closes only ITS OWN
+        stream; without the reconciliation running on the way out, the other stream is
+        left registered-but-unarmed on an AVAILABLE device with no retry armed and no
+        further trigger coming — #334's failure mode, until the next flap.
+        """
+        mac, conn = self._armable(manager)
+        manager._stream_retry_delays = (30.0,)
+
+        # A heatmap card subscribes while the device is offline: registered, unarmed,
+        # and deliberately without a retry (the availability transition is its trigger).
+        manager._is_device_available = MagicMock(return_value=False)
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="heatmap_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        heatmap = manager._state_streams[mac][0]
+        assert manager._stream_retry_tasks == {}
+
+        # The device comes back. A second card's subscribe handler wins the mac's stream
+        # lock, snapshots both streams, and parks in the open for the heatmap one.
+        manager._is_device_available = MagicMock(return_value=True)
+        gate = asyncio.Event()
+
+        async def gated_open(_mac):
+            await gate.wait()
+            return conn
+
+        manager.async_open_session = AsyncMock(side_effect=gated_open)
+        adder = asyncio.create_task(
+            manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+        )
+        await _settle()
+        assert heatmap.armed is False  # the pass is parked opening the heatmap's session
+
+        # The second card's tab closes: HA cancels its WS handler task mid-arm.
+        adder.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await adder
+        await _settle()
+
+        # Only the cancelled handler's own stream is rolled back. The heatmap stream is
+        # still registered and still unarmed — so the backoff has to be armed for it.
+        assert manager._state_streams[mac] == [heatmap]
+        assert heatmap.armed is False
+        assert heatmap.closed is False
+        assert mac in manager._stream_retry_tasks, "the surviving stream has no way back"
+
+    async def test_retry_stands_down_when_the_device_goes_offline(self, hass, manager):
+        """HA marks the device unavailable a beat AFTER our own connect starts failing.
+
+        From then on the backoff is pure churn — `_ensure_streams` early-returns on an
+        offline device, and `_on_device_available` is what re-arms it. Left ticking, the
+        task wakes every 30s for the life of the config entry and holds `attempt` at the
+        top of the backoff for when the device does come back.
+        """
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (1.0,)
+        manager.async_open_session = AsyncMock(return_value=None)
+        slept: list[float] = []
+        real_sleep = asyncio.sleep  # the patch below replaces the module attribute
+
+        async def fake_sleep(delay: float) -> None:
+            # `async_block_till_done` yields with `sleep(0)` — record only the backoff's
+            # own (always non-zero) waits.
+            if delay:
+                slept.append(delay)
+                # The device drops off the network while the backoff task is parked.
+                manager._is_device_available = MagicMock(return_value=False)
+                if len(slept) > 3:
+                    # Still ticking: break the loop so the assertion below reports the
+                    # bug instead of the test hanging.
+                    manager._state_streams.pop(mac, None)
+            await real_sleep(0)
+
+        with patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=fake_sleep):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+            task = manager._stream_retry_tasks[mac]
+            await hass.async_block_till_done()
+
+        assert slept == [1.0]
+        assert manager.async_open_session.await_count == 1  # the initial arm, no retry pass
+        assert task.done()
+        assert manager._stream_retry_tasks == {}
+
+    async def test_arming_elsewhere_retires_the_sleeping_retry(self, hass, manager):
+        """A parked backoff task owns the mac's retry slot until it wakes.
+
+        Once the streams arm by another path, that slot is dead weight: a device that
+        flaps before the task wakes drives `_on_session_lost` → a failed arm →
+        `_schedule_stream_retry`, which no-ops against the stale task, so recovery waits
+        out its escalated delay instead of rescheduling from the first.
+        """
+        mac, conn = self._armable(manager)
+        manager._stream_retry_delays = (30.0,)
+        manager.async_open_session = AsyncMock(return_value=None)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        task = manager._stream_retry_tasks[mac]
+
+        # The device comes back: the availability transition re-runs the reconciler,
+        # which arms the stream while the backoff task is still sleeping.
+        manager.async_open_session = AsyncMock(return_value=conn)
+        await manager._ensure_streams(mac)
+
+        conn.subscribe_states.assert_awaited_once()
+        assert manager._stream_retry_tasks == {}, "the armed mac still owns a retry slot"
+        # Bounded: a task left parked would only settle after its 30s backoff.
+        await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), timeout=1.0)
+        assert task.done()
+
+    async def test_retry_releases_its_slot_the_moment_its_own_pass_arms(self, hass, manager):
+        """The retry's own successful pass must not loop into another sleep holding the slot.
+
+        The sibling test covers the case where some OTHER path arms the streams. When the
+        retry task itself arms them, looping back to the top would park it on the next
+        (escalated) delay still owning `_stream_retry_tasks[mac]`, so the next failure
+        would find the slot taken and wait that delay out instead of retrying from the
+        first — the same stale-slot bug, reached from the other side.
+        """
+        mac, conn = self._armable(manager)
+        manager._stream_retry_delays = (1.0, 30.0)
+        manager.async_open_session = AsyncMock(side_effect=[None, conn])
+        slept: list[float] = []
+        real_sleep = asyncio.sleep
+
+        async def fake_sleep(delay: float) -> None:
+            if delay:
+                slept.append(delay)
+            await real_sleep(0)
+
+        with patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=fake_sleep):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+            task = manager._stream_retry_tasks[mac]
+            await hass.async_block_till_done()
+
+        conn.subscribe_states.assert_awaited_once()
+        assert slept == [1.0], "the retry slept again holding the mac's slot after arming"
+        assert task.done()
+        assert manager._stream_retry_tasks == {}
+
+    async def test_unsub_of_the_last_stream_retires_the_sleeping_retry(self, hass, manager):
+        """The client's own unsub is a third way for the retry slot to go stale.
+
+        Popping the mac's last stream leaves a parked backoff task owning
+        `_stream_retry_tasks[mac]` for the rest of its (escalated) delay. It is not a
+        leak — it exits on its next tick — but a user who re-opens the dashboard before
+        it wakes gets a fresh subscription whose failed arm calls `_schedule_stream_retry`
+        into that stale slot, where it no-ops: recovery then waits out the OLD delay
+        (up to 30s) instead of restarting the backoff at the first.
+        """
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (1.0, 30.0)
+        manager.async_open_session = AsyncMock(return_value=None)
+        slept: list[float] = []
+        real_sleep = asyncio.sleep  # the patch below replaces the module attribute
+        parked = asyncio.Event()  # never set: a backoff that outlasts the test
+
+        async def fake_sleep(delay: float) -> None:
+            # `async_block_till_done` yields with `sleep(0)` — only the backoff's own
+            # (always non-zero) waits park here.
+            if delay:
+                slept.append(delay)
+                await parked.wait()
+            await real_sleep(0)
+
+        with patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=fake_sleep):
+            unsub = await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+            assert unsub is not None
+            await _settle()
+            stale = manager._stream_retry_tasks[mac]
+            assert slept == [1.0]  # parked on the first delay
+
+            unsub()  # the card's tab closes — the mac's last stream
+
+            assert manager._stream_retry_tasks == {}, "the unsubbed mac still owns a retry slot"
+            await _settle()
+            assert stale.done()
+
+            # The user re-opens the dashboard well inside the old backoff, and the arm
+            # fails again.
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+            await _settle()
+
+        fresh = manager._stream_retry_tasks[mac]
+        assert fresh is not stale, "the stale task still owns the slot"
+        assert slept == [1.0, 1.0], "the new backoff resumed the stale task's escalated delay"
+        fresh.cancel()
+
+    async def test_unsub_from_inside_the_retrys_own_pass_does_not_kill_it(self, hass, manager):
+        """`_close` is the CLIENT's callback and can run INSIDE the retry task.
+
+        The retry's `_ensure_streams` pass arms the stream and notifies the client, which
+        is free to unsub from that very callback — re-entering `_close` on the retry
+        task's own stack. Retiring the slot's task there without an identity check would
+        cancel the retry task from within itself, tearing down the pass mid-flight.
+        """
+        mac, conn = self._armable(manager)
+        manager._stream_retry_delays = (0.0,)
+        manager.async_open_session = AsyncMock(side_effect=[None, conn])
+        seen: list[bool] = []
+        handle: dict[str, Callable[[], None]] = {}
+
+        def on_availability(available: bool) -> None:
+            seen.append(available)
+            if available:
+                handle["unsub"]()
+
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=on_availability,
+        )
+        assert unsub is not None
+        handle["unsub"] = unsub
+        assert seen == [False]  # the initial arm failed; the backoff is armed
+        task = manager._stream_retry_tasks[mac]
+
+        await hass.async_block_till_done()
+
+        assert seen == [False, True]  # the retry's pass armed it and the client unsubbed
+        assert task.done()
+        assert not task.cancelled(), "the retry task cancelled itself from the client's unsub"
+        assert manager._stream_retry_tasks == {}
+        conn.unsubscribe_states.assert_called_once()  # the unsub still disarmed cleanly
+        assert mac not in manager._state_streams
+        assert mac not in manager._target_subs
+
+    async def test_async_stop_is_bounded_when_a_retry_hangs_in_the_open(self, hass, manager):
+        """Phase 1 must cancel the retries WITHOUT awaiting their unwind.
+
+        `_pending_pushes` can be gathered there because a push task leaves that dict
+        before its network write — a cancel can only ever land in its debounce sleep.
+        `_stream_retry_tasks[mac]` is held across the whole `_ensure_streams` pass, so
+        the cancel can land inside the session open (or its stale-connection
+        disconnect, or `subscribe_states`) against a device that has dropped off the
+        network. An unbounded gather on that unwind would hold unload past
+        `_stop_timeout` — the docstring's hard upper bound. Phase 2's drain is what
+        settles the task, under that bound.
+        """
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (0.0,)
+        manager._stop_timeout = 0.1
+        entered = asyncio.Event()
+        never = asyncio.Event()
+        opens = 0
+
+        async def hanging_open(_mac):
+            nonlocal opens
+            opens += 1
+            if opens == 1:
+                return None  # the initial arm fails, scheduling the retry
+            entered.set()
+            try:
+                await never.wait()
+            except asyncio.CancelledError:
+                # A cancelled `async_open_session` unwinds by disconnecting the stale
+                # connection — a gracious close (not force=True) that hangs when the
+                # device is off the network.
+                await never.wait()
+                raise
+            return None
+
+        manager.async_open_session = hanging_open
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        task = manager._stream_retry_tasks[mac]
+        await asyncio.wait_for(entered.wait(), timeout=2.0)
+
+        # Unbounded, this never returns: the retry's unwind never completes on its own.
+        await asyncio.wait_for(manager.async_stop(), timeout=2.0)
+
+        assert task.done()
+        assert manager._stream_retry_tasks == {}
+        assert all(t.done() for t in manager._pending_tasks), "a task escaped teardown"
+
+
+class TestOverviewStreamRecovery:
+    """The card's stream must survive a device flap — issue #334.
+
+    End-to-end across the two layers that broke: the REAL non-admin WS scaffolding
+    (`_start_durable_target_stream`) on a REAL `DeviceManager`. The panel recovers by
+    watching the device list and resubscribing, but the card is non-admin and has no
+    such hook, so recovery has to come from the manager — the callback is bound to a
+    disposable `DeviceConnection`, and nothing re-armed it when that connection died.
+    """
+
+    class FakeDeviceConnection:
+        """DeviceConnection stand-in: real subscriber bookkeeping, no network.
+
+        `key` is per-connection: the entity key map is only knowable from the live
+        connection and a device can renumber its entities across an OTA, so a
+        replacement connection is given a DIFFERENT key. A re-arm that reused the
+        dead connection's callback (or its cached key map) would decode nothing.
+        """
+
+        def __init__(self, key: int = 1, mac: str = "AA:BB:CC:DD:EE:01") -> None:
+            self.key = key
+            self.mac = mac
+            self.entities = [
+                TextSensorInfo(object_id="target_1_position", key=key, name="Target 1 Position"),
+            ]
+            self.subscribers: list[Any] = []
+            self.connected = True
+
+        async def subscribe_states(self, cb) -> None:
+            if not self.connected:
+                raise RuntimeError("Cannot subscribe to states: connection is closed")
+            self.subscribers.append(cb)
+
+        def unsubscribe_states(self, cb) -> None:
+            with contextlib.suppress(ValueError):
+                self.subscribers.remove(cb)
+
+        def emit_target(self, position: str) -> None:
+            state = TextSensorState(key=self.key, state=position, missing_state=False)
+            for cb in list(self.subscribers):
+                cb(state)
+
+        def kill(self) -> None:
+            """Mirror `_release_references`: a dead connection drops its subscribers."""
+            self.connected = False
+            self.subscribers.clear()
+
+    async def test_card_keeps_streaming_after_a_device_flap(self, hass, manager):
+        from custom_components.eppgrid.websocket_api._devices import _make_grid_target_on_state
+        from custom_components.eppgrid.websocket_api._overview import _start_durable_target_stream
+
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._device_id_to_mac["dev1"] = mac
+        manager._store.devices = {mac: {}}
+        manager._is_device_available = MagicMock(return_value=True)
+
+        # Two successive device connections: the original, and its replacement
+        # after the flap.
+        # The replacement renumbers its entities (an OTA can): the rebuilt callback
+        # must come from connection #2, not the dead one's key map.
+        conns = [self.FakeDeviceConnection(key=1), self.FakeDeviceConnection(key=2)]
+        opened: list[Any] = []
+
+        async def _open(_mac):
+            conn = conns[len(opened)]
+            opened.append(conn)
+            return conn
+
+        manager.async_open_session = AsyncMock(side_effect=_open)
+        manager.release_session = MagicMock(return_value=None)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
+
+        await _start_durable_target_stream(
+            connection,
+            msg,
+            manager,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, dc: _make_grid_target_on_state(connection, msg["id"], m, dc),
+            send_snapshot=True,
+            send_availability=True,
+            log_prefix="test",
+        )
+
+        assert len(opened) == 1
+        assert len(conns[0].subscribers) == 1
+
+        # The device flaps: its API connection dies, taking every state
+        # subscriber with it (exactly what `_release_references` does).
+        conns[0].kill()
+        manager._on_session_lost(conns[0])
+        # `_settle`, not `async_block_till_done`: the latter would also await the
+        # debounced pipeline push's real-time sleep.
+        await _settle()
+
+        # The manager re-armed the stream on the REPLACEMENT connection, rebuilding
+        # the callback from the factory — the entity key map is only knowable from
+        # the live connection.
+        assert len(opened) == 2
+        assert len(conns[1].subscribers) == 1
+
+        # A frame on the new connection reaches the card.
+        connection.send_message.reset_mock()
+        conns[1].emit_target("100,200,active")
+        target_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and "targets" in c.args[0].get("event", {})
+        ]
+        assert target_events, "expected the card to receive a frame after the flap"
+
+        # Teardown: drop the stream, then stop the manager so no debounced
+        # pipeline-push task outlives the test.
+        connection.subscriptions[1]()
+        await manager.async_stop()
+        await hass.async_block_till_done()
+
+    async def test_card_mount_collapses_into_one_pipeline_push(self, hass, manager):
+        """A mounting card opens `overview/subscribe` then `overview/subscribe_heatmap`
+        back-to-back. The device must see exactly ONE `epp_set_pipeline`, carrying the
+        SETTLED counts.
+
+        Both subscribes record their subscriber count BEFORE arming (the count is
+        per-mac and must survive a flap), so the first one's session open already sees
+        a non-empty `_target_subs`. Pushing from there directly would spend a second
+        round-trip on the ESP32's scarce API slots — exactly while it is recovering —
+        to deliver counts that were stale the moment they were read (`{grid:1,
+        heatmap:0}`). Runs the REAL `async_open_session`, which is where that push lives.
+        """
+        from custom_components.eppgrid.websocket_api._devices import _make_grid_target_on_state
+        from custom_components.eppgrid.websocket_api._devices import _make_heatmap_on_state
+        from custom_components.eppgrid.websocket_api._overview import _start_durable_target_stream
+
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50", device_id="dev1")
+        manager._device_id_to_mac["dev1"] = mac
+        manager._store.devices[mac] = {}
+        manager._is_device_available = MagicMock(return_value=True)
+        # `heatmap_interval` is stripped for pre-1.3.0 firmware, and the counts are
+        # what this test is reading — so give the device a version that keeps it.
+        manager.read_firmware_version = MagicMock(return_value="1.6.0")
+
+        conn = self.FakeDeviceConnection()
+        conn.async_connect = AsyncMock()
+        conn.async_disconnect = AsyncMock()
+        conn.async_execute_service = AsyncMock()
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=conn):
+            await _start_durable_target_stream(
+                connection,
+                {"id": 1, "type": "eppgrid/overview/subscribe", "device_id": "dev1"},
+                manager,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, dc: _make_grid_target_on_state(connection, 1, m, dc),
+                send_snapshot=True,
+                send_availability=True,
+                log_prefix="test",
+            )
+            await _start_durable_target_stream(
+                connection,
+                {"id": 2, "type": "eppgrid/overview/subscribe_heatmap", "device_id": "dev1"},
+                manager,
+                counter_attr="heatmap_subs",
+                make_on_state=lambda m, dc: _make_heatmap_on_state(connection, 2, m, dc),
+                send_snapshot=False,
+                send_availability=False,
+                log_prefix="test",
+            )
+            await hass.async_block_till_done()
+
+            pipelines = [
+                call.args[1]
+                for call in conn.async_execute_service.await_args_list
+                if call.args[0] == "epp_set_pipeline"
+            ]
+
+        assert len(pipelines) == 1
+        # The final counts, not the mid-mount ones: grid drives display/zone_state,
+        # heatmap drives heatmap_interval — an inline push would carry heatmap 0.
+        assert pipelines[0]["display_interval"] == 200
+        assert pipelines[0]["zone_state_interval"] == 1000
+        assert pipelines[0]["heatmap_interval"] == 2000
+
+        connection.subscriptions[1]()
+        connection.subscriptions[2]()
+        await manager.async_stop()
+        await hass.async_block_till_done()

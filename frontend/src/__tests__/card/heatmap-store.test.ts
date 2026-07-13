@@ -82,13 +82,37 @@ describe("HeatmapStore", () => {
 		expect(h.subscribeMessage).toHaveBeenCalledTimes(2);
 	});
 
-	it("ignores events with no cells field", async () => {
+	it("ignores events with no cells field, leaving the cached overlay untouched", async () => {
 		const h = makeHass();
 		const l = vi.fn();
 		subscribeHeatmap(h.hass, "devUnknown", l);
 		await Promise.resolve();
+		h.emit({ cells: [4, 5] });
+		const emits = l.mock.calls.length;
+
+		// A cells-less message (e.g. the backend's {closed: true} teardown signal)
+		// must not blank a live overlay: no state change, no emit.
 		h.emit({});
-		expect(l).toHaveBeenLastCalledWith([]);
+		expect(l.mock.calls.length).toBe(emits);
+		expect(l).toHaveBeenLastCalledWith([4, 5]);
+	});
+
+	it("ignores a cells key that is not an array, leaving the cached overlay untouched", async () => {
+		const h = makeHass();
+		const l = vi.fn();
+		subscribeHeatmap(h.hass, "devNonArray", l);
+		await Promise.resolve();
+		h.emit({ cells: [4, 5] });
+		const emits = l.mock.calls.length;
+
+		// Presence of the key is not enough: caching a non-array would hand every
+		// later consumer something that isn't an overlay.
+		h.emit({ cells: undefined });
+		h.emit({ cells: null });
+		h.emit({ cells: "nope" });
+
+		expect(l.mock.calls.length).toBe(emits);
+		expect(l).toHaveBeenLastCalledWith([4, 5]);
 	});
 
 	it("calls unsub if the last subscriber leaves before subscribeMessage resolves", async () => {

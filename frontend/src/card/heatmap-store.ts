@@ -3,7 +3,12 @@ import { createSubscriptionStore } from "./subscription-store.js";
 const store = createSubscriptionStore<number[]>({
 	wireType: "eppgrid/overview/subscribe_heatmap",
 	initialState: () => [],
-	reduce: (_state, m) => (m.cells as number[] | undefined) ?? [],
+	// Only a real array of cells is an overlay. A message without `cells` (the
+	// backend's `{closed: true}` teardown signal, or anything added later) must be
+	// ignored rather than blank a live overlay — and a `cells` key holding
+	// anything else must not be cached, or every later consumer inherits it.
+	reduce: (_state, m) =>
+		Array.isArray(m.cells) ? (m.cells as number[]) : null,
 	// No onOpen/onReconnect/onError: the heatmap resolve just stores the
 	// unsub (no emit), its reconnect is a bare closeWs+openWs (no emit), and
 	// its catch is a silent no-op — heatmap is an optional overlay stream, a
