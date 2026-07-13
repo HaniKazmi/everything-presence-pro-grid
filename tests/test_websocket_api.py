@@ -7279,6 +7279,94 @@ class TestOverviewSubscribeHeatmap:
         assert not snapshot_events, "heatmap subscribe must never send a snapshot event"
         assert 21 in connection.subscriptions  # still recoverable
 
+    async def test_session_loss_during_registration_emits_nothing_when_the_stream_arms(self, hass, config_entry):
+        """A `notify(False)` racing our registration must not reach an ARMED stream's client.
+
+        `async_add_state_stream` appends the stream to `_state_streams[mac]` BEFORE it
+        awaits `_ensure_streams`, so a session loss (aioesphomeapi fires `on_stop`
+        eagerly — including a stale one from a replaced connection) can drive
+        `on_availability(False)` through the still-unarmed stream while we register.
+        The arm then succeeds. `main` sent nothing on this wire in that case, and a
+        `cells`-less message blanks a deployed card's overlay — so must we.
+        """
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe_heatmap
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+
+        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability):
+            on_availability(False)  # a stale on_stop lands mid-registration
+            on_availability(True)  # ...and the arm pass still succeeds
+            return MagicMock()
+
+        mock_dm.async_add_state_stream = AsyncMock(side_effect=_add_stream)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 25, "type": "eppgrid/overview/subscribe_heatmap", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe_heatmap, connection, msg)
+
+        events = [
+            c.args[0]["event"]
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and "available" in c.args[0].get("event", {})
+        ]
+        assert events == []
+        assert 25 in connection.subscriptions
+
+    async def test_repeated_offline_notifications_during_registration_emit_one_event(self, hass, config_entry):
+        """Whatever races the registration window, the wire carries at most one `available:false`."""
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe_heatmap
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+
+        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability):
+            on_availability(False)  # session lost while the stream was still unarmed
+            on_availability(False)  # ...and the arm pass finds the device offline too
+            return MagicMock()
+
+        mock_dm.async_add_state_stream = AsyncMock(side_effect=_add_stream)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 26, "type": "eppgrid/overview/subscribe_heatmap", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe_heatmap, connection, msg)
+
+        events = [
+            c.args[0]["event"]
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and "available" in c.args[0].get("event", {})
+        ]
+        assert events == [{"available": False}]
+
+    async def test_unarmable_stream_sends_one_available_false(self, hass, config_entry):
+        """The manager returning None must not stack a second `available:false` on the
+        one a registration-window `notify` already recorded."""
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe_heatmap
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+
+        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability):
+            on_availability(False)
+            return None  # mac no longer managed — nothing was registered
+
+        mock_dm.async_add_state_stream = AsyncMock(side_effect=_add_stream)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 27, "type": "eppgrid/overview/subscribe_heatmap", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe_heatmap, connection, msg)
+
+        events = [
+            c.args[0]["event"]
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and "available" in c.args[0].get("event", {})
+        ]
+        assert events == [{"available": False}]
+        assert 27 not in connection.subscriptions
+
     async def test_subscribe_heatmap_emits_cells_on_state(self, hass, config_entry):
         """The callback the manager builds from `make_on_state` emits {"cells": [...]}.
 

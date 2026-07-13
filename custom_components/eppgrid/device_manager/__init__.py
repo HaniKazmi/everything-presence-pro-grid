@@ -2012,6 +2012,19 @@ class DeviceManager:
             self.release_session(mac, conn)
             stream.notify(False)
             return False
+        except BaseException:
+            # Cancellation, in practice: `DeviceConnection.subscribe_states` can suspend
+            # on its `_subscribe_lock`, so a CancelledError can land in that await with
+            # `stream.conn` still None. `async_add_state_stream`'s rollback then finds an
+            # unarmed stream and releases nothing — leaking the ref taken above, which
+            # would pin this connection open for the life of the manager. Release it here
+            # instead, and re-raise unconditionally: a swallowed CancelledError breaks
+            # task cancellation. `notify` is skipped — the client is going away with us.
+            if cb is not None:
+                with contextlib.suppress(Exception):
+                    conn.unsubscribe_states(cb)
+            self.release_session(mac, conn)
+            raise
         if stream.closed_now():
             # Suppressed like `_disarm_stream`: a raise from a connection that
             # died under us must not skip the release below and leak the ref.

@@ -9384,6 +9384,34 @@ class TestStateStreams:
         conn.unsubscribe_states.assert_called_once_with(built[0])
         manager.release_session.assert_called_once_with(mac, conn)
 
+    async def test_cancelled_subscribe_releases_the_session_ref(self, hass, manager):
+        """A cancellation inside `subscribe_states` must not leak the session ref.
+
+        `DeviceConnection.subscribe_states` can suspend on its `_subscribe_lock`, so a
+        CancelledError can land in that await with the stream still unarmed
+        (`stream.conn is None`). `async_add_state_stream`'s rollback would then see
+        nothing to disarm and release nothing — one session ref pinning the device's
+        connection open for the life of the manager, and the "registration is
+        all-or-nothing" contract broken.
+        """
+        mac, conn = self._armable(manager)
+        conn.subscribe_states = AsyncMock(side_effect=asyncio.CancelledError())
+
+        with pytest.raises(asyncio.CancelledError):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+
+        conn.unsubscribe_states.assert_called_once()
+        # Exactly once: the arm pass releases the ref it took, and the rollback's
+        # `_disarm_stream` (which sees an unarmed stream) must not release it again.
+        manager.release_session.assert_called_once_with(mac, conn)
+        assert mac not in manager._state_streams
+        assert mac not in manager._target_subs
+
     async def test_disarm_does_not_decrement_the_subscriber_count(self, hass, manager):
         """Disarm is a connection-level event, not a client-level one.
 

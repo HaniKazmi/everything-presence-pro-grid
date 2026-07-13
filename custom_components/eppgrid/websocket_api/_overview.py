@@ -63,34 +63,46 @@ async def _start_durable_target_stream(
         config = manager.store.devices.get(mac)
         connection.send_message(websocket_api.event_message(msg["id"], {"snapshot": dict(config) if config else {}}))
 
-    # True only while `async_add_state_stream` below is in flight — see
-    # `_on_availability`. The manager can call back synchronously from inside that
-    # await (it arms the stream there), and only from a later task afterwards.
+    # True only while `async_add_state_stream` below is in flight. It appends the
+    # stream to the manager's list BEFORE awaiting its arm pass, so during that
+    # await ANY task can notify through it — not just the arm pass itself. See
+    # `_on_availability`.
     registering: bool = True
+    # The last liveness the manager reported during that window, for the heatmap
+    # subscription's one-shot replay below. None = it never reported.
+    initial_available: bool | None = None
 
     @callback
     def _on_availability(available: bool) -> None:
         """Relay the manager's liveness notifications, per the command's contract.
 
-        `overview/subscribe` (send_availability=True) takes every event: the card
+        `overview/subscribe` (send_availability=True) takes every event, live: the card
         renders its offline banner from this stream's `available` field.
 
-        `overview/subscribe_heatmap` (send_availability=False) takes NONE of the live
-        ones. That subscription has never carried them, and already-deployed card
-        bundles — which we cannot fix by rebuilding — reduce it with
+        `overview/subscribe_heatmap` (send_availability=False) takes NONE of them
+        directly. That subscription has never carried liveness, and already-deployed
+        card bundles — which we cannot fix by rebuilding — reduce it with
         `(_state, m) => m.cells ?? []` (frontend/src/card/heatmap-store.ts), so ANY
-        message without a `cells` field resets the overlay to empty. An arm/disarm
-        event would therefore blank a user's heatmap on every device flap until the
-        next frame arrives (up to one `heatmap_interval`). The card loses nothing:
-        `available` still reaches it on the overview stream, and the heatmap repaints
-        itself once the re-armed stream delivers its next frame.
+        message without a `cells` field resets the overlay to empty. An arm/disarm event
+        would therefore blank a user's heatmap on every device flap until the next frame
+        arrives (up to one `heatmap_interval`). The card loses nothing: `available` still
+        reaches it on the overview stream, and the heatmap repaints itself once the
+        re-armed stream delivers its next frame.
 
-        The one availability event the heatmap subscription DID ship is the
-        subscribe-time `available: false` for a device that is already offline (the
-        pre-#334 handler sent it when `async_open_session` returned None). It is kept:
-        it lands while the overlay is still empty, so it blanks nothing.
+        `main` did put exactly one availability event on this wire — the subscribe-time
+        `available: false` for a device whose stream could not be armed (the pre-#334
+        handler sent it when `async_open_session` returned None). It lands while the
+        overlay is still empty, so it blanks nothing, and is kept. Emitting it inline
+        from here would be wrong, though: a session loss racing the registration window
+        (aioesphomeapi fires `on_stop` eagerly, including a stale one from a replaced
+        connection) can notify False through the still-unarmed stream, and the arm can
+        then succeed — a case where `main` sent nothing at all. So record the window's
+        outcome and let the caller replay it once, below, only if it settled offline.
         """
-        if not send_availability and (available or not registering):
+        nonlocal initial_available
+        if not send_availability:
+            if registering:
+                initial_available = available
             return
         connection.send_message(websocket_api.event_message(msg["id"], {"available": available}))
 
@@ -106,8 +118,12 @@ async def _start_durable_target_stream(
         unsub_stream = None
     registering = False
     if unsub_stream is None:
+        # Covers the recorded `initial_available` too — nothing was registered, so this
+        # single event is all the client gets either way.
         connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
         return
+    if not send_availability and initial_available is False:
+        connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
 
     released = False
 
