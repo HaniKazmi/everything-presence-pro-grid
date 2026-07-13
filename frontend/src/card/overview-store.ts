@@ -54,7 +54,14 @@ const store = createSubscriptionStore<OverviewState>({
 	// Flip connected to false first so listeners see the connection
 	// re-establishing rather than a stale true from the dead connection.
 	onReconnect: (s) => ({ ...s, connected: false }),
-	onError: (s) => ({ ...s, connected: false, available: false }),
+	// Idempotent — null when nothing would change. The open now rejects on EVERY
+	// backoff tick, not just at mount, so a new object each time would re-emit and
+	// re-render the whole card (SVG map included) every 30s, forever, for a backend
+	// that never comes back.
+	onError: (s) =>
+		!s.connected && !s.available
+			? null
+			: { ...s, connected: false, available: false },
 });
 
 /**

@@ -9,6 +9,8 @@
  * optional lifecycle hooks.
  */
 
+import { safeUnsub } from "../lib/safe-unsub.js";
+
 type Listener<TState> = (state: TState) => void;
 
 // A `closed: true` message means the manager tore this stream down (config entry
@@ -50,6 +52,10 @@ function isTerminalError(err: unknown): boolean {
 }
 
 interface Entry<TState> {
+	// The registry key this entry is filed under. Held on the entry so every
+	// re-open path (which only ever has the entry to hand) can reach it without
+	// threading it through as a parameter.
+	deviceId: string;
 	state: TState;
 	listeners: Set<Listener<TState>>;
 	unsubWs: (() => void) | null;
@@ -122,11 +128,7 @@ export function createSubscriptionStore<TState>(
 		emit(entry);
 	}
 
-	function handleMsg(
-		entry: Entry<TState>,
-		deviceId: string,
-		msg: unknown,
-	): void {
+	function handleMsg(entry: Entry<TState>, msg: unknown): void {
 		if (!msg || typeof msg !== "object") return;
 		const m = msg as Record<string, unknown>;
 		const next = reduce(entry.state, m);
@@ -138,13 +140,13 @@ export function createSubscriptionStore<TState>(
 		// `available: false` is a device flap: the backend still owns that stream
 		// and re-arms it itself, so re-subscribing there would churn the wire and
 		// defeat the durable-stream design.
-		if (m.closed === true) reopen(entry, deviceId);
+		if (m.closed === true) reopen(entry);
 	}
 
 	// Cached state and listeners are deliberately left intact: the card keeps
 	// rendering its last frame plus the offline banner until frames resume, and
 	// its listeners never notice the swap.
-	function reopen(entry: Entry<TState>, deviceId: string): void {
+	function reopen(entry: Entry<TState>): void {
 		// A re-open is already pending. The closed subscription can still deliver a
 		// queued message (the HA websocket client drops the local handler only once
 		// its unsubscribe round-trips), so a second `closed` must not restart the
@@ -153,16 +155,16 @@ export function createSubscriptionStore<TState>(
 		if (entry.reopenTimer !== null) return;
 		closeWs(entry);
 		entry.reopenAttempts = 0;
-		scheduleReopen(entry, deviceId);
+		scheduleReopen(entry);
 	}
 
-	function scheduleReopen(entry: Entry<TState>, deviceId: string): void {
+	function scheduleReopen(entry: Entry<TState>): void {
 		// The entry can be torn down while a re-open is in flight (last listener
 		// leaves, then the open rejects into the retry path). Never open a
 		// subscription for a device nobody is watching — that leaks a backend
 		// stream and its subscriber count. This is the ONLY thing that ends the
 		// retry loop, apart from a terminal error.
-		if (registry.get(deviceId) !== entry) return;
+		if (registry.get(entry.deviceId) !== entry) return;
 
 		const attempt = entry.reopenAttempts++;
 		const backoff = Math.min(
@@ -175,27 +177,23 @@ export function createSubscriptionStore<TState>(
 		entry.reopenTimer = setTimeout(
 			() => {
 				entry.reopenTimer = null;
-				openWs({ connection: conn }, deviceId, entry, () =>
-					scheduleReopen(entry, deviceId),
-				);
+				openWs(conn, entry, () => scheduleReopen(entry));
 			},
 			backoff + Math.random() * REOPEN_JITTER_MS,
 		);
 	}
 
 	function openWs(
-		hass: { connection: any },
-		deviceId: string,
+		conn: any,
 		entry: Entry<TState>,
 		onFailure?: () => void,
 	): void {
-		const conn = hass.connection;
 		entry.connection = conn;
 		const gen = ++entry.openGen;
 		conn
-			.subscribeMessage((msg: unknown) => handleMsg(entry, deviceId, msg), {
+			.subscribeMessage((msg: unknown) => handleMsg(entry, msg), {
 				type: wireType,
-				device_id: deviceId,
+				device_id: entry.deviceId,
 			})
 			.then((unsub: () => void) => {
 				// Superseded while in flight — the entry was torn down (last subscriber
@@ -203,7 +201,7 @@ export function createSubscriptionStore<TState>(
 				// one. Drop the resolved subscription instead of storing it on a dead or
 				// superseded entry, or it is leaked.
 				if (entry.openGen !== gen) {
-					unsub();
+					safeUnsub(unsub);
 					return;
 				}
 				entry.unsubWs = unsub;
@@ -228,7 +226,14 @@ export function createSubscriptionStore<TState>(
 		// makes its resolve drop the subscription rather than store it.
 		entry.openGen++;
 		if (entry.unsubWs) {
-			entry.unsubWs();
+			// `safeUnsub`, because this is reachable from INSIDE a message handler
+			// (handleMsg -> reopen -> closeWs) at the moment the integration is
+			// unloading — precisely when HA's websocket client throws "Unknown
+			// subscription". A synchronous throw here would abort `reopen()` before it
+			// scheduled the retry and strand the card on its offline banner: #334 again.
+			// (It guards the sync throw only; a promise-returning unsub that REJECTS is
+			// no worse off than before.)
+			safeUnsub(entry.unsubWs);
 			entry.unsubWs = null;
 		}
 	}
@@ -241,6 +246,7 @@ export function createSubscriptionStore<TState>(
 		let entry = registry.get(deviceId);
 		if (!entry) {
 			entry = {
+				deviceId,
 				state: initialState(),
 				listeners: new Set(),
 				unsubWs: null,
@@ -250,12 +256,12 @@ export function createSubscriptionStore<TState>(
 				reopenAttempts: 0,
 			};
 			registry.set(deviceId, entry);
-			openWs(hass as { connection: any }, deviceId, entry);
+			openWs(hass.connection, entry);
 		} else if (entry.connection !== hass.connection) {
 			// Reconnect: HA handed us a fresh connection — reopen for all listeners.
 			closeWs(entry);
 			applyHook(entry, onReconnect);
-			openWs(hass as { connection: any }, deviceId, entry);
+			openWs(hass.connection, entry);
 		}
 
 		entry.listeners.add(listener);

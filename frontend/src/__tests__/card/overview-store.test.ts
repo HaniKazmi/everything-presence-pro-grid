@@ -115,6 +115,49 @@ describe("OverviewStore", () => {
 		expect(last.available).toBe(false);
 	});
 
+	it("does not re-emit on repeated open failures that change nothing", async () => {
+		// Once a `closed` message starts the retry loop, EVERY failed re-open runs
+		// onError — every 30s, forever, for a backend that never comes back. A fresh
+		// state object each time would emit and re-render the whole card (SVG map
+		// included) on each tick, so onError must report "no change" once the state is
+		// already offline.
+		vi.useFakeTimers();
+		try {
+			let openCb!: (msg: any) => void;
+			let first = true;
+			const subscribeMessage = vi.fn((callback: any) => {
+				if (!first) return Promise.reject({ code: "not_ready" });
+				first = false;
+				openCb = callback;
+				return Promise.resolve(vi.fn());
+			});
+			const l = vi.fn();
+			const off = subscribeOverview(
+				{ connection: { subscribeMessage } },
+				"devReReject",
+				l,
+			);
+			await vi.advanceTimersByTimeAsync(0);
+
+			// The manager tore the stream down; the re-opens all reject (still reloading).
+			openCb({ available: false, closed: true });
+			await vi.advanceTimersByTimeAsync(1_000);
+			const settled = l.mock.calls.length;
+			const state = l.mock.calls.at(-1)![0];
+			expect(state.connected).toBe(false);
+			expect(state.available).toBe(false);
+			const opensSoFar = subscribeMessage.mock.calls.length;
+
+			// Keep failing: more attempts, but the state never changes, so no emits.
+			await vi.advanceTimersByTimeAsync(120_000);
+			expect(subscribeMessage.mock.calls.length).toBeGreaterThan(opensSoFar);
+			expect(l.mock.calls.length).toBe(settled);
+			off();
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("reopens on a fresh connection and resets connected during reconnect", async () => {
 		const h = makeHass();
 		const l = vi.fn();
