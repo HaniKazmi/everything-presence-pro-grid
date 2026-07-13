@@ -188,7 +188,7 @@ type SensorState = {
 
 // Factory — returns a fresh object each call so resets and the
 // settings-view snapshot merge (`{ ...createInitialSensorState(), ... }` in
-// onSessionClosed) never alias a shared object.
+// the onAvailability stream-offline clear) never alias a shared object.
 const createInitialSensorState = (): SensorState => ({
 	occupancy: false,
 	static_presence: false,
@@ -842,6 +842,10 @@ export class EPPGridPanel extends LitElement {
 	// `hass.connection.connected` so we can render a "reconnecting" UI
 	// while the backend is unreachable and re-initialise once it returns.
 	@state() private _haConnected = true;
+	// The selected device's live stream reports it dropped. Distinct from the
+	// device-list's `firmware_status`: our session socket can die while HA
+	// still believes the device is available (#336).
+	@state() private _streamOffline = false;
 	private _listeningConnection: any = null;
 	private _onHaReady = (): void => {
 		const wasDisconnected = !this._haConnected;
@@ -1265,10 +1269,22 @@ export class EPPGridPanel extends LitElement {
 				}
 			}
 		};
-		this._deviceCtrl.onSelectedAvailable = (mac) => {
-			this._ensureSession(mac);
-		};
-		this._deviceCtrl.onSessionClosed = () => {
+		this._deviceCtrl.onAvailability = (mac, available) => {
+			if (mac !== this._selectedMac) return;
+			if (available) {
+				this._streamOffline = false;
+				return;
+			}
+			// All three live streams (grid + raw, plus heatmap when the
+			// overlay is enabled) opt into availability, so a single flap
+			// fires this handler 2-3x with `available: false`. Only the
+			// first needs to run the clear below — once `_streamOffline` is
+			// already true, repeating it would re-run the zone-engine reset
+			// for no benefit and risks dropping state that arrived between
+			// the calls (#336).
+			if (this._streamOffline) return;
+			this._streamOffline = true;
+
 			// Live-data has no meaning once the device is gone — clear it so
 			// the UI doesn't keep showing stale readings. Config-derived
 			// state (perspective, furniture, zones) is intentionally kept

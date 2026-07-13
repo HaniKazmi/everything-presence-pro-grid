@@ -70,10 +70,6 @@ export class DeviceController implements ReactiveController {
 	onRawTargetData?: (targets: RawTarget[]) => void;
 	onHeatmapData?: (cells: number[]) => void;
 	onDeviceListChanged?: () => void;
-	onSessionClosed?: () => void;
-	/** Selected device transitioned to available. Host decides whether to
-	 * reopen the session (config already loaded) or load config fresh. */
-	onSelectedAvailable?: (mac: string) => void;
 	/** The device behind a live stream dropped (false) or came back (true).
 	 *  Drives the panel's offline banner and its stale-live-data clear. */
 	onAvailability?: (mac: string, available: boolean) => void;
@@ -111,7 +107,6 @@ export class DeviceController implements ReactiveController {
 	private _heatmapEnabled = false;
 	private _reconnecting = false;
 	private _connectionFailed = false;
-	private _lastSelectedOnline: boolean | null = null;
 	private _reopenInFlight?: { mac: string; promise: Promise<void> };
 	private _loadConfigInFlight?: { mac: string; promise: Promise<any> };
 	// Generation tokens — incremented on (un)subscribe and connection swap.
@@ -272,17 +267,10 @@ export class DeviceController implements ReactiveController {
 			return;
 		}
 
-		const prevSelectedMac = this.selectedMac;
 		const stored = readStoredMac();
 		const match =
 			stored && this.devices.find((d: DeviceInfo) => d.mac === stored);
 		this.selectedMac = match ? stored! : (this.devices[0]?.mac ?? "");
-		if (prevSelectedMac !== this.selectedMac) {
-			// Same reset as _applyDeviceList: treat the next push as an
-			// initial observation for the new device so we don't fire a stale
-			// false→true rising edge latched from the previous selection.
-			this._lastSelectedOnline = null;
-		}
 		this._host.requestUpdate();
 	}
 
@@ -339,7 +327,6 @@ export class DeviceController implements ReactiveController {
 		// current selection on an empty list — otherwise the panel flips
 		// to the "no devices" placeholder mid-reconnect. An empty list
 		// just means "I don't know yet".
-		const prevSelectedMac = this.selectedMac;
 		const stored = readStoredMac();
 		if (this.devices.length > 0) {
 			const match = stored && this.devices.find((d) => d.mac === stored);
@@ -350,10 +337,11 @@ export class DeviceController implements ReactiveController {
 			// path already treats missing-from-list as offline, and the user
 			// can still switch via the picker's unsaved-changes guard. The
 			// switch happens on the next push once the host is clean, and a
-			// re-added device (USB reflash) reconnects through the normal
-			// offline→online edge below. Boundary: the guard only covers the
-			// selected-mac-missing case — a stored-mac change while the device
-			// is still listed intentionally switches (out of scope here).
+			// re-added device (USB reflash) is picked up by the durable
+			// stream's own availability signal, not by this method (#336).
+			// Boundary: the guard only covers the selected-mac-missing case —
+			// a stored-mac change while the device is still listed
+			// intentionally switches (out of scope here).
 			const deferSwitch =
 				next !== this.selectedMac &&
 				!!this.selectedMac &&
@@ -368,37 +356,6 @@ export class DeviceController implements ReactiveController {
 			// (which treats missing-from-list as offline) instead of the
 			// "no devices configured" placeholder.
 			this.selectedMac = stored;
-		}
-		if (prevSelectedMac !== this.selectedMac) {
-			// Treat the next push as an initial observation for the new
-			// device so we don't fire a stale false→true rising edge.
-			this._lastSelectedOnline = null;
-		}
-
-		const selected = this.devices.find((d) => d.mac === this.selectedMac);
-		// Treat `firmware_status="unavailable"` as offline even when HA still
-		// reports `available: true` — that combination happens when only the
-		// `firmware_version` text sensor went unavailable while other entities
-		// are still reporting. The backend's per-state handler closes its end
-		// of the session whenever any entity goes offline, so without
-		// tracking firmware_status we'd leave the live target stream dead
-		// once it recovers.
-		const nowOnline =
-			(selected?.available ?? false) &&
-			selected?.firmware_status !== "unavailable";
-		const prev = this._lastSelectedOnline;
-		this._lastSelectedOnline = nowOnline;
-
-		if (prev === true && !nowOnline) {
-			this.closeDeviceSession();
-			this.onSessionClosed?.();
-		}
-		// Initial push (prev === null) is skipped — the host's first-load
-		// flow drives the initial connect.  On a real offline→online
-		// transition, hand off to the host so it can choose between
-		// reopenSession (config already in memory) and a fresh config load.
-		if (prev === false && nowOnline && this.selectedMac) {
-			this.onSelectedAvailable?.(this.selectedMac);
 		}
 
 		this.onDeviceListChanged?.();
@@ -866,7 +823,6 @@ export class DeviceController implements ReactiveController {
 	// --- Device selection ---
 	selectDevice(mac: string): void {
 		this.selectedMac = mac;
-		this._lastSelectedOnline = null;
 		this._connectionFailed = false;
 		persistSelectedMac(mac);
 		this._host.requestUpdate();

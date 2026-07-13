@@ -180,7 +180,11 @@ describe("panel state survives device offline→online", () => {
 		expect(getConfigCallCount()).toBe(before);
 	});
 
-	it("re-opens a fresh device session when the device transitions back to available", async () => {
+	it("keeps the existing device session across a device-list availability blip", async () => {
+		// Recovery is the manager's job now (#336): a device-list flap alone
+		// must not tear down or reopen the frontend's session — the durable
+		// stream's own `available`/`closed` signal (onAvailability) drives
+		// that instead, and a device-list-only mock never fires it.
 		const { el, a, pushDeviceList, sessionSubCount } = await mountPanel([
 			makeDevice("aa", true),
 		]);
@@ -192,8 +196,72 @@ describe("panel state survives device offline→online", () => {
 		await el.updateComplete;
 		await new Promise((r) => setTimeout(r, 0));
 
-		expect(sessionSubCount()).toBeGreaterThan(before);
+		expect(sessionSubCount()).toBe(before);
 		expect(a._deviceCtrl.hasDeviceSession).toBe(true);
+	});
+
+	it("clears stale live data when the stream reports the device dropped", async () => {
+		const { el, a } = await mountPanel([makeDevice("aa", true)]);
+
+		a._targets = [{ x: 1, y: 2, status: "active", signal: 9 }];
+		a._rawTargets = [{ raw_x: 1, raw_y: 2 }];
+
+		// The durable stream reports the device dropped (#336).
+		a._deviceCtrl.onAvailability("aa", false);
+		await el.updateComplete;
+
+		expect(a._targets).toEqual([]);
+		expect(a._rawTargets).toEqual([]);
+		expect(a._streamOffline).toBe(true);
+
+		a._deviceCtrl.onAvailability("aa", true);
+		await el.updateComplete;
+		expect(a._streamOffline).toBe(false);
+	});
+
+	it("is idempotent across repeated available:false signals from sibling streams", async () => {
+		// All three live streams (grid, raw, heatmap) opt into availability
+		// and each call onAvailability independently, so a single flap
+		// fires this hook 2-3x with the same `false`. The clear (including
+		// the zone-engine reset) must only run once — repeating it risks
+		// dropping state that arrived between the calls and offers no
+		// benefit since the data is already clear.
+		const { el, a } = await mountPanel([makeDevice("aa", true)]);
+		const resetSpy = vi.spyOn(a._targetCtrl, "resetZoneEngineState");
+
+		a._targets = [{ x: 1, y: 2, status: "active", signal: 9 }];
+		a._deviceCtrl.onAvailability("aa", false);
+		a._deviceCtrl.onAvailability("aa", false);
+		a._deviceCtrl.onAvailability("aa", false);
+		await el.updateComplete;
+
+		expect(resetSpy).toHaveBeenCalledTimes(1);
+		expect(a._targets).toEqual([]);
+		expect(a._streamOffline).toBe(true);
+	});
+
+	it("clears live data again on a fresh flap after a false→true→false cycle", async () => {
+		const { el, a } = await mountPanel([makeDevice("aa", true)]);
+		const resetSpy = vi.spyOn(a._targetCtrl, "resetZoneEngineState");
+
+		a._deviceCtrl.onAvailability("aa", false);
+		await el.updateComplete;
+		expect(a._streamOffline).toBe(true);
+		expect(resetSpy).toHaveBeenCalledTimes(1);
+
+		a._deviceCtrl.onAvailability("aa", true);
+		await el.updateComplete;
+		expect(a._streamOffline).toBe(false);
+
+		// A genuinely new flap must clear again, not stay latched from the
+		// first one.
+		a._targets = [{ x: 3, y: 4, status: "active", signal: 4 }];
+		a._deviceCtrl.onAvailability("aa", false);
+		await el.updateComplete;
+
+		expect(a._streamOffline).toBe(true);
+		expect(a._targets).toEqual([]);
+		expect(resetSpy).toHaveBeenCalledTimes(2);
 	});
 
 	// --- HA WebSocket disconnect/reconnect paths ---
@@ -372,13 +440,15 @@ describe("panel state survives device offline→online", () => {
 
 	it("loads config (not just reopens session) when the device becomes available for the first time", async () => {
 		// Scenario: user opens the panel while their device is offline.
-		// The controller's auto-reconnect used to always call
-		// reopenSession() on the transition, which doesn't fetch config.
+		// Reconnection is no longer driven by the device-list edge (#336) —
+		// it's the `updated()` guard, which fires whenever `hass` changes.
+		// HA reassigns `hass` on every entity-state change in production
+		// (including the one that flipped this device available), so
+		// simulate that churn here rather than the retired edge.
 		// If the panel never successfully loaded config, we need a fetch
 		// here or the UI is stuck on stale/default state forever.
-		const { el, a, pushDeviceList, getConfigCallCount } = await mountPanel([
-			makeDevice("aa", false),
-		]);
+		const { el, a, hass, pushDeviceList, getConfigCallCount } =
+			await mountPanel([makeDevice("aa", false)]);
 		await el.updateComplete;
 		// No config yet — device was offline on mount, so
 		// `_isSelectedDeviceAvailable` gated out the fetch.
@@ -387,6 +457,10 @@ describe("panel state survives device offline→online", () => {
 
 		// Device flips to available via a device-list push.
 		pushDeviceList([makeDevice("aa", true)]);
+		await el.updateComplete;
+		// HA's routine hass-object churn — same connection, fresh reference —
+		// is what the `updated()` guard reacts to.
+		el.hass = { ...hass };
 		await el.updateComplete;
 		await new Promise((r) => setTimeout(r, 0));
 		await new Promise((r) => setTimeout(r, 0));

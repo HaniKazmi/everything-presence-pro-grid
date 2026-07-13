@@ -1278,24 +1278,6 @@ describe("DeviceController", () => {
 			ctrl.selectDevice("cc:dd");
 			expect(host.requestUpdate).toHaveBeenCalled();
 		});
-
-		it("resets availability tracker to avoid stale-edge reconnect", () => {
-			const onSelectedAvailable = vi.fn();
-			ctrl.onSelectedAvailable = onSelectedAvailable;
-
-			// Prime: "aa" available → offline. Tracker latches to false.
-			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
-			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
-			onSelectedAvailable.mockClear();
-
-			// User switches to "bb" — tracker must reset so the next push
-			// is treated as an initial observation (prev === null) and not
-			// a stale false→true rising edge.
-			ctrl.selectDevice("bb");
-			(ctrl as any)._applyDeviceList([makeDevice("bb", true)]);
-
-			expect(onSelectedAvailable).not.toHaveBeenCalled();
-		});
 	});
 
 	// --- hass getter/setter ---
@@ -1391,62 +1373,12 @@ describe("DeviceController", () => {
 		});
 	});
 
-	// --- Availability edge transitions ---
-	describe("availability transitions", () => {
-		it("fires onSelectedAvailable (not reopenSession directly) when selected device transitions offline→online", async () => {
-			// The controller hands off to the host via onSelectedAvailable
-			// so the host can choose reopenSession vs loadDeviceConfig based
-			// on whether it has already loaded config for this device.
-			const onSelectedAvailable = vi.fn();
-			ctrl.onSelectedAvailable = onSelectedAvailable;
-
-			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
-			ctrl.selectedMac = "aa";
-			onSelectedAvailable.mockClear();
-
-			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
-			expect(onSelectedAvailable).not.toHaveBeenCalled();
-
-			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
-			expect(onSelectedAvailable).toHaveBeenCalledWith("aa");
-		});
-
-		it("does not fire onSelectedAvailable when a non-selected device flips availability", async () => {
-			const onSelectedAvailable = vi.fn();
-			ctrl.onSelectedAvailable = onSelectedAvailable;
-
-			(ctrl as any)._applyDeviceList([
-				makeDevice("aa", true),
-				makeDevice("bb", true),
-			]);
-			ctrl.selectedMac = "aa";
-			onSelectedAvailable.mockClear();
-
-			(ctrl as any)._applyDeviceList([
-				makeDevice("aa", true),
-				makeDevice("bb", false),
-			]);
-			(ctrl as any)._applyDeviceList([
-				makeDevice("aa", true),
-				makeDevice("bb", true),
-			]);
-
-			expect(onSelectedAvailable).not.toHaveBeenCalled();
-		});
-
-		it("does not fire onSelectedAvailable on the first device_list message", async () => {
-			// The host's first-load flow drives the initial connect, so the
-			// controller must not pre-empt it when prev === null.
-			const onSelectedAvailable = vi.fn();
-			ctrl.onSelectedAvailable = onSelectedAvailable;
-
-			ctrl.selectedMac = "aa";
-			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
-
-			expect(onSelectedAvailable).not.toHaveBeenCalled();
-		});
-
-		it("closes device session when selected device transitions online→offline", async () => {
+	// --- Availability edge retired (#336) ---
+	describe("device-list availability edge", () => {
+		it("does not tear the session down when the selected device goes offline", () => {
+			// Recovery is the manager's job now: it re-arms the durable streams on a
+			// fresh connection. A frontend teardown+resubscribe would race that re-arm
+			// — two owners of the same recovery is the bug class of #334.
 			const closeSpy = vi.spyOn(ctrl, "closeDeviceSession");
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
@@ -1455,84 +1387,29 @@ describe("DeviceController", () => {
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
 
-			expect(closeSpy).toHaveBeenCalledTimes(1);
+			expect(closeSpy).not.toHaveBeenCalled();
 		});
 
-		it("fires onSessionClosed so host can clear live-target state", () => {
-			const onClosed = vi.fn();
-			ctrl.onSessionClosed = onClosed;
+		it("does not resubscribe the streams when the device comes back", async () => {
+			const subscribeSpy = vi.spyOn(ctrl, "subscribeTargets");
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 			ctrl.selectedMac = "aa";
-			onClosed.mockClear();
+			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
+			subscribeSpy.mockClear();
+
+			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
+
+			expect(subscribeSpy).not.toHaveBeenCalled();
+		});
+
+		it("still pushes the device list to the host", () => {
+			const onDeviceListChanged = vi.fn();
+			ctrl.onDeviceListChanged = onDeviceListChanged;
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
 
-			expect(onClosed).toHaveBeenCalledTimes(1);
-		});
-
-		it("fires onSessionClosed when firmware_status flips to unavailable while available stays true", () => {
-			// Entity-level flap scenario: a non-critical entity stays online so
-			// HA still reports `available: true`, but the firmware_version
-			// sensor went unavailable (so `firmware_status="unavailable"`). The
-			// backend's per-state close fired when any entity went offline,
-			// leaving the live-target stream dead even though `available`
-			// never flipped.
-			const onClosed = vi.fn();
-			ctrl.onSessionClosed = onClosed;
-
-			(ctrl as any)._applyDeviceList([
-				{
-					...makeDevice("aa", true),
-					firmware_status: "compatible",
-				},
-			]);
-			ctrl.selectedMac = "aa";
-			onClosed.mockClear();
-
-			(ctrl as any)._applyDeviceList([
-				{
-					...makeDevice("aa", true),
-					firmware_status: "unavailable",
-				},
-			]);
-
-			expect(onClosed).toHaveBeenCalledTimes(1);
-		});
-
-		it("fires onSelectedAvailable when firmware_status recovers from unavailable while available stays true", () => {
-			const onSelectedAvailable = vi.fn();
-			ctrl.onSelectedAvailable = onSelectedAvailable;
-
-			(ctrl as any)._applyDeviceList([
-				{
-					...makeDevice("aa", true),
-					firmware_status: "compatible",
-				},
-			]);
-			ctrl.selectedMac = "aa";
-			onSelectedAvailable.mockClear();
-
-			// firmware_version sensor goes unavailable — `available` stays
-			// true because other entities are still reporting.
-			(ctrl as any)._applyDeviceList([
-				{
-					...makeDevice("aa", true),
-					firmware_status: "unavailable",
-				},
-			]);
-			expect(onSelectedAvailable).not.toHaveBeenCalled();
-
-			// firmware_version sensor comes back. The host needs to re-open
-			// the session (the backend closed its end when the entity went
-			// offline) so the live target stream resumes.
-			(ctrl as any)._applyDeviceList([
-				{
-					...makeDevice("aa", true),
-					firmware_status: "compatible",
-				},
-			]);
-			expect(onSelectedAvailable).toHaveBeenCalledWith("aa");
+			expect(onDeviceListChanged).toHaveBeenCalled();
 		});
 	});
 
@@ -1674,56 +1551,27 @@ describe("DeviceController", () => {
 			expect(ctrl.selectedMac).toBe("bb");
 		});
 
-		it("reconnects to the deferred device when it returns (USB-reflash flow)", () => {
+		it("keeps the deferred device selected across a delete/re-add cycle, with no teardown (USB-reflash flow)", () => {
 			// Delete + re-add with the same mac: the deferred selection must
-			// observe offline (session closed) then online (host reopens via
-			// onSelectedAvailable), exactly like a regular availability blip.
+			// stay put across the blip. Recovery is the manager's job now
+			// (#336) — the frontend must not tear the session down or attempt
+			// to reconnect from this edge.
 			localStorage.setItem("epp_selected_mac", "aa");
-			const onClosed = vi.fn();
-			const onSelectedAvailable = vi.fn();
+			const closeSpy = vi.spyOn(ctrl, "closeDeviceSession");
 			ctrl.isHostDirty = () => true;
-			ctrl.onSessionClosed = onClosed;
-			ctrl.onSelectedAvailable = onSelectedAvailable;
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 
-			// Device deleted; another remains. Deferred — but the missing
-			// device counts as offline, so the session closes.
+			// Device deleted; another remains. Deferred — selection stays "aa".
 			(ctrl as any)._applyDeviceList([makeDevice("bb", true)]);
 			expect(ctrl.selectedMac).toBe("aa");
-			expect(onClosed).toHaveBeenCalledTimes(1);
 
-			// Device re-added (same mac) — selection sticks and the host is
-			// told to reconnect.
+			// Device re-added (same mac) — selection sticks, no teardown.
 			(ctrl as any)._applyDeviceList([
 				makeDevice("aa", true),
 				makeDevice("bb", true),
 			]);
 			expect(ctrl.selectedMac).toBe("aa");
-			expect(onSelectedAvailable).toHaveBeenCalledWith("aa");
-		});
-	});
-
-	describe("loadDevices availability tracker", () => {
-		it("resets the availability tracker when loadDevices changes the selection", async () => {
-			// Same contract as _applyDeviceList/selectDevice: a selection
-			// change must treat the next push as an initial observation, not
-			// fire a stale false→true rising edge from the previous device.
-			localStorage.setItem("epp_selected_mac", "aa");
-			const onSelectedAvailable = vi.fn();
-			ctrl.onSelectedAvailable = onSelectedAvailable;
-			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
-			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
-			onSelectedAvailable.mockClear();
-
-			// One-shot reload returns a different device set; selection moves
-			// to "bb".
-			ctrl.hass = mockHass([makeDevice("bb", true)]);
-			await ctrl.loadDevices();
-			expect(ctrl.selectedMac).toBe("bb");
-
-			(ctrl as any)._applyDeviceList([makeDevice("bb", true)]);
-
-			expect(onSelectedAvailable).not.toHaveBeenCalled();
+			expect(closeSpy).not.toHaveBeenCalled();
 		});
 	});
 

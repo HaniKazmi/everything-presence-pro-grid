@@ -273,8 +273,8 @@ describe("target data flow via DeviceController", () => {
 	});
 });
 
-describe("onSessionClosed (env sensor preservation)", () => {
-	it("preserves env sensor values across session close", async () => {
+describe("onAvailability(mac, false) (env sensor preservation)", () => {
+	it("preserves env sensor values across a stream-offline clear", async () => {
 		// Why: env-offset slider displays compute `raw + offset` from
 		// _sensorState.{illuminance,temperature,humidity,co2}. If those go
 		// to null during a transient device-offline window, Lit's render
@@ -286,6 +286,7 @@ describe("onSessionClosed (env sensor preservation)", () => {
 		const el = createPanel();
 		const a = el as any;
 		await a._subscribeDevices();
+		a._selectedMac = "aa";
 		a._sensorState = {
 			occupancy: true,
 			static_presence: true,
@@ -299,7 +300,7 @@ describe("onSessionClosed (env sensor preservation)", () => {
 		};
 		a._targets = [{ x: 1, y: 2, status: "active", signal: 5 }];
 
-		a._deviceCtrl.onSessionClosed();
+		a._deviceCtrl.onAvailability("aa", false);
 
 		// High-frequency state (targets, occupancy/presence flags) is cleared
 		// because stale flags are visibly misleading on the live grid.
@@ -320,9 +321,10 @@ describe("onSessionClosed (env sensor preservation)", () => {
 		const el = createPanel();
 		const a = el as any;
 		await a._subscribeDevices();
+		a._selectedMac = "aa";
 		a._dismissedTargets = new Map([[0, 42]]);
 
-		a._deviceCtrl.onSessionClosed();
+		a._deviceCtrl.onAvailability("aa", false);
 
 		expect(a._dismissedTargets.size).toBe(0);
 	});

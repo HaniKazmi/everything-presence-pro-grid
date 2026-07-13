@@ -554,7 +554,7 @@ describe("TargetController", () => {
 			// reading mid-drag makes the displayed value bounce as the sensor
 			// fluctuates. Snapshot-on-first-event gives the user a stable
 			// reference: populate when null (fresh load or post-reconnect
-			// onSessionClosed clear), then freeze.
+			// onAvailability clear), then freeze.
 			host._view = "settings";
 			host._sensorState = {
 				occupancy: false,

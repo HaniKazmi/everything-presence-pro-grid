@@ -237,8 +237,17 @@ describe("panel device list transitions", () => {
 	});
 
 	// --- Session close behaviour when the device becomes unavailable ---
+	//
+	// Recovery is the manager's job now (#336): the device-list edge that
+	// used to tear the session down and clear live data on a mere
+	// missing-from-list observation is retired. That clear now happens from
+	// the durable stream's own `onAvailability(mac, false)` signal instead
+	// (see device-controller.test.ts's "device-list availability edge" and
+	// panel-reconnect-state.test.ts's onAvailability coverage) — a
+	// device-list-only mock like this file's never fires it, so none of
+	// this should happen from `pushDeviceList` alone.
 
-	it("closes the device session when the selected device transitions away from available", async () => {
+	it("does not close the device session when the selected device disappears from the list", async () => {
 		const dev1 = mockDeviceInfo("aa", "Alpha");
 		const { el, a, pushDeviceList } = await mountPanel([dev1]);
 		const closeSpy = vi.spyOn(a._deviceCtrl, "closeDeviceSession");
@@ -246,16 +255,10 @@ describe("panel device list transitions", () => {
 		pushDeviceList([]);
 		await el.updateComplete;
 
-		expect(closeSpy).toHaveBeenCalled();
+		expect(closeSpy).not.toHaveBeenCalled();
 	});
 
-	it("clears high-frequency live state on session close, preserves env sensors", async () => {
-		// Targets / occupancy / presence flags are cleared because stale flags
-		// are visibly misleading on the live grid. Env sensor values are
-		// preserved so the env-offset slider's render output (`raw + offset`)
-		// stays the same across the offline cycle — otherwise Lit would
-		// clobber the user's drag-set DOM value with "—" then with the raw
-		// reading on reconnect.
+	it("does not clear live state when the selected device disappears from the list", async () => {
 		const dev1 = mockDeviceInfo("aa", "Alpha");
 		const { el, a, pushDeviceList } = await mountPanel([dev1]);
 		a._sensorState = {
@@ -278,22 +281,20 @@ describe("panel device list transitions", () => {
 		pushDeviceList([]);
 		await el.updateComplete;
 
-		// Cleared.
-		expect(a._sensorState.occupancy).toBe(false);
-		expect(a._sensorState.static_presence).toBe(false);
-		expect(a._sensorState.motion_presence).toBe(false);
-		expect(a._sensorState.target_presence).toBe(false);
-		expect(a._zoneState.occupancy).toEqual({});
-		expect(a._zoneState.target_counts).toEqual({});
-		expect(a._zoneState.frame_count).toBe(0);
-		// Preserved (slow-changing, kept across the offline window).
+		expect(a._sensorState.occupancy).toBe(true);
+		expect(a._sensorState.static_presence).toBe(true);
+		expect(a._sensorState.motion_presence).toBe(true);
+		expect(a._sensorState.target_presence).toBe(true);
+		expect(a._zoneState.occupancy).toEqual({ 1: true });
+		expect(a._zoneState.target_counts).toEqual({ 1: 2 });
+		expect(a._zoneState.frame_count).toBe(42);
 		expect(a._sensorState.illuminance).toBe(500);
 		expect(a._sensorState.temperature).toBe(22);
 		expect(a._sensorState.humidity).toBe(40);
 		expect(a._sensorState.co2).toBe(600);
 	});
 
-	it("resets the zone engine state when the session closes", async () => {
+	it("does not reset the zone engine state when the selected device disappears from the list", async () => {
 		const dev1 = mockDeviceInfo("aa", "Alpha");
 		const { el, a, pushDeviceList } = await mountPanel([dev1]);
 		const resetSpy = vi.spyOn(a._targetCtrl, "resetZoneEngineState");
@@ -301,7 +302,7 @@ describe("panel device list transitions", () => {
 		pushDeviceList([]);
 		await el.updateComplete;
 
-		expect(resetSpy).toHaveBeenCalled();
+		expect(resetSpy).not.toHaveBeenCalled();
 	});
 
 	it("renders the offline banner (not the editor) when the selected device disappears", async () => {
