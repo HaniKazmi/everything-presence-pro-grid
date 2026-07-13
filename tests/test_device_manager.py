@@ -1882,6 +1882,66 @@ class TestDeviceManager:
         assert mac not in manager._active_connections
         assert len(avail_calls) >= 2, "expected pre-lock + post-connect availability checks"
 
+    async def test_open_session_stopping_while_awaiting_pending_close_returns_none(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """`_stopping` must be re-checked after `_await_pending_close`: teardown
+        beginning while a call is parked there must not let it fall through to a
+        full connect + noise handshake started during/after unload — burning an
+        API connection slot and leaving an untracked coroutine past async_stop."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        close_release = asyncio.Event()
+
+        async def slow_close() -> None:
+            await close_release.wait()
+
+        pending_task = asyncio.create_task(slow_close())
+        manager._pending_closes[mac] = pending_task
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls:
+            mock_conn = mock_conn_cls.return_value
+            mock_conn.async_connect = AsyncMock()
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn.connected = True
+
+            task = asyncio.create_task(manager.async_open_session(mac))
+            await asyncio.sleep(0)  # let it start awaiting the pending close
+            manager._stopping = True
+            close_release.set()
+            result = await asyncio.wait_for(task, timeout=2.0)
+
+        assert result is None
+        assert mock_conn_cls.call_count == 0, "must not construct a DeviceConnection after _stopping is set"
+
+    async def test_open_session_stopping_mid_session_lock_returns_none(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """`_stopping` must be re-checked after acquiring `_session_locks[mac]`:
+        teardown beginning while a call is queued on a contended session lock
+        must not let it proceed to construct a DeviceConnection."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        lock = manager._session_locks.setdefault(mac, asyncio.Lock())
+        await lock.acquire()
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls:
+            mock_conn = mock_conn_cls.return_value
+            mock_conn.async_connect = AsyncMock()
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn.connected = True
+
+            task = asyncio.create_task(manager.async_open_session(mac))
+            await asyncio.sleep(0)  # let it queue on the lock
+            manager._stopping = True
+            lock.release()
+            result = await asyncio.wait_for(task, timeout=2.0)
+
+        assert result is None
+        assert mock_conn_cls.call_count == 0, "must not construct a DeviceConnection after _stopping is set"
+
     async def test_multiple_state_changes_push_config_once(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Multiple entities becoming available should only push config once."""
         dev_reg = dr.async_get(hass)

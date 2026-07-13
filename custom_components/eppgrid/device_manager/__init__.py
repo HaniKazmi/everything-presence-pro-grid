@@ -607,17 +607,19 @@ class DeviceManager:
 
         # Phase 3: drop the streams, then disconnect.
         #
-        # The streams must go BEFORE the disconnects. aioesphomeapi delivers on_stop
-        # as a DETACHED background task, so `_on_session_lost` lands at an arbitrary
-        # point: mid-gather, where `_disarm_stream` → `release_session` would take the
-        # last session ref and schedule a close AFTER the Phase-2 drain (a task
-        # escaping teardown, racing a second disconnect against the one in flight); or
-        # after `_state_streams` is gone, where it early-returns and the clients are
-        # never told their stream died. Marking each stream closed also stops an
-        # `_arm_stream` still in flight (an un-tracked one, awaited by
-        # `async_add_state_stream`) from re-arming it onto a connection we are tearing
-        # down. Tearing down here — rather than through `_disarm_stream` — deliberately
-        # bypasses `release_session`: the refcounts are dropped wholesale below.
+        # The streams must go BEFORE the disconnects. aioesphomeapi runs on_stop as an
+        # EAGER task — inline within our own `client.disconnect()` for this self-initiated
+        # close, arbitrary (from the read loop) for an unexpected drop — so
+        # `_on_session_lost` can land at any point: mid-gather, where `_disarm_stream` →
+        # `release_session` would take the last session ref and schedule a close AFTER the
+        # Phase-2 drain (a task escaping teardown, racing a second disconnect against the
+        # one in flight); or after `_state_streams` is gone, where it early-returns and the
+        # clients are never told their stream died. Dropping the streams first is what
+        # keeps both cases safe. Marking each stream closed also stops an `_arm_stream`
+        # still in flight (an un-tracked one, awaited by `async_add_state_stream`) from
+        # re-arming it onto a connection we are tearing down. Tearing down here — rather
+        # than through `_disarm_stream` — deliberately bypasses `release_session`: the
+        # refcounts are dropped wholesale below.
         for streams in self._state_streams.values():
             for stream in streams:
                 stream.conn = None
@@ -1406,18 +1408,19 @@ class DeviceManager:
                 if unsub is not None:
                     unsub()
         # Drop the device's streams: nothing can ever arm them again. This is the
-        # authoritative teardown, not a fallback — the close above fires on_stop, but
-        # aioesphomeapi delivers that as a DETACHED background task, so
-        # `_on_session_lost` has most likely not run yet (and `notify` de-dupes if it
-        # has). Marking each stream closed is what stops an `_arm_stream` still in
-        # flight from resuming past its `stream.closed` guards and re-arming onto the
-        # connection we just tore down — leaving a callback on a dead connection and a
-        # client whose last signal is `available=True` for a device that is gone.
+        # authoritative teardown, not a fallback — the close above fires on_stop, and
+        # aioesphomeapi runs on_stop as an EAGER task: inline within our own
+        # `client.disconnect()`, so `_on_session_lost` has most likely already run by
+        # the time we reach here (`notify` de-dupes either way). Marking each stream
+        # closed is what stops an `_arm_stream` still in flight from resuming past its
+        # `stream.closed` guards and re-arming onto the connection we just tore down —
+        # leaving a callback on a dead connection and a client whose last signal is
+        # `available=True` for a device that is gone.
         # Safe to pop the lock even with an `_ensure_streams` pass still holding it:
         # every stream in that pass's snapshot is now `closed`, so it releases instead
-        # of arming (its `release_session` identity-mismatches the live conn). A re-added
-        # device mints a fresh lock and a disjoint set of streams — the two passes cannot
-        # both arm.
+        # of arming (its release is balanced against the ref its own `async_open_session`
+        # took). A re-added device mints a fresh lock and a disjoint set of streams —
+        # the two passes cannot both arm.
         for stream in self._state_streams.pop(mac, []):
             self._disarm_stream(stream)
             if not stream.closed:
@@ -1755,14 +1758,15 @@ class DeviceManager:
     def _on_session_lost(self, mac: str) -> None:
         """A session's API connection stopped — disarm its streams and re-arm.
 
-        Reaches us from `DeviceConnection.on_stop`, which aioesphomeapi runs as a
-        DETACHED background task (`APIClient._on_stop` schedules it rather than
-        awaiting it). Late delivery is therefore the NORMAL case: this can land at any
-        point after the connection died, including while we hold `_session_locks[mac]`
-        somewhere up the stack. The reconcile must not be awaited here — `_ensure_streams`
-        takes `_stream_locks[mac]` and then, through `async_open_session`,
-        `_session_locks[mac]`. `_spawn` runs it on a fresh task and tracks it, so
-        async_stop's drain still catches it.
+        Reaches us from `DeviceConnection.on_stop`, which aioesphomeapi runs as an EAGER
+        task: inline within our own `client.disconnect()` for a self-initiated close —
+        which can fire this callback WHILE we are still inside `async_close_session`,
+        `_session_locks[mac]` held by that very call — arbitrary, from the read loop, for
+        an unexpected drop. Either way this can land at any point after the connection
+        died, including while we hold `_session_locks[mac]` somewhere up the stack. The
+        reconcile must not be awaited here — `_ensure_streams` takes `_stream_locks[mac]`
+        and then, through `async_open_session`, `_session_locks[mac]`. `_spawn` runs it on
+        a fresh task and tracks it, so async_stop's drain still catches it.
 
         Covers both an unexpected drop and our own force-close: `_ensure_streams`
         no-ops while the device is offline, and `_on_device_available` re-runs it
@@ -2158,8 +2162,21 @@ class DeviceManager:
         # simply runs after we release — which is correct: it pops
         # `_active_connections` and disconnects whatever we stored.
         await self._await_pending_close(mac)
+        if self._stopping:
+            # Teardown can begin while we were parked on the pending-close
+            # await above. Re-check here too — otherwise we'd fall through to
+            # a full connect + noise handshake (up to 30s) started during/
+            # after unload, only to be torn down by the post-connect guard
+            # below: a wasted API connection slot and an untracked coroutine
+            # outliving async_stop.
+            return None
         lock = self._session_locks.setdefault(mac, asyncio.Lock())
         async with lock:
+            if self._stopping:
+                # Same rationale as above: a shutdown that lands while we were
+                # queued on this lock (e.g. a contended session) must not let
+                # us proceed to construct a DeviceConnection.
+                return None
             if mac in self._active_connections:
                 conn = self._active_connections[mac]
                 if conn.connected:
@@ -2221,6 +2238,10 @@ class DeviceManager:
 
         Returns the scheduled close task when this release was the last
         reference (the session is now closing); None otherwise.
+
+        While stopping, always returns `None` — `async_stop` owns the
+        refcounts and the disconnects, so a close scheduled here would
+        escape the Phase-2 drain.
         """
         if self._stopping:
             # Teardown owns the refcounts and the disconnects (async_stop Phase 3).
