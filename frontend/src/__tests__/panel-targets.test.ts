@@ -8,6 +8,16 @@ import { getSensorRoomPosition } from "../lib/room-geometry.js";
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
+	// Force isConnected=true without appending — appendChild fires
+	// connectedCallback which auto-runs _initialize and races with the
+	// explicit calls each test makes. Without this, _loadDeviceConfig's
+	// post-await `!this.isConnected` guard (real for a genuinely detached/
+	// torn-down panel) fires on every call here and immediately closes the
+	// session it just opened. See panel-config.test.ts's createPanel().
+	Object.defineProperty(el, "isConnected", {
+		value: true,
+		configurable: true,
+	});
 	el.hass = {
 		callWS: vi.fn().mockResolvedValue({}),
 		connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
@@ -101,6 +111,12 @@ describe("_loadDeviceConfig sets up callbacks before subscribing", () => {
 				}),
 			},
 		};
+		// _loadDeviceConfig's post-await guard tears the just-opened session
+		// back down when `_selectedMac` doesn't match the mac it loaded (the
+		// normal selectDevice()/_applyDeviceList() flow sets this before
+		// loading config) — set it here so this direct call behaves like a
+		// real load instead of self-aborting.
+		a._selectedMac = "AA:BB";
 
 		await a._loadDeviceConfig("AA:BB");
 

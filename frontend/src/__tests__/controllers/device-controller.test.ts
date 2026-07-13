@@ -1985,8 +1985,6 @@ describe("DeviceController", () => {
 	describe("stream protocol: available / closed", () => {
 		beforeEach(() => {
 			vi.useFakeTimers();
-			// Deterministic jitter, so the backoff schedule is exactly assertable.
-			vi.spyOn(Math, "random").mockReturnValue(0);
 		});
 		afterEach(() => {
 			vi.useRealTimers();
@@ -2159,6 +2157,53 @@ describe("DeviceController", () => {
 			}
 
 			expect(ctrl.connectionFailed).toBe(true);
+		});
+
+		it("ignores a closed message queued on a superseded subscription after a device switch", async () => {
+			// The HA websocket client only drops a subscription's local handler
+			// once its unsubscribe round-trips, so the OLD device's handler can
+			// still fire after a device switch. Acting on a `closed` there would
+			// bump the generation out from under the NEW device's live stream,
+			// unsub its healthy subscription, and re-open the WRONG mac.
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			ctrl.subscribeTargets("bb");
+			await vi.advanceTimersByTimeAsync(0);
+			expect(h.opens()).toBe(2);
+			const bbUnsub = h.unsubs[1];
+			expect(bbUnsub).not.toHaveBeenCalled();
+
+			// A `closed` queued for "aa" before its unsubscribe round-tripped,
+			// delivered on the stale (index 0) handler.
+			h.emit({ closed: true }, 0);
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			// Must NOT touch "bb"'s healthy subscription, and must NOT
+			// re-subscribe the superseded "aa" mac.
+			expect(bbUnsub).not.toHaveBeenCalled();
+			expect(h.opens()).toBe(2);
+		});
+
+		it("ignores a closed message queued on a subscription after hostDisconnected", async () => {
+			// hostDisconnected (HA's 5-minute hidden-suspend) tears down the
+			// controller; a `closed` that was already queued on the wire can
+			// still land afterward. Acting on it would re-subscribe on a
+			// disposed controller, leaking a manager stream and an ESP32
+			// session slot until the browser websocket itself closes.
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			expect(h.opens()).toBe(1);
+
+			ctrl.hostDisconnected();
+			h.emit({ closed: true }, 0);
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			expect(h.opens()).toBe(1);
 		});
 	});
 

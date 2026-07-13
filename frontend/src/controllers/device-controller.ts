@@ -10,11 +10,17 @@ import type { DeviceInfo, RawTarget, Target, TargetStatus } from "../types.js";
 const SUBSCRIBE_RETRY_LIMIT = 5;
 const SUBSCRIBE_RETRY_DELAY_MS = 2000;
 
-// Re-open backoff for a stream the manager tore down (`closed`). Mirrors the card's
-// schedule (frontend/src/card/subscription-store.ts) — an integration reload can take
-// a while, so this backs off exponentially and NEVER gives up: giving up would leave
-// the panel frozen, which is the bug (#334/#336). Distinct from SUBSCRIBE_RETRY_*,
-// which covers a rejected *initial* subscribe and does latch a banner after 5 tries.
+// Re-open backoff for a stream the manager tore down (`closed`). Same base/cap and
+// doubling as the card's schedule (frontend/src/card/subscription-store.ts) — an
+// integration reload can take a while, so this backs off exponentially and NEVER
+// gives up: giving up would leave the panel frozen, which is the bug (#334/#336).
+// Deliberately differs from the card in two ways: no `Math.random()` jitter (the
+// card spreads re-opens across many dashboard cards sharing a connection; the panel
+// has at most 3 streams total, so jitter buys nothing) and no TERMINAL_REOPEN_CODES
+// (the card can't tell a removed device from a reload failure on its own; the panel's
+// device-list push already cancels the retry timer when the device disappears — see
+// closeDeviceSession/unsubscribeTargets). Distinct from SUBSCRIBE_RETRY_*, which
+// covers a rejected *initial* subscribe and does latch a banner after 5 tries.
 const REOPEN_BASE_MS = 500;
 const REOPEN_CAP_MS = 30_000;
 
@@ -685,6 +691,14 @@ export class DeviceController implements ReactiveController {
 	): void {
 		const claim = this._claimGen(stream.genField);
 		const handleMsg = (msg: any): void => {
+			// A superseded subscription can still deliver a queued message: the
+			// HA WS client only drops the local handler once its
+			// unsubscribe_events round-trips, so a message sent before that
+			// completes lands here regardless. Acting on it would re-subscribe
+			// the wrong mac (device switch superseded this claim), resurrect a
+			// torn-down controller (hostDisconnected superseded it), or restart
+			// the reopen backoff — drop it instead.
+			if (claim.stale()) return;
 			// The durable-stream protocol (#336). A frame carries the stream's
 			// payload field; anything else is protocol. Reducing a protocol
 			// message as a frame would blank the live view (`event.targets || []`).
@@ -697,7 +711,7 @@ export class DeviceController implements ReactiveController {
 				this._reopenStream(conn, mac, stream);
 				return;
 			}
-			if ("available" in msg) {
+			if (msg && "available" in msg) {
 				this.onAvailability?.(mac, !!msg.available);
 				return;
 			}
