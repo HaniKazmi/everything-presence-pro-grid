@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from typing import Any
 from unittest.mock import ANY
@@ -13,6 +14,8 @@ from unittest.mock import patch
 import pytest
 from aioesphomeapi import APIConnectionError
 from aioesphomeapi import LogLevel
+from aioesphomeapi import TextSensorInfo
+from aioesphomeapi import TextSensorState
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
@@ -10521,3 +10524,114 @@ class TestStateStreams:
         assert task.done()
         assert manager._stream_retry_tasks == {}
         assert all(t.done() for t in manager._pending_tasks), "a task escaped teardown"
+
+
+class TestOverviewStreamRecovery:
+    """The card's stream must survive a device flap — issue #334.
+
+    End-to-end across the two layers that broke: the REAL non-admin WS scaffolding
+    (`_start_durable_target_stream`) on a REAL `DeviceManager`. The panel recovers by
+    watching the device list and resubscribing, but the card is non-admin and has no
+    such hook, so recovery has to come from the manager — the callback is bound to a
+    disposable `DeviceConnection`, and nothing re-armed it when that connection died.
+    """
+
+    class FakeDeviceConnection:
+        """DeviceConnection stand-in: real subscriber bookkeeping, no network."""
+
+        def __init__(self) -> None:
+            self.entities = [
+                TextSensorInfo(object_id="target_1_position", key=1, name="Target 1 Position"),
+            ]
+            self.subscribers: list[Any] = []
+            self.connected = True
+
+        async def subscribe_states(self, cb) -> None:
+            if not self.connected:
+                raise RuntimeError("Cannot subscribe to states: connection is closed")
+            self.subscribers.append(cb)
+
+        def unsubscribe_states(self, cb) -> None:
+            with contextlib.suppress(ValueError):
+                self.subscribers.remove(cb)
+
+        def emit_target(self, position: str) -> None:
+            state = TextSensorState(key=1, state=position, missing_state=False)
+            for cb in list(self.subscribers):
+                cb(state)
+
+        def kill(self) -> None:
+            """Mirror `_release_references`: a dead connection drops its subscribers."""
+            self.connected = False
+            self.subscribers.clear()
+
+    async def test_card_keeps_streaming_after_a_device_flap(self, hass, manager):
+        from custom_components.eppgrid.websocket_api._devices import _make_grid_target_on_state
+        from custom_components.eppgrid.websocket_api._overview import _start_durable_target_stream
+
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._device_id_to_mac["dev1"] = mac
+        manager._store.devices = {mac: {}}
+        manager._is_device_available = MagicMock(return_value=True)
+
+        # Two successive device connections: the original, and its replacement
+        # after the flap.
+        conns = [self.FakeDeviceConnection(), self.FakeDeviceConnection()]
+        opened: list[Any] = []
+
+        async def _open(_mac):
+            conn = conns[len(opened)]
+            opened.append(conn)
+            return conn
+
+        manager.async_open_session = AsyncMock(side_effect=_open)
+        manager.release_session = MagicMock(return_value=None)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
+
+        await _start_durable_target_stream(
+            connection,
+            msg,
+            manager,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, dc: _make_grid_target_on_state(connection, msg["id"], m, dc),
+            send_snapshot=True,
+            send_availability=True,
+            log_prefix="test",
+        )
+
+        assert len(opened) == 1
+        assert len(conns[0].subscribers) == 1
+
+        # The device flaps: its API connection dies, taking every state
+        # subscriber with it (exactly what `_release_references` does).
+        conns[0].kill()
+        manager._on_session_lost(mac)
+        # `_settle`, not `async_block_till_done`: the latter would also await the
+        # debounced pipeline push's real-time sleep.
+        await _settle()
+
+        # The manager re-armed the stream on the REPLACEMENT connection, rebuilding
+        # the callback from the factory — the entity key map is only knowable from
+        # the live connection.
+        assert len(opened) == 2
+        assert len(conns[1].subscribers) == 1
+
+        # A frame on the new connection reaches the card.
+        connection.send_message.reset_mock()
+        conns[1].emit_target("100,200,active")
+        target_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and "targets" in c.args[0].get("event", {})
+        ]
+        assert target_events, "expected the card to receive a frame after the flap"
+
+        # Teardown: drop the stream, then stop the manager so no debounced
+        # pipeline-push task outlives the test.
+        connection.subscriptions[1]()
+        await manager.async_stop()
+        await hass.async_block_till_done()
