@@ -8985,3 +8985,49 @@ def test_mac_for_device_id_maps_registry_id_to_mac(hass):
 
     assert mgr.mac_for_device_id("dev1") == "AA:BB:CC:DD:EE:01"
     assert mgr.mac_for_device_id("nope") is None
+
+
+class TestStateStream:
+    """Tests for the durable state-stream record."""
+
+    def _stream(self, on_availability=None):
+        from custom_components.eppgrid.device_manager._streams import StateStream
+
+        return StateStream(
+            mac="AA:BB:CC:DD:EE:01",
+            counter_attr="grid_target_subs",
+            make_on_state=lambda mac, conn: lambda state: None,
+            on_availability=on_availability or (lambda available: None),
+        )
+
+    def test_starts_unarmed(self):
+        stream = self._stream()
+        assert stream.armed is False
+        assert stream.closed is False
+
+    def test_armed_once_a_connection_is_bound(self):
+        stream = self._stream()
+        stream.conn = MagicMock()
+        stream.cb = lambda state: None
+        assert stream.armed is True
+
+    def test_notify_dedupes_repeated_values(self):
+        seen: list[bool] = []
+        stream = self._stream(on_availability=seen.append)
+        stream.notify(True)
+        stream.notify(True)
+        stream.notify(False)
+        stream.notify(False)
+        stream.notify(True)
+        assert seen == [True, False, True]
+
+    def test_notify_fires_on_first_false(self):
+        """Initial state is unknown, so the first notify always emits."""
+        seen: list[bool] = []
+        stream = self._stream(on_availability=seen.append)
+        stream.notify(False)
+        assert seen == [False]
+
+    def test_notify_swallows_callback_errors(self):
+        stream = self._stream(on_availability=MagicMock(side_effect=RuntimeError("ws closed")))
+        stream.notify(True)  # must not raise
