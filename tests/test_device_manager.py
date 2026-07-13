@@ -7549,6 +7549,75 @@ class TestSessionRefcounting:
         conn.async_disconnect.assert_awaited_once()
         assert manager._session_refcounts == {}
 
+    async def test_stale_release_after_a_flap_does_not_touch_the_replacement_refcount(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """The panel holds its session across a flap; its unsub carries a dead conn.
+
+        Once the panel stops closing its session on the availability edge (#336), the
+        `subscribe_device` unsub fires with the PRE-flap connection. That release must
+        not decrement the refcount that now belongs to the replacement session (which
+        the re-armed streams own) — otherwise the first view teardown after a flap
+        closes a session other subscribers are still using.
+        """
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._is_device_available = MagicMock(return_value=True)
+
+        conn1 = self._make_conn()
+        conn2 = self._make_conn()
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_cls.side_effect = [conn1, conn2]
+
+            # The panel opens its write session.
+            opened = await manager.async_open_session(mac)
+            assert opened is conn1
+            assert manager._session_refcounts[mac] == 1
+
+            # The device flaps: conn1 dies. A fresh open (what a re-armed stream does)
+            # evicts the dead conn and starts the replacement's count from zero.
+            conn1.connected = False
+            manager._on_session_lost(conn1)
+            await hass.async_block_till_done()
+
+            reopened = await manager.async_open_session(mac)
+            assert reopened is conn2
+            assert manager._session_refcounts[mac] == 1
+
+            # The panel's unsub finally fires, carrying the DEAD conn.
+            manager.release_session(mac, conn1)
+
+            # The replacement's reference is untouched and the session is still live.
+            assert manager._session_refcounts[mac] == 1
+            assert manager.get_session(mac) is conn2
+
+    async def test_writes_reach_the_replacement_session_after_a_flap(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """`get_session` returns the NEW connection after a flap, so panel writes work.
+
+        The panel's write commands (set_settings, dismiss_target) resolve the session
+        via `get_session(mac)`. With durable streams re-opening the session, the panel
+        does not reopen anything itself — this is what makes that safe (#336).
+        """
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._is_device_available = MagicMock(return_value=True)
+
+        conn1 = self._make_conn()
+        conn2 = self._make_conn()
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_cls.side_effect = [conn1, conn2]
+
+            await manager.async_open_session(mac)
+            conn1.connected = False
+            manager._on_session_lost(conn1)
+            await hass.async_block_till_done()
+            assert manager.get_session(mac) is None  # nothing live between the two
+
+            await manager.async_open_session(mac)
+            assert manager.get_session(mac) is conn2
+
 
 # ---------------------------------------------------------------------------
 # Zone entity management tests
