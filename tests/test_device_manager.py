@@ -9139,6 +9139,52 @@ class TestStateStream:
         stream = self._stream(on_availability=MagicMock(side_effect=RuntimeError("ws closed")))
         stream.notify(True)  # must not raise
 
+    def test_notify_closed_fires_the_owner_callback(self):
+        from custom_components.eppgrid.device_manager._streams import StateStream
+
+        fired: list[bool] = []
+        stream = StateStream(
+            mac="AA:BB:CC:DD:EE:01",
+            counter_attr="grid_target_subs",
+            make_on_state=lambda mac, conn: lambda state: None,
+            on_availability=lambda available: None,
+            on_closed=lambda: fired.append(True),
+        )
+        stream.notify_closed()
+        assert fired == [True]
+
+    def test_notify_closed_fires_at_most_once(self):
+        """The teardown paths can both reach a stream (device removed during unload)."""
+        from custom_components.eppgrid.device_manager._streams import StateStream
+
+        fired: list[bool] = []
+        stream = StateStream(
+            mac="AA:BB:CC:DD:EE:01",
+            counter_attr="grid_target_subs",
+            make_on_state=lambda mac, conn: lambda state: None,
+            on_availability=lambda available: None,
+            on_closed=lambda: fired.append(True),
+        )
+        stream.notify_closed()
+        stream.notify_closed()
+        assert fired == [True]
+
+    def test_notify_closed_without_a_callback_is_a_noop(self):
+        """`on_closed` is optional — an older caller registers no handler."""
+        self._stream().notify_closed()  # must not raise
+
+    def test_notify_closed_swallows_callback_errors(self):
+        from custom_components.eppgrid.device_manager._streams import StateStream
+
+        stream = StateStream(
+            mac="AA:BB:CC:DD:EE:01",
+            counter_attr="grid_target_subs",
+            make_on_state=lambda mac, conn: lambda state: None,
+            on_availability=lambda available: None,
+            on_closed=MagicMock(side_effect=RuntimeError("ws closed")),
+        )
+        stream.notify_closed()  # must not raise
+
     def test_records_with_matching_fields_are_still_distinct(self):
         """The record is used with IDENTITY semantics — `eq=False` is load-bearing.
 
@@ -9905,6 +9951,170 @@ class TestStateStreams:
 
         assert mac not in manager._state_streams
         assert seen == [True, False]
+
+    async def test_async_stop_tells_the_client_its_stream_is_gone(self, hass, manager):
+        """A config-entry reload kills the stream the card is still subscribed to.
+
+        The card cannot tell that apart from a device flap, so the manager must
+        say so — otherwise the card sits on the offline banner until it remounts.
+        """
+        mac, _conn = self._armable(manager)
+        closed: list[bool] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append(True),
+        )
+
+        await manager.async_stop()
+
+        assert closed == [True]
+
+    async def test_device_removal_tells_the_client_its_stream_is_gone(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        closed: list[bool] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append(True),
+        )
+
+        await manager._on_device_removed(mac)
+
+        assert closed == [True]
+
+    async def test_client_unsub_does_not_fire_the_closed_signal(self, hass, manager):
+        """The client tore it down itself — telling it to re-subscribe would loop."""
+        mac, _conn = self._armable(manager)
+        closed: list[bool] = []
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append(True),
+        )
+
+        unsub()
+
+        assert closed == []
+
+    async def test_device_flap_does_not_fire_the_closed_signal(self, hass, manager):
+        """A flap is what durable streams exist to survive — the stream is NOT gone."""
+        mac, conn = self._armable(manager)
+        closed: list[bool] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append(True),
+        )
+
+        conn.connected = False
+        manager._on_session_lost(mac)
+        await hass.async_block_till_done()
+
+        assert closed == []
+
+    async def test_a_raising_closed_callback_does_not_break_the_stop_loop(self, hass, manager):
+        """A websocket that died mid-teardown must not strand the OTHER clients.
+
+        Both streams here are on one mac, so a raise out of the first one's callback
+        would abandon the second inside the same drop loop — it would keep its
+        subscription open against a manager that no longer has its stream.
+        """
+        mac, _conn = self._armable(manager)
+        closed: list[str] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=MagicMock(side_effect=RuntimeError("ws already closed")),
+        )
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="heatmap_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append("second"),
+        )
+
+        await manager.async_stop()
+
+        assert closed == ["second"]
+        assert manager._state_streams == {}
+
+    async def test_a_raising_closed_callback_does_not_break_the_removal_loop(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        closed: list[str] = []
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=MagicMock(side_effect=RuntimeError("ws already closed")),
+        )
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="heatmap_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append("second"),
+        )
+
+        await manager._on_device_removed(mac)
+
+        assert closed == ["second"]
+        assert mac not in manager._state_streams
+
+    async def test_a_client_unsubbing_from_its_closed_callback_does_not_break_the_stop_loop(self, hass, manager):
+        """The signal's whole point is to make the client react — including re-entrantly.
+
+        A client holding streams on two devices can unsub one from inside the other's
+        `on_closed`. That re-enters `_close`, which drops the second mac's now-empty
+        list from `_state_streams` — the very dict async_stop's drop loop is walking.
+        Iterating a live view would raise `RuntimeError: dictionary changed size during
+        iteration` out of async_stop, aborting the unload with connections still open.
+        """
+        mac_a, conn = self._armable(manager)
+        mac_b = "AA:BB:CC:DD:EE:02"
+        manager.devices[mac_b] = ManagedDevice(mac=mac_b, name="Kitchen", host="192.168.1.51")
+        manager.async_open_session = AsyncMock(return_value=conn)
+
+        closed: list[str] = []
+        unsubs: dict[str, Any] = {}
+
+        def _unsub_the_other() -> None:
+            closed.append(mac_a)
+            unsubs[mac_b]()
+
+        # `mac_a` first: async_stop walks `_state_streams` in insertion order, so its
+        # callback must run while `mac_b`'s entry is still in the dict being walked.
+        await manager.async_add_state_stream(
+            mac_a,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=_unsub_the_other,
+        )
+        unsubs[mac_b] = await manager.async_add_state_stream(
+            mac_b,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+            on_closed=lambda: closed.append(mac_b),
+        )
+
+        await manager.async_stop()
+
+        assert closed == [mac_a]  # mac_b's stream was closed BY the client, so no signal
+        assert manager._state_streams == {}
 
     async def test_async_stop_drops_streams(self, hass, manager):
         mac, _conn = self._armable(manager)

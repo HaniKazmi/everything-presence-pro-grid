@@ -33,10 +33,12 @@ class StateStream:
     counter_attr: str
     make_on_state: Callable[[str, Any], Callable[[Any], None]]
     on_availability: Callable[[bool], None]
+    on_closed: Callable[[], None] | None = None
     conn: Any | None = None
     cb: Any | None = None
     closed: bool = False
     _last_available: bool | None = field(default=None, repr=False)
+    _closed_notified: bool = field(default=False, repr=False)
 
     @property
     def armed(self) -> bool:
@@ -72,3 +74,27 @@ class StateStream:
             self.on_availability(available)
         except Exception:
             _LOGGER.exception("State-stream availability callback raised")
+
+    def notify_closed(self) -> None:
+        """Tell the owner its stream is GONE — not merely offline.
+
+        Fires only when the manager itself tore the stream down (config entry
+        unload/reload, device removed): the client's subscription is still open but
+        now points at a stream that no longer exists, and nothing on the backend can
+        revive it — only a re-subscribe can. A device flap must NOT fire this: the
+        stream survives that and re-arms itself, and re-subscribing on every Wi-Fi
+        blip would churn the wire for nothing.
+
+        Fires at most once, and errors are swallowed: the teardown paths walk every
+        stream on a device, and a websocket that died mid-teardown must not break the
+        loop for the others.
+        """
+        if self._closed_notified:
+            return
+        self._closed_notified = True
+        if self.on_closed is None:
+            return
+        try:
+            self.on_closed()
+        except Exception:
+            _LOGGER.exception("State-stream closed callback raised")

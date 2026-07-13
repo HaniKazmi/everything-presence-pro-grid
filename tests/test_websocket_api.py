@@ -7000,6 +7000,33 @@ class TestOverviewSubscribe:
         ]
         assert events == [{"available": False}, {"available": True}]
 
+    async def test_closed_callback_tells_the_card_to_resubscribe(self, hass, config_entry):
+        """A config-entry reload drops the stream the card is still subscribed to.
+
+        The card cannot tell that apart from a device flap (both look like
+        `available:false`), so the manager's teardown puts `closed: true` on the wire
+        alongside it — Task 10's reducer re-subscribes on that. `available:false` rides
+        along so an OLD bundle, whose reducer ignores the extra key, still shows its
+        offline banner exactly as it does today (#334).
+        """
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+        mock_dm.store.devices = {"AA:BB:CC:DD:EE:01": {}}
+        mock_dm.async_add_state_stream = AsyncMock(return_value=MagicMock())
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 18, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe, connection, msg)
+
+        connection.send_message.reset_mock()
+        mock_dm.async_add_state_stream.await_args.kwargs["on_closed"]()
+
+        connection.send_message.assert_called_once()
+        assert connection.send_message.call_args.args[0]["event"] == {"available": False, "closed": True}
+
     async def test_make_on_state_builds_the_grid_target_callback(self, hass, config_entry):
         """The factory handed to the manager builds a callback bound to the
         connection it is given — the manager rebuilds it after a flap, so entity
@@ -7045,7 +7072,7 @@ class TestOverviewSubscribe:
         mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
         mock_dm.store.devices = {"AA:BB:CC:DD:EE:01": {}}
 
-        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability):
+        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability, on_closed):
             on_availability(False)  # manager could not arm it — device is offline
             return MagicMock()
 
@@ -7253,7 +7280,7 @@ class TestOverviewSubscribeHeatmap:
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
 
-        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability):
+        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability, on_closed):
             on_availability(False)
             return MagicMock()
 
@@ -7294,7 +7321,7 @@ class TestOverviewSubscribeHeatmap:
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
 
-        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability):
+        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability, on_closed):
             on_availability(False)  # a stale on_stop lands mid-registration
             on_availability(True)  # ...and the arm pass still succeeds
             return MagicMock()
@@ -7321,7 +7348,7 @@ class TestOverviewSubscribeHeatmap:
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
 
-        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability):
+        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability, on_closed):
             on_availability(False)  # session lost while the stream was still unarmed
             on_availability(False)  # ...and the arm pass finds the device offline too
             return MagicMock()
@@ -7348,7 +7375,7 @@ class TestOverviewSubscribeHeatmap:
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
 
-        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability):
+        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability, on_closed):
             on_availability(False)
             return None  # mac no longer managed — nothing was registered
 
@@ -7366,6 +7393,32 @@ class TestOverviewSubscribeHeatmap:
         ]
         assert events == [{"available": False}]
         assert 27 not in connection.subscriptions
+
+    async def test_closed_callback_tells_the_card_to_resubscribe(self, hass, config_entry):
+        """The teardown signal DOES reach this subscription — unlike arm/disarm.
+
+        The payload carries no `available` key (this wire has never streamed liveness),
+        just `closed: true`. A deployed bundle reduces that with `m.cells ?? []` and so
+        blanks its overlay — accepted: by the time this fires, that overlay is already
+        frozen for good, its backend stream gone and no frame ever coming. Task 10's
+        reducer keeps the cells and re-subscribes instead.
+        """
+        from custom_components.eppgrid.websocket_api import websocket_overview_subscribe_heatmap
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.mac_for_device_id = MagicMock(return_value="AA:BB:CC:DD:EE:01")
+        mock_dm.async_add_state_stream = AsyncMock(return_value=MagicMock())
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 28, "type": "eppgrid/overview/subscribe_heatmap", "device_id": "dev1"}
+        await call_async_handler(hass, websocket_overview_subscribe_heatmap, connection, msg)
+
+        connection.send_message.reset_mock()
+        mock_dm.async_add_state_stream.await_args.kwargs["on_closed"]()
+
+        connection.send_message.assert_called_once()
+        assert connection.send_message.call_args.args[0]["event"] == {"closed": True}
 
     async def test_subscribe_heatmap_emits_cells_on_state(self, hass, config_entry):
         """The callback the manager builds from `make_on_state` emits {"cells": [...]}.

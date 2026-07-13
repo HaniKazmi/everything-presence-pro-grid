@@ -45,6 +45,10 @@ async def _start_durable_target_stream(
 
     Relaying that liveness to the client is opt-in per command — see
     `_on_availability` for why the heatmap subscription must not carry it.
+
+    A stream the manager tears down itself (unload, reload, device removed) is a
+    different thing from an offline device, and the client cannot tell them apart:
+    `_on_closed` puts that on the wire so the card can re-subscribe.
     """
     device_id = msg["device_id"]
     mac = manager.mac_for_device_id(device_id)
@@ -106,12 +110,37 @@ async def _start_durable_target_stream(
             return
         connection.send_message(websocket_api.event_message(msg["id"], {"available": available}))
 
+    @callback
+    def _on_closed() -> None:
+        """The manager dropped this stream — tell the client to re-subscribe.
+
+        Fires only on a manager-initiated teardown (config entry unload/reload, device
+        removed), never on a device flap. The client's subscription is still open, but
+        the stream behind it is gone and the reloaded manager knows nothing of it, so
+        no backend event will ever revive it — the card would sit on its offline banner
+        until the element remounted (#334, reached via a config-entry reload).
+
+        `available: false` rides along on `overview/subscribe` for BWC: an already-
+        deployed card bundle reduces that stream with
+        `"available" in m && !("targets" in m)` and ignores the extra key, so it keeps
+        showing the offline banner exactly as it does today.
+
+        `overview/subscribe_heatmap` gets `closed` alone — that wire has never carried
+        liveness. A deployed bundle reduces it with `m.cells ?? []` and so blanks its
+        overlay on this message; accepted, because by the time this fires that overlay
+        is already dead (its stream is gone, no frame is ever coming), so it blanks
+        something frozen rather than losing anything live.
+        """
+        event: dict[str, Any] = {"available": False, "closed": True} if send_availability else {"closed": True}
+        connection.send_message(websocket_api.event_message(msg["id"], event))
+
     try:
         unsub_stream = await manager.async_add_state_stream(
             mac,
             counter_attr=counter_attr,
             make_on_state=make_on_state,
             on_availability=_on_availability,
+            on_closed=_on_closed,
         )
     except Exception as err:
         _LOGGER.warning("%s: stream registration failed for %s: %s", log_prefix, mac, err)

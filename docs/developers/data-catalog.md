@@ -264,9 +264,16 @@ the device flaps, instead of leaving the card frozen — see architecture.md →
 1. `{ "available": bool }` — reflects the stream's live/lost state: `true` once
     the stream (re)arms successfully — including the very first arm right after
     subscribing — and `false` whenever it loses its connection (device offline,
-    config-entry reload, a reconnect attempt that fails). No further data
-    frames arrive while `available` is `false`; they resume once a following
-    `true` arrives.
+    a reconnect attempt that fails). No further data frames arrive while
+    `available` is `false`; they resume once a following `true` arrives, with
+    no action needed from the client — the manager re-arms the stream itself.
+1. `{ "available": false, "closed": true }` — terminal, and the one case the
+    client MUST act on: the manager tore the stream down (eppgrid config-entry
+    unload/reload, device removed). The subscription is still open but points
+    at a stream that no longer exists, and no `available: true` will ever
+    follow. The client must re-subscribe if it still wants frames. The
+    `available` key rides along so a card bundle predating this signal still
+    shows its offline banner.
 1. `{ "targets": [...], "sensors": {...}, "zones": {...} }` — live data frames,
     same shape as the `subscribe_grid_targets` payload, streamed at the same
     rates (display_interval / zone_state_interval) while the stream is armed.
@@ -293,6 +300,13 @@ frontend state streams*.
 row-major), streamed while the stream is armed; or, at most once, right after
 subscribing, `{ "available": false }` if the stream could not be armed. No
 snapshot is sent (unlike `overview/subscribe`).
+
+It does relay the terminal teardown signal, as `{ "closed": true }` (no
+`available` key — this wire has never carried liveness): the manager dropped the
+stream and only a re-subscribe can restore it. A bundle predating the signal
+reduces it to an empty overlay, which is accepted — by the time it fires, that
+overlay is already frozen for good, its backend stream gone with no frame ever
+coming.
 
 Errors: `device_not_found` when the `device_id` doesn't match a known device.
 

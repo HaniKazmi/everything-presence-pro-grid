@@ -655,13 +655,21 @@ class DeviceManager:
         # re-arming it onto a connection we are tearing down. Tearing down here — rather
         # than through `_disarm_stream` — deliberately bypasses `release_session`: the
         # refcounts are dropped wholesale below.
-        for streams in self._state_streams.values():
-            for stream in streams:
+        #
+        # `notify_closed` is what separates this from a device flap on the wire: the
+        # client's subscription is still open, but the stream behind it is gone and the
+        # fresh manager a reload brings up knows nothing of it, so only the client can
+        # revive it (by re-subscribing). Iterate copies of both the dict and each list —
+        # `notify_closed` hands control to the client, which may unsub other streams (on
+        # any mac) in response, re-entering `_close` and mutating what we are walking.
+        for streams in list(self._state_streams.values()):
+            for stream in list(streams):
                 stream.conn = None
                 stream.cb = None
                 if not stream.closed:
                     stream.closed = True
                     stream.notify(False)
+                    stream.notify_closed()
         self._state_streams.clear()
         self._stream_locks.clear()
 
@@ -1456,11 +1464,17 @@ class DeviceManager:
         # of arming (its release is balanced against the ref its own `async_open_session`
         # took). A re-added device mints a fresh lock and a disjoint set of streams —
         # the two passes cannot both arm.
-        for stream in self._state_streams.pop(mac, []):
+        # `notify_closed` on top of `notify(False)`: an offline device eventually comes
+        # back and re-arms the stream, but a REMOVED one never will — the client must
+        # re-subscribe (against a re-added device) or give up. Iterate a copy: the list
+        # is already detached from `_state_streams`, but `notify_closed` runs the
+        # client's callback, which is free to unsub other streams and re-enter `_close`.
+        for stream in list(self._state_streams.pop(mac, [])):
             self._disarm_stream(stream)
             if not stream.closed:
                 stream.closed = True
                 stream.notify(False)
+                stream.notify_closed()
         self._stream_locks.pop(mac, None)
         # Nothing can ever arm this device's streams again, so the backoff has
         # nothing left to retry — it would otherwise sit sleeping until its next
@@ -1731,6 +1745,7 @@ class DeviceManager:
         counter_attr: str,
         make_on_state: Callable[[str, Any], Callable[[Any], None]],
         on_availability: Callable[[bool], None],
+        on_closed: Callable[[], None] | None = None,
     ) -> Callable[[], None] | None:
         """Register a durable state stream for `mac` and arm it if possible.
 
@@ -1740,6 +1755,14 @@ class DeviceManager:
         `_ensure_streams`) whenever a session comes back, rebuilding the callback
         from `make_on_state` against the new connection. Callers therefore must
         NOT hold a `DeviceConnection` themselves.
+
+        `on_availability` reports liveness — the device dropped, the device came back
+        — for a stream the manager still holds. `on_closed` reports that the manager
+        no longer holds it at all (config entry unload/reload, device removed):
+        nothing here can revive it, so a caller that still wants frames must
+        re-subscribe. The two are distinct precisely because they are
+        indistinguishable to the client otherwise, and re-subscribing on a mere flap
+        would churn the wire and defeat the durable stream.
 
         The subscriber count is taken here and released in unsub — NOT on
         arm/disarm. `_target_subs` is per-mac precisely so it survives a flap;
@@ -1757,6 +1780,7 @@ class DeviceManager:
             counter_attr=counter_attr,
             make_on_state=make_on_state,
             on_availability=on_availability,
+            on_closed=on_closed,
         )
         self._state_streams.setdefault(mac, []).append(stream)
         self.note_target_subscribe(mac, counter_attr)
@@ -1769,6 +1793,10 @@ class DeviceManager:
             Idempotent (the `closed` flag), which is what makes it safe as both the
             caller's unsub and the rollback below — and safe when `async_stop` or
             `_on_device_removed` already closed the stream out from under us.
+
+            Deliberately does NOT fire `notify_closed`: that signal means "the manager
+            dropped your stream, re-subscribe if you still want one", and here the
+            CALLER dropped it. Telling it to re-subscribe would loop.
             """
             if stream.closed:
                 return

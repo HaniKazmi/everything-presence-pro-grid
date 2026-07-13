@@ -319,11 +319,26 @@ The overview WS commands (`websocket_api/_overview.py`,
 `_start_durable_target_stream`) hand their streams to the manager this way and
 relay the notification to the card as `{"available": …}` events — but only for
 `eppgrid/overview/subscribe`. `eppgrid/overview/subscribe_heatmap` deliberately
-keeps its wire contract byte-identical to what shipped before durable streams
-(at most one subscribe-time `{"available": false}`, never a live event):
+keeps its live wire contract byte-identical to what shipped before durable
+streams (at most one subscribe-time `{"available": false}`, never a live event):
 already-deployed card bundles blank the heatmap overlay on any message without a
 `cells` field, so a live availability event would blank a working heatmap on
 every flap.
+
+Re-arming heals a *device* flap, but not the manager's own death. On a config-
+entry unload/reload (an options change, a HACS update) `async_stop` drops every
+stream and the fresh manager comes up with an empty registry — while the card's
+subscription is still open, now pointing at nothing. `_on_device_removed` leaves
+the same hole for one device. The client cannot detect either (an
+`available: false` from a manager teardown and one from a flap are identical on
+the wire), and re-subscribing on every `available: false` would churn the wire
+for a device the backend is merely waiting on. So a second, terminal signal —
+`on_closed()` / `StateStream.notify_closed()` — says *this stream is gone,
+re-subscribe*. It fires from those two manager-initiated teardowns ONLY: never
+on a client unsub (the client already knows) and never on a flap (the stream
+survives that). On the wire it is `{"available": false, "closed": true}` for
+`overview/subscribe` and `{"closed": true}` for `overview/subscribe_heatmap`;
+both are inert-or-harmless to a card bundle that predates them.
 
 The admin panel's streams (`_devices.py::_start_target_stream`) were
 deliberately not converted — the panel already recovers on its own by watching
