@@ -1658,10 +1658,13 @@ class TestDeviceManager:
             mock_conn.connected = True
 
             await manager.async_open_session(mac)
-            # The re-push is spawned as a tracked task — wait for it.
+            # Debounced, not pushed inline: the counts a mounting card is still
+            # adding to must settle first (see `_request_pipeline_push`).
+            mock_push.assert_not_awaited()
+            # The re-push runs from a tracked task — wait for the trailing edge.
             await hass.async_block_till_done()
 
-        mock_push.assert_awaited_with(mac)
+        mock_push.assert_awaited_once_with(mac)
 
     async def test_open_session_no_repush_without_subscribers(
         self, hass: HomeAssistant, manager: DeviceManager
@@ -10985,5 +10988,79 @@ class TestOverviewStreamRecovery:
         # Teardown: drop the stream, then stop the manager so no debounced
         # pipeline-push task outlives the test.
         connection.subscriptions[1]()
+        await manager.async_stop()
+        await hass.async_block_till_done()
+
+    async def test_card_mount_collapses_into_one_pipeline_push(self, hass, manager):
+        """A mounting card opens `overview/subscribe` then `overview/subscribe_heatmap`
+        back-to-back. The device must see exactly ONE `epp_set_pipeline`, carrying the
+        SETTLED counts.
+
+        Both subscribes record their subscriber count BEFORE arming (the count is
+        per-mac and must survive a flap), so the first one's session open already sees
+        a non-empty `_target_subs`. Pushing from there directly would spend a second
+        round-trip on the ESP32's scarce API slots — exactly while it is recovering —
+        to deliver counts that were stale the moment they were read (`{grid:1,
+        heatmap:0}`). Runs the REAL `async_open_session`, which is where that push lives.
+        """
+        from custom_components.eppgrid.websocket_api._devices import _make_grid_target_on_state
+        from custom_components.eppgrid.websocket_api._devices import _make_heatmap_on_state
+        from custom_components.eppgrid.websocket_api._overview import _start_durable_target_stream
+
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50", device_id="dev1")
+        manager._device_id_to_mac["dev1"] = mac
+        manager._store.devices[mac] = {}
+        manager._is_device_available = MagicMock(return_value=True)
+        # `heatmap_interval` is stripped for pre-1.3.0 firmware, and the counts are
+        # what this test is reading — so give the device a version that keeps it.
+        manager.read_firmware_version = MagicMock(return_value="1.6.0")
+
+        conn = self.FakeDeviceConnection()
+        conn.async_connect = AsyncMock()
+        conn.async_disconnect = AsyncMock()
+        conn.async_execute_service = AsyncMock()
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=conn):
+            await _start_durable_target_stream(
+                connection,
+                {"id": 1, "type": "eppgrid/overview/subscribe", "device_id": "dev1"},
+                manager,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, dc: _make_grid_target_on_state(connection, 1, m, dc),
+                send_snapshot=True,
+                send_availability=True,
+                log_prefix="test",
+            )
+            await _start_durable_target_stream(
+                connection,
+                {"id": 2, "type": "eppgrid/overview/subscribe_heatmap", "device_id": "dev1"},
+                manager,
+                counter_attr="heatmap_subs",
+                make_on_state=lambda m, dc: _make_heatmap_on_state(connection, 2, m, dc),
+                send_snapshot=False,
+                send_availability=False,
+                log_prefix="test",
+            )
+            await hass.async_block_till_done()
+
+            pipelines = [
+                call.args[1]
+                for call in conn.async_execute_service.await_args_list
+                if call.args[0] == "epp_set_pipeline"
+            ]
+
+        assert len(pipelines) == 1
+        # The final counts, not the mid-mount ones: grid drives display/zone_state,
+        # heatmap drives heatmap_interval — an inline push would carry heatmap 0.
+        assert pipelines[0]["display_interval"] == 200
+        assert pipelines[0]["zone_state_interval"] == 1000
+        assert pipelines[0]["heatmap_interval"] == 2000
+
+        connection.subscriptions[1]()
+        connection.subscriptions[2]()
         await manager.async_stop()
         await hass.async_block_till_done()

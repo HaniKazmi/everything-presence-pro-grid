@@ -2079,8 +2079,15 @@ class DeviceManager:
 
     async def _push_pipeline_to_device(self, mac: str) -> None:
         """Recompute pipeline intervals and push to device."""
-        config = self._store.devices.get(mac, {})
+        # No live session — nothing to push to; the device picks the pipeline up on its
+        # next full push. Checked FIRST: `read_firmware_version` below scans every one of
+        # the device's registry entries, and a card mounting against an OFFLINE device
+        # requests a push all the same, so the wasted scan is not hypothetical.
         session = self.get_session(mac)
+        if session is None or not session.connected:
+            return
+
+        config = self._store.devices.get(mac, {})
         # Subscriber counts come from the per-mac map, NOT `session`: a freshly
         # reopened connection's own counters are zero even while clients are
         # subscribed (see `_target_subs`).
@@ -2095,14 +2102,12 @@ class DeviceManager:
         fw_ver = self.read_firmware_version(dev.device_id if dev is not None else None)
         strip_unsupported_pipeline_fields(pipeline, fw_ver)
 
-        # Push via session if available, otherwise skip (device will get it on next full push)
-        if session is not None and session.connected:
-            try:
-                await session.async_execute_service("epp_set_pipeline", pipeline)
-                _LOGGER.info("Pushed pipeline to %s", mac)
-            except HomeAssistantError:
-                # Service not available on older firmware — silently skip.
-                _LOGGER.debug("Device %s does not expose epp_set_pipeline", mac)
+        try:
+            await session.async_execute_service("epp_set_pipeline", pipeline)
+            _LOGGER.info("Pushed pipeline to %s", mac)
+        except HomeAssistantError:
+            # Service not available on older firmware — silently skip.
+            _LOGGER.debug("Device %s does not expose epp_set_pipeline", mac)
 
     @contextlib.asynccontextmanager
     async def _temp_connection(self, mac: str) -> AsyncIterator[DeviceConnection]:
@@ -2425,10 +2430,18 @@ class DeviceManager:
             # this mac — they survive the connection swap (see `_target_subs`) —
             # re-push the pipeline so target/zone emission resumes immediately
             # instead of staying silent until a page refresh re-subscribes.
-            # Spawned (not awaited) to avoid an extra round-trip inside the
-            # session lock; the push reads the just-stored connection.
+            #
+            # DEBOUNCED, not spawned directly: a card mounts by opening
+            # `overview/subscribe` then `overview/subscribe_heatmap` back-to-back, and
+            # each records its subscriber count BEFORE arming the stream that opens this
+            # session. A direct push would fire an immediate `epp_set_pipeline` carrying
+            # the counts as they stood mid-mount, and the arm pass's debounced push would
+            # then send the settled ones — two round-trips against a device whose API
+            # slots are scarcest exactly when it is recovering. `_request_pipeline_push`
+            # collapses them into ONE push with the final counts; its delay is invisible
+            # here, since this is fire-and-forget either way.
             if self._target_subs.get(mac):
-                self._spawn(self._push_pipeline_to_device(mac))
+                self._request_pipeline_push(mac)
             return conn
 
     @callback
