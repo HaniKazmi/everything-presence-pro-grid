@@ -39,6 +39,7 @@ from . import _require_manager
 from . import _send_no_session
 from . import _validate_zone_slots
 from . import finite_float
+from ._durable_stream import start_durable_stream
 
 # Dense length of the firmware `Heatmap` text-sensor payload once decoded —
 # one byte per grid cell, row-major, normalized 0..255.
@@ -706,6 +707,42 @@ async def websocket_subscribe_device(
 # -- target stream subscriptions (raw + grid) --
 
 
+async def _start_panel_stream(
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+    manager: Any,
+    *,
+    counter_attr: Literal["raw_target_subs", "grid_target_subs", "heatmap_subs"],
+    make_on_state: Callable[[str, Any], Callable[[Any], None]],
+    log_prefix: str,
+) -> None:
+    """Shared scaffolding for the panel's three live streams.
+
+    The panel's streams are DURABLE (#336): the manager owns the session refcount,
+    takes the subscriber count, and re-arms the stream on a fresh connection after a
+    device flap. This handler therefore holds no `DeviceConnection` and does no
+    counting of its own — `async_add_state_stream` does both, and counting here too
+    would double-count and silence the device's pipeline on unsub.
+
+    Liveness (`available`) and the manager-teardown signal (`closed`) go on the wire
+    only for clients that opt in via `availability: true`. A cached pre-upgrade panel
+    bundle does not, and reduces every message with `event.targets || []` — so it must
+    keep seeing frames and nothing else.
+    """
+    await start_durable_stream(
+        connection,
+        msg,
+        manager,
+        mac=msg["mac"],
+        counter_attr=counter_attr,
+        make_on_state=make_on_state,
+        send_snapshot=False,
+        send_availability=bool(msg.get("availability")),
+        log_prefix=log_prefix,
+        send_unarmed_availability=bool(msg.get("availability")),
+    )
+
+
 async def _start_target_stream(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
@@ -965,6 +1002,10 @@ def _make_grid_target_on_state(
     {
         vol.Required("type"): "eppgrid/subscribe_grid_targets",
         vol.Required("mac"): MAC_SCHEMA,
+        # Opt-in: only a client that asks gets `available` / `closed` on this wire.
+        # A cached pre-upgrade panel bundle does not ask, and must keep today's
+        # frames-only wire (#336).
+        vol.Optional("availability", default=False): bool,
     }
 )
 @websocket_api.require_admin
@@ -976,15 +1017,14 @@ async def websocket_subscribe_grid_targets(
     msg: dict[str, Any],
     manager: Any,
 ) -> None:
-    """Stream target positions, zone state, and sensor data from the device session."""
-    mac = msg["mac"]
-    await _start_target_stream(
-        hass,
+    """Stream grid-mapped target/zone/sensor state from a durable device stream."""
+    await _start_panel_stream(
         connection,
         msg,
         manager,
         counter_attr="grid_target_subs",
-        make_on_state=lambda dc: _make_grid_target_on_state(connection, msg["id"], mac, dc),
+        make_on_state=lambda mac, device_conn: _make_grid_target_on_state(connection, msg["id"], mac, device_conn),
+        log_prefix="subscribe_grid_targets",
     )
 
 

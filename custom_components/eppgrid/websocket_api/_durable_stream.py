@@ -29,6 +29,7 @@ async def start_durable_stream(
     send_snapshot: bool,
     send_availability: bool,
     log_prefix: str,
+    send_unarmed_availability: bool = True,
 ) -> None:
     """Shared scaffolding for the non-admin overview subscribe commands.
 
@@ -45,6 +46,15 @@ async def start_durable_stream(
     A stream the manager tears down itself (unload, reload, device removed) is a
     different thing from an offline device, and the client cannot tell them apart:
     `_on_closed` puts that on the wire so the card can re-subscribe.
+
+    `send_unarmed_availability` gates every non-frame event a client that opted out of
+    everything must never see: the ONE-SHOT `{"available": False}` fallback sent when
+    registration itself returns `None`, the same one-shot replayed when a session loss
+    races the registration window instead (`last_available is False` below), and the
+    `_on_closed` teardown signal. It defaults to True — today's behaviour for the
+    card, which always wants all three. The panel's opt-out path passes False: an old
+    cached bundle's reducer blanks the live view on any message lacking `targets`, so
+    it must see frames and nothing else.
     """
     connection.send_result(msg["id"])
     if send_snapshot:
@@ -110,7 +120,14 @@ async def start_durable_stream(
         overlay on this message; accepted, because by the time this fires that overlay
         is already dead (its stream is gone, no frame is ever coming), so it blanks
         something frozen rather than losing anything live.
+
+        A client that opted out of protocol events entirely (`send_unarmed_availability`
+        False — the panel's BWC path) must not see this one either: unlike the card's
+        two wires above, it has no tolerance for a bare `closed` message at all, since
+        its reducer blanks the live view on ANY message lacking `targets`.
         """
+        if not send_unarmed_availability:
+            return
         event: dict[str, Any] = {"available": False, "closed": True} if send_availability else {"closed": True}
         connection.send_message(websocket_api.event_message(msg["id"], event))
 
@@ -128,9 +145,10 @@ async def start_durable_stream(
     if unsub_stream is None:
         # Covers the recorded `last_available` too — nothing was registered, so this
         # single event is all the client gets either way.
-        connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
+        if send_unarmed_availability:
+            connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
         return
-    if not send_availability and last_available is False:
+    if not send_availability and send_unarmed_availability and last_available is False:
         connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
 
     released = False
