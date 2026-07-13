@@ -84,6 +84,7 @@ class DeviceConnection:
         *,
         mac: str | None = None,
         static_presence_cache: dict[str, dict[str, Any]] | None = None,
+        on_stop: Callable[[], None] | None = None,
     ) -> None:
         self._host = host
         self._port = port
@@ -108,6 +109,11 @@ class DeviceConnection:
         )
         # See OtaWatcherState — shared per-connection OTA watcher bookkeeping.
         self.ota: OtaWatcherState = OtaWatcherState()
+        # Owner hook fired after the APIClient stops (expected or not). The
+        # manager uses it to re-arm durable state streams: `_release_references`
+        # drops every state subscriber, so without a signal a live client would
+        # silently receive nothing until it resubscribed.
+        self._on_stop_cb = on_stop
 
     @property
     def entities(self) -> list:
@@ -127,6 +133,13 @@ class DeviceConnection:
 
         async def _on_stop(expected_disconnect: bool) -> None:
             self._release_references()
+            if self._on_stop_cb is None:
+                return
+            try:
+                self._on_stop_cb()
+            except Exception:
+                # Never propagate into aioesphomeapi's stop path.
+                _LOGGER.exception("DeviceConnection on_stop callback raised")
 
         try:
             await client.connect(on_stop=_on_stop, login=True)

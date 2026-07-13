@@ -944,6 +944,50 @@ class TestDeviceConnection:
         with pytest.raises((TimeoutError, asyncio.TimeoutError)):
             await conn.async_execute_service("slow", {}, timeout=0.05, return_response=True)
 
+    async def test_on_stop_callback_fires_when_connection_drops(self):
+        """The owner is told when the APIClient stops, after references are released."""
+        seen: list[bool] = []
+        conn = DeviceConnection("192.168.1.100", on_stop=lambda: seen.append(conn.connected))
+
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_client_cls:
+            client = mock_client_cls.return_value
+            client.connect = AsyncMock()
+            client.list_entities_services = AsyncMock(return_value=([], []))
+            await conn.async_connect()
+            on_stop = client.connect.call_args.kwargs["on_stop"]
+            await on_stop(False)
+
+        # Fired exactly once, and _release_references ran first (connected already False).
+        assert seen == [False]
+
+    async def test_on_stop_callback_exception_is_swallowed(self):
+        """A raising callback must not propagate into aioesphomeapi's stop path."""
+        conn = DeviceConnection("192.168.1.100", on_stop=MagicMock(side_effect=RuntimeError("boom")))
+
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_client_cls:
+            client = mock_client_cls.return_value
+            client.connect = AsyncMock()
+            client.list_entities_services = AsyncMock(return_value=([], []))
+            await conn.async_connect()
+            on_stop = client.connect.call_args.kwargs["on_stop"]
+            await on_stop(True)  # must not raise
+
+        assert conn.connected is False
+
+    async def test_no_on_stop_callback_is_fine(self):
+        """A connection constructed without on_stop still releases cleanly."""
+        conn = DeviceConnection("192.168.1.100")
+
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_client_cls:
+            client = mock_client_cls.return_value
+            client.connect = AsyncMock()
+            client.list_entities_services = AsyncMock(return_value=([], []))
+            await conn.async_connect()
+            on_stop = client.connect.call_args.kwargs["on_stop"]
+            await on_stop(False)
+
+        assert conn.connected is False
+
 
 # ---------------------------------------------------------------------------
 # DeviceManager tests
