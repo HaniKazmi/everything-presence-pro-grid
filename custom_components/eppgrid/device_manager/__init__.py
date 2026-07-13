@@ -312,6 +312,20 @@ class DeviceManager:
         """The persistent store backing this manager (no setter; the store object itself is mutable)."""
         return self._store
 
+    def _stopping_now(self) -> bool:
+        """Read `_stopping` fresh.
+
+        The plain attribute is narrowed to False by mypy after an early-return
+        check and stays narrowed across awaits, so every post-await re-check
+        would be flagged unreachable — but `_stopping` can flip during exactly
+        those awaits, which is what the re-checks exist to catch. Deliberately
+        a method, not a property: mypy narrows a property read the same way
+        it narrows a plain attribute, so a second re-check later in the same
+        function (e.g. `async_open_session`'s two re-checks) would still be
+        flagged. A call expression is not narrowed.
+        """
+        return self._stopping
+
     # -- public wrappers ----------------------------------------------------
     # Thin pass-throughs over private implementation methods, so external
     # callers (websocket_api, config_flow, diagnostics) never reach into
@@ -1830,7 +1844,7 @@ class DeviceManager:
             return
         lock = self._stream_locks.setdefault(mac, asyncio.Lock())
         async with lock:
-            if self._stopping:
+            if self._stopping_now():
                 return
             pending = [s for s in self._state_streams.get(mac, []) if not s.closed and not s.armed]
             if not pending:
@@ -1893,7 +1907,10 @@ class DeviceManager:
                 # every client unsubbed, or the device was removed. Never a busy loop:
                 # each pass is gated behind the sleep above.
                 pending = [s for s in self._state_streams.get(mac, []) if not s.closed and not s.armed]
-                if not pending or self._stopping:
+                # `_stopping_now`: same post-await re-check as `_ensure_streams` —
+                # not currently flagged by mypy (the `while` loop join widens the
+                # narrowing), but structurally identical, so kept consistent.
+                if not pending or self._stopping_now():
                     return
                 await self._ensure_streams(mac)
 
@@ -1919,7 +1936,7 @@ class DeviceManager:
         if conn is None:
             stream.notify(False)
             return False
-        if stream.closed:
+        if stream.closed_now():
             # The client went away while we were opening — don't leak the ref.
             self.release_session(mac, conn)
             return False
@@ -1944,7 +1961,7 @@ class DeviceManager:
             self.release_session(mac, conn)
             stream.notify(False)
             return False
-        if stream.closed:
+        if stream.closed_now():
             # Suppressed like `_disarm_stream`: a raise from a connection that
             # died under us must not skip the release below and leak the ref.
             with contextlib.suppress(Exception):
@@ -2243,7 +2260,7 @@ class DeviceManager:
         # simply runs after we release — which is correct: it pops
         # `_active_connections` and disconnects whatever we stored.
         await self._await_pending_close(mac)
-        if self._stopping:
+        if self._stopping_now():
             # Teardown can begin while we were parked on the pending-close
             # await above. Re-check here too — otherwise we'd fall through to
             # a full connect + noise handshake (up to 30s) started during/
@@ -2253,7 +2270,7 @@ class DeviceManager:
             return None
         lock = self._session_locks.setdefault(mac, asyncio.Lock())
         async with lock:
-            if self._stopping:
+            if self._stopping_now():
                 # Same rationale as above: a shutdown that lands while we were
                 # queued on this lock (e.g. a contended session) must not let
                 # us proceed to construct a DeviceConnection.
@@ -2286,7 +2303,10 @@ class DeviceManager:
             # session against a device the rest of the system already considers gone.
             # Same for a teardown that began while we were parked there — Phase 3 has
             # already cleared `_active_connections`, so this conn would be stranded.
-            if self._stopping or not self._is_device_available(mac):
+            # `_stopping_now`: same post-await re-check as above — not currently
+            # flagged by mypy (the `or` keeps the branch reachable via the other
+            # operand), but structurally identical, so kept consistent.
+            if self._stopping_now() or not self._is_device_available(mac):
                 await conn.async_disconnect()
                 return None
             self._active_connections[mac] = conn

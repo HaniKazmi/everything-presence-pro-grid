@@ -37,6 +37,20 @@ class StateStream:
         """True while a callback is registered on a live connection."""
         return self.conn is not None
 
+    def closed_now(self) -> bool:
+        """Read `closed` fresh.
+
+        `_arm_stream` re-checks `closed` after each of its awaits (opening
+        the session, subscribing) because the owning client can close the
+        stream while either is in flight. The plain attribute gets narrowed
+        to False by mypy after the first such check and stays narrowed
+        across the next await, flagging the second re-check as unreachable.
+        A property has the same problem — mypy narrows a property read the
+        same way it narrows a plain attribute — so this must stay a method:
+        a call expression is not narrowed.
+        """
+        return self.closed
+
     def notify(self, available: bool) -> None:
         """Tell the owner the stream's liveness changed.
 
