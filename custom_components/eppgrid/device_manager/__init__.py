@@ -45,6 +45,7 @@ from ._helpers import _resolve_zone_name
 from ._helpers import _sync_firmware_repair_issue
 from ._helpers import is_valid_zone_slots_shape
 from ._helpers import strip_unsupported_pipeline_fields
+from ._streams import StateStream
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -208,6 +209,17 @@ class DeviceManager:
         # `async_open_session` re-pushes the pipeline on reopen so emission
         # resumes without a page refresh.
         self._target_subs: dict[str, dict[str, int]] = {}
+        # Durable frontend state streams, keyed by mac. A `DeviceConnection` is
+        # disposable — it dies on a device flap and `_release_references` drops
+        # every state subscriber with it — but a WS client's subscription is not:
+        # it stays open until the client goes away. These streams are the unit we
+        # re-arm across that replacement (see `_ensure_streams`), which is what
+        # keeps the dashboard card streaming after a flap instead of silently
+        # freezing until the card element remounts (#334).
+        self._state_streams: dict[str, list[StateStream]] = {}
+        # Serializes `_ensure_streams` per mac so two triggers (session lost +
+        # device available) can't both arm the same stream.
+        self._stream_locks: dict[str, asyncio.Lock] = {}
         # Skip cache for the static-presence (DFRobot) reconfigure, keyed by mac.
         # Lives HERE, at the manager/mac level, NOT on the ephemeral
         # `DeviceConnection` (same rationale as `_target_subs`): re-running the
@@ -1610,6 +1622,140 @@ class DeviceManager:
         counts[kind] = max(0, counts.get(kind, 0) - 1)
         if sum(counts.values()) == 0:
             self._target_subs.pop(mac, None)
+
+    async def async_add_state_stream(
+        self,
+        mac: str,
+        *,
+        counter_attr: str,
+        make_on_state: Callable[[str, Any], Callable[[Any], None]],
+        on_availability: Callable[[bool], None],
+    ) -> Callable[[], None] | None:
+        """Register a durable state stream for `mac` and arm it if possible.
+
+        Returns an idempotent unsub callable, or None when `mac` is unknown.
+
+        The stream survives connection replacement: the manager re-arms it (see
+        `_ensure_streams`) whenever a session comes back, rebuilding the callback
+        from `make_on_state` against the new connection. Callers therefore must
+        NOT hold a `DeviceConnection` themselves.
+
+        The subscriber count is taken here and released in unsub — NOT on
+        arm/disarm. `_target_subs` is per-mac precisely so it survives a flap;
+        decrementing it on connection loss would silence the device's pipeline
+        for a client that is still subscribed.
+        """
+        if mac not in self.devices:
+            return None
+
+        stream = StateStream(
+            mac=mac,
+            counter_attr=counter_attr,
+            make_on_state=make_on_state,
+            on_availability=on_availability,
+        )
+        self._state_streams.setdefault(mac, []).append(stream)
+        self.note_target_subscribe(mac, counter_attr)
+        self.request_pipeline_push(mac)
+
+        await self._ensure_streams(mac)
+
+        @callback
+        def _unsub() -> None:
+            if stream.closed:
+                return
+            stream.closed = True
+            self._disarm_stream(stream)
+            streams = self._state_streams.get(mac)
+            if streams is not None:
+                with contextlib.suppress(ValueError):
+                    streams.remove(stream)
+                if not streams:
+                    self._state_streams.pop(mac, None)
+                    self._stream_locks.pop(mac, None)
+            self.note_target_unsubscribe(mac, counter_attr)
+            self.request_pipeline_push(mac)
+
+        return _unsub
+
+    def _disarm_stream(self, stream: StateStream) -> None:
+        """Drop a stream's callback from its connection and release its session ref.
+
+        Safe on an unarmed stream, and safe when the connection is already dead:
+        `release_session` identity-checks against the active session, so a ref
+        that a force-close already reset is not double-released.
+        """
+        conn, cb = stream.conn, stream.cb
+        stream.conn = None
+        stream.cb = None
+        if conn is None:
+            return
+        with contextlib.suppress(Exception):
+            conn.unsubscribe_states(cb)
+        self.release_session(stream.mac, conn)
+
+    async def _ensure_streams(self, mac: str) -> None:
+        """Arm every unarmed stream for `mac`. Idempotent; safe to call often.
+
+        This is the single reconciler behind stream recovery: it runs when a
+        stream is added, when a session is lost (device flap, forced close), and
+        when the device comes back online.
+        """
+        if self._stopping or not self._state_streams.get(mac):
+            return
+        lock = self._stream_locks.setdefault(mac, asyncio.Lock())
+        async with lock:
+            if self._stopping:
+                return
+            pending = [s for s in self._state_streams.get(mac, []) if not s.closed and not s.armed]
+            if not pending:
+                return
+            if mac not in self.devices or not self._is_device_available(mac):
+                # Device is gone or offline. Nothing to arm — the availability
+                # transition re-runs us.
+                for stream in pending:
+                    stream.notify(False)
+                return
+            armed_any = False
+            for stream in pending:
+                if await self._arm_stream(stream):
+                    armed_any = True
+            if armed_any:
+                # Counts are already recorded; the device's pipeline was set from
+                # the defaults on reconnect, so re-push it now that we're live.
+                self.request_pipeline_push(mac)
+
+    async def _arm_stream(self, stream: StateStream) -> bool:
+        """Open/reuse a session and register this stream's callback on it."""
+        mac = stream.mac
+        try:
+            conn = await self.async_open_session(mac)
+        except Exception as err:
+            _LOGGER.debug("State stream: open session failed for %s: %s", mac, err)
+            conn = None
+        if conn is None:
+            stream.notify(False)
+            return False
+        if stream.closed:
+            # The client went away while we were opening — don't leak the ref.
+            self.release_session(mac, conn)
+            return False
+        try:
+            cb = stream.make_on_state(mac, conn)
+            await conn.subscribe_states(cb)
+        except Exception as err:
+            _LOGGER.debug("State stream: subscribe failed for %s: %s", mac, err)
+            self.release_session(mac, conn)
+            stream.notify(False)
+            return False
+        if stream.closed:
+            conn.unsubscribe_states(cb)
+            self.release_session(mac, conn)
+            return False
+        stream.conn = conn
+        stream.cb = cb
+        stream.notify(True)
+        return True
 
     async def _push_pipeline_to_device(self, mac: str) -> None:
         """Recompute pipeline intervals and push to device."""

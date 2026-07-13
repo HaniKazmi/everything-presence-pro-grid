@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -9031,3 +9032,256 @@ class TestStateStream:
     def test_notify_swallows_callback_errors(self):
         stream = self._stream(on_availability=MagicMock(side_effect=RuntimeError("ws closed")))
         stream.notify(True)  # must not raise
+
+
+class TestStateStreams:
+    """Durable frontend state streams: arm, close, and refcount behaviour."""
+
+    def _armable(self, manager):
+        """Give the manager one available device and a stubbed session open."""
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._is_device_available = MagicMock(return_value=True)
+        conn = MagicMock()
+        conn.entities = []
+        conn.subscribe_states = AsyncMock()
+        conn.unsubscribe_states = MagicMock()
+        manager.async_open_session = AsyncMock(return_value=conn)
+        manager.release_session = MagicMock(return_value=None)
+        manager.request_pipeline_push = MagicMock()
+        return mac, conn
+
+    async def test_add_stream_arms_against_the_live_session(self, hass, manager):
+        mac, conn = self._armable(manager)
+        built: list[Any] = []
+        seen: list[bool] = []
+
+        def make_on_state(stream_mac, device_conn):
+            built.append((stream_mac, device_conn))
+            return lambda state: None
+
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=make_on_state,
+            on_availability=seen.append,
+        )
+
+        assert unsub is not None
+        manager.async_open_session.assert_awaited_once_with(mac)
+        assert built == [(mac, conn)]
+        conn.subscribe_states.assert_awaited_once()
+        assert seen == [True]
+        # The subscriber count is taken once, at add.
+        assert manager._target_subs[mac]["grid_target_subs"] == 1
+
+    async def test_unknown_mac_returns_none(self, hass, manager):
+        unsub = await manager.async_add_state_stream(
+            "AA:BB:CC:DD:EE:99",
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        assert unsub is None
+
+    async def test_unsub_disarms_releases_and_decrements(self, hass, manager):
+        mac, conn = self._armable(manager)
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        unsub()
+
+        conn.unsubscribe_states.assert_called_once()
+        manager.release_session.assert_called_once_with(mac, conn)
+        assert mac not in manager._target_subs
+        assert mac not in manager._state_streams
+
+    async def test_unsub_is_idempotent(self, hass, manager):
+        mac, conn = self._armable(manager)
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        unsub()
+        unsub()
+
+        assert conn.unsubscribe_states.call_count == 1
+        assert manager.release_session.call_count == 1
+
+    async def test_offline_device_registers_the_stream_unarmed(self, hass, manager):
+        """No session yet — the stream still registers so it can arm on recovery."""
+        mac, _conn = self._armable(manager)
+        manager._is_device_available = MagicMock(return_value=False)
+        seen: list[bool] = []
+
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        assert unsub is not None
+        manager.async_open_session.assert_not_awaited()
+        assert seen == [False]
+        assert manager._state_streams[mac][0].armed is False
+        # Unsub on an unarmed stream releases nothing but still deregisters.
+        unsub()
+        manager.release_session.assert_not_called()
+        assert mac not in manager._state_streams
+
+    async def test_subscribe_failure_leaves_stream_unarmed_and_releases(self, hass, manager):
+        mac, conn = self._armable(manager)
+        conn.subscribe_states = AsyncMock(side_effect=RuntimeError("connection is closed"))
+        seen: list[bool] = []
+
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        assert unsub is not None
+        assert manager._state_streams[mac][0].armed is False
+        manager.release_session.assert_called_once_with(mac, conn)
+        assert seen == [False]
+
+    async def test_open_session_returning_none_leaves_stream_unarmed(self, hass, manager):
+        """Device looks available but the connect fails — register, report offline."""
+        mac, _conn = self._armable(manager)
+        manager.async_open_session = AsyncMock(return_value=None)
+        seen: list[bool] = []
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        assert manager._state_streams[mac][0].armed is False
+        manager.release_session.assert_not_called()
+        assert seen == [False]
+
+    async def test_open_session_raising_leaves_stream_unarmed(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        manager.async_open_session = AsyncMock(side_effect=RuntimeError("connect timed out"))
+        seen: list[bool] = []
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+
+        assert manager._state_streams[mac][0].armed is False
+        assert seen == [False]
+
+    async def test_close_during_open_releases_the_session_ref(self, hass, manager):
+        """The WS client went away mid-open: the ref we just took must not leak."""
+        mac, conn = self._armable(manager)
+
+        async def open_then_close(_mac):
+            # Simulate the client's unsub landing while we were connecting.
+            manager._state_streams[mac][0].closed = True
+            return conn
+
+        manager.async_open_session = AsyncMock(side_effect=open_then_close)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        manager.release_session.assert_called_once_with(mac, conn)
+        conn.subscribe_states.assert_not_awaited()
+        assert manager._state_streams[mac][0].armed is False
+
+    async def test_close_during_subscribe_unsubscribes_and_releases(self, hass, manager):
+        """Same race, one await later: the callback we just registered must come off."""
+        mac, conn = self._armable(manager)
+
+        async def subscribe_then_close(_cb):
+            manager._state_streams[mac][0].closed = True
+
+        conn.subscribe_states = AsyncMock(side_effect=subscribe_then_close)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        conn.unsubscribe_states.assert_called_once()
+        manager.release_session.assert_called_once_with(mac, conn)
+        assert manager._state_streams[mac][0].armed is False
+
+    async def test_ensure_streams_is_a_noop_when_nothing_is_pending(self, hass, manager):
+        """An already-armed stream is not re-armed by a second reconciler pass."""
+        mac, conn = self._armable(manager)
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        await manager._ensure_streams(mac)
+
+        manager.async_open_session.assert_awaited_once()
+        assert conn.subscribe_states.await_count == 1
+
+    async def test_ensure_streams_does_not_arm_while_stopping(self, hass, manager):
+        """Shutdown must not open new sessions — including for unknown macs."""
+        mac, _conn = self._armable(manager)
+        manager._is_device_available = MagicMock(return_value=False)
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        manager._is_device_available = MagicMock(return_value=True)
+        manager._stopping = True
+
+        await manager._ensure_streams(mac)
+        await manager._ensure_streams("AA:BB:CC:DD:EE:99")
+
+        manager.async_open_session.assert_not_awaited()
+        assert manager._state_streams[mac][0].armed is False
+
+    async def test_stopping_mid_lock_aborts_the_arm(self, hass, manager):
+        """`_stopping` is re-checked after the lock: a shutdown that lands while
+        another pass holds it must not arm a stream behind async_stop's back."""
+        mac, _conn = self._armable(manager)
+        manager._is_device_available = MagicMock(return_value=False)
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        manager._is_device_available = MagicMock(return_value=True)
+
+        lock = manager._stream_locks.setdefault(mac, asyncio.Lock())
+        await lock.acquire()
+        task = asyncio.create_task(manager._ensure_streams(mac))
+        await asyncio.sleep(0)  # let the task queue on the lock
+        manager._stopping = True
+        lock.release()
+        await task
+
+        manager.async_open_session.assert_not_awaited()
+        assert manager._state_streams[mac][0].armed is False
