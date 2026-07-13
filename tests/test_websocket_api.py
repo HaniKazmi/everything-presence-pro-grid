@@ -4083,51 +4083,75 @@ class TestWebSocketSubscriptions:
         # unsub can never be invoked from the cleared subscriptions dict.
         mock_dm.release_session.assert_called_once_with("AA:BB:CC:DD:EE:FF", mock_conn)
 
-    async def test_subscribe_raw_targets_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """subscribe_raw_targets returns error without active session."""
-        await setup_integration(hass, config_entry)
+    async def test_subscribe_raw_targets_registers_a_durable_stream(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """The calibration wizard's feed is durable too — it must survive a flap (#336).
 
-        from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
-
-        connection = MagicMock()
-        msg = {"id": 22, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
-
-        await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
-
-        connection.send_error.assert_called_once_with(
-            22,
-            "no_session",
-            "No active session — call subscribe_device first",
-            translation_domain=DOMAIN,
-            translation_key="no_active_session",
-        )
-
-    async def test_subscribe_raw_targets_with_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """subscribe_raw_targets registers state callback and unsubscribe."""
+        The wizard holds this subscription for the whole of room calibration; a drop
+        mid-walk used to leave it silently dead.
+        """
         mock_dm = await setup_integration(hass, config_entry)
-
-        mock_device_conn = MagicMock()
-        mock_device_conn.entities = []
-        mock_device_conn.subscribe_states = AsyncMock()
-        mock_device_conn.unsubscribe_states = MagicMock()
-        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+        register_managed_device(mock_dm)
+        unsub_stream = MagicMock()
+        mock_dm.async_add_state_stream = AsyncMock(return_value=unsub_stream)
 
         from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
 
         connection = MagicMock()
         connection.subscriptions = {}
-        msg = {"id": 23, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+        msg = {
+            "id": 40,
+            "type": "eppgrid/subscribe_raw_targets",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "availability": True,
+        }
 
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
-        connection.send_result.assert_called_once_with(23)
-        mock_device_conn.subscribe_states.assert_awaited_once()
-        assert 23 in connection.subscriptions
-        # Subscriber counted at manager/mac level (NOT on the connection), and
-        # released via the manager on unsubscribe — with matching kind strings.
-        mock_dm.note_target_subscribe.assert_called_once_with("AA:BB:CC:DD:EE:FF", "raw_target_subs")
-        connection.subscriptions[23]()
-        mock_dm.note_target_unsubscribe.assert_called_once_with("AA:BB:CC:DD:EE:FF", "raw_target_subs")
+        connection.send_result.assert_called_once_with(40)
+        assert mock_dm.async_add_state_stream.await_args.args[0] == "AA:BB:CC:DD:EE:FF"
+        assert mock_dm.async_add_state_stream.await_args.kwargs["counter_attr"] == "raw_target_subs"
+        mock_dm.get_session.assert_not_called()
+        mock_dm.note_target_subscribe.assert_not_called()
+
+        connection.subscriptions[40]()
+        unsub_stream.assert_called_once()
+
+    async def test_raw_target_callback_is_rebuilt_from_the_live_connection(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """The entity key map is only knowable from the live conn — a re-arm must rebuild it.
+
+        A replacement connection can renumber its entities (an OTA does), so the factory
+        is handed the NEW conn and its callback must decode that conn's keys.
+        """
+        from aioesphomeapi import TextSensorInfo
+        from aioesphomeapi import TextSensorState
+
+        mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
+        mock_dm.async_add_state_stream = AsyncMock(return_value=MagicMock())
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 41, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
+
+        make_on_state = mock_dm.async_add_state_stream.await_args.kwargs["make_on_state"]
+
+        # A replacement connection whose "Raw Target 1" lives at key 7, not key 1.
+        device_conn = MagicMock()
+        device_conn.entities = [TextSensorInfo(object_id="raw_target_1", key=7, name="Raw Target 1")]
+        on_state = make_on_state("AA:BB:CC:DD:EE:FF", device_conn)
+
+        connection.send_message.reset_mock()
+        on_state(TextSensorState(key=7, state="1234,5678", missing_state=False))
+
+        event = connection.send_message.call_args.args[0]["event"]
+        assert event["targets"][0] == {"raw_x": 1234.0, "raw_y": 5678.0}
 
     async def test_subscribe_grid_targets_registers_a_durable_stream(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -4339,9 +4363,7 @@ class TestWebSocketSubscriptions:
         mock_device_conn.entities = [
             TextSensorInfo(object_id="raw_target_1", key=1, name="Raw Target 1"),
         ]
-        mock_device_conn.subscribe_states = AsyncMock()
-        mock_device_conn.unsubscribe_states = MagicMock()
-        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+        mock_dm.async_add_state_stream = AsyncMock(return_value=MagicMock())
 
         from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
 
@@ -4350,7 +4372,8 @@ class TestWebSocketSubscriptions:
         msg = {"id": 26, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
 
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
-        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+        make_on_state = mock_dm.async_add_state_stream.await_args.kwargs["make_on_state"]
+        on_state = make_on_state("AA:BB:CC:DD:EE:FF", mock_device_conn)
         connection.send_message.reset_mock()
 
         # Single-field state — parts[1] would IndexError.
@@ -4911,9 +4934,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn.entities = [raw0, raw1]
-        mock_device_conn.subscribe_states = AsyncMock()
-        mock_device_conn.unsubscribe_states = MagicMock()
-        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+        mock_dm.async_add_state_stream = AsyncMock(return_value=MagicMock())
 
         from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
 
@@ -4924,7 +4945,8 @@ class TestSubscriptionCallbacks:
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
         # Get the registered _on_state callback
-        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+        make_on_state = mock_dm.async_add_state_stream.await_args.kwargs["make_on_state"]
+        on_state = make_on_state("AA:BB:CC:DD:EE:FF", mock_device_conn)
 
         from aioesphomeapi import TextSensorState
 
@@ -4947,9 +4969,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn.entities = [raw0]
-        mock_device_conn.subscribe_states = AsyncMock()
-        mock_device_conn.unsubscribe_states = MagicMock()
-        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+        mock_dm.async_add_state_stream = AsyncMock(return_value=MagicMock())
 
         from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
 
@@ -4959,7 +4979,8 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+        make_on_state = mock_dm.async_add_state_stream.await_args.kwargs["make_on_state"]
+        on_state = make_on_state("AA:BB:CC:DD:EE:FF", mock_device_conn)
 
         from aioesphomeapi import TextSensorState
 
@@ -4980,9 +5001,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn.entities = [raw0]
-        mock_device_conn.subscribe_states = AsyncMock()
-        mock_device_conn.unsubscribe_states = MagicMock()
-        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+        mock_dm.async_add_state_stream = AsyncMock(return_value=MagicMock())
 
         from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
 
@@ -4992,7 +5011,8 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+        make_on_state = mock_dm.async_add_state_stream.await_args.kwargs["make_on_state"]
+        on_state = make_on_state("AA:BB:CC:DD:EE:FF", mock_device_conn)
 
         from aioesphomeapi import BinarySensorState
 
@@ -5002,14 +5022,11 @@ class TestSubscriptionCallbacks:
         connection.send_message.assert_not_called()
 
     async def test_raw_targets_unsub(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """Unsubscribe callback removes state subscription."""
+        """Unsubscribe callback tears the durable stream down."""
         mock_dm = await setup_integration(hass, config_entry)
 
-        mock_device_conn = MagicMock()
-        mock_device_conn.entities = []
-        mock_device_conn.subscribe_states = AsyncMock()
-        mock_device_conn.unsubscribe_states = MagicMock()
-        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+        unsub_stream = MagicMock()
+        mock_dm.async_add_state_stream = AsyncMock(return_value=unsub_stream)
 
         from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
 
@@ -5021,7 +5038,7 @@ class TestSubscriptionCallbacks:
 
         # Call unsubscribe
         connection.subscriptions[33]()
-        mock_device_conn.unsubscribe_states.assert_called_once()
+        unsub_stream.assert_called_once()
 
     async def test_grid_targets_on_state_target_position(
         self, hass: HomeAssistant, config_entry: MockConfigEntry

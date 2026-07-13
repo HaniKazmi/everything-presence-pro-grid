@@ -796,10 +796,53 @@ async def _start_target_stream(
 # -- subscribe_raw_targets --
 
 
+def _make_raw_target_on_state(
+    connection: websocket_api.ActiveConnection,
+    msg_id: int,
+    mac: str,
+    device_conn: Any,
+) -> Callable[[Any], None]:
+    """Build the per-session callback that accumulates raw target positions.
+
+    Rebuilt per connection by the durable stream: the entity key map is only knowable
+    from the live connection, and a device can renumber its entities across an OTA.
+    """
+    key_map = _build_entity_key_map(device_conn.entities)
+
+    # Map raw target sensor keys to indices (display names are 1-based)
+    raw_keys = {}
+    for i in range(3):
+        name = f"Raw Target {i + 1}"
+        if name in key_map:
+            raw_keys[key_map[name]] = i
+
+    # Accumulated state
+    raw_targets: list[dict[str, float | None]] = [{"raw_x": None, "raw_y": None} for _ in range(3)]
+
+    @callback
+    def _on_state(state: Any) -> None:
+        if not isinstance(state, TextSensorState):
+            return
+        if state.key not in raw_keys:
+            return
+        idx = raw_keys[state.key]
+        if state.state:
+            parsed = _parse_position_csv(state.state)
+            if parsed is None:
+                return  # garbled firmware emit — drop silently
+            raw_targets[idx] = {"raw_x": parsed[0], "raw_y": parsed[1]}
+        else:
+            raw_targets[idx] = {"raw_x": None, "raw_y": None}
+        connection.send_message(websocket_api.event_message(msg_id, {"targets": list(raw_targets)}))
+
+    return _on_state
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/subscribe_raw_targets",
         vol.Required("mac"): MAC_SCHEMA,
+        vol.Optional("availability", default=False): bool,
     }
 )
 @websocket_api.require_admin
@@ -811,46 +854,14 @@ async def websocket_subscribe_raw_targets(
     msg: dict[str, Any],
     manager: Any,
 ) -> None:
-    """Stream raw target positions from the device session."""
-
-    def _make_on_state(device_conn: Any) -> Any:
-        key_map = _build_entity_key_map(device_conn.entities)
-
-        # Map raw target sensor keys to indices (display names are 1-based)
-        raw_keys = {}
-        for i in range(3):
-            name = f"Raw Target {i + 1}"
-            if name in key_map:
-                raw_keys[key_map[name]] = i
-
-        # Accumulated state
-        raw_targets: list[dict[str, float | None]] = [{"raw_x": None, "raw_y": None} for _ in range(3)]
-
-        @callback
-        def _on_state(state: Any) -> None:
-            if not isinstance(state, TextSensorState):
-                return
-            if state.key not in raw_keys:
-                return
-            idx = raw_keys[state.key]
-            if state.state:
-                parsed = _parse_position_csv(state.state)
-                if parsed is None:
-                    return  # garbled firmware emit — drop silently
-                raw_targets[idx] = {"raw_x": parsed[0], "raw_y": parsed[1]}
-            else:
-                raw_targets[idx] = {"raw_x": None, "raw_y": None}
-            connection.send_message(websocket_api.event_message(msg["id"], {"targets": list(raw_targets)}))
-
-        return _on_state
-
-    await _start_target_stream(
-        hass,
+    """Stream raw target positions from a durable device stream."""
+    await _start_panel_stream(
         connection,
         msg,
         manager,
         counter_attr="raw_target_subs",
-        make_on_state=_make_on_state,
+        make_on_state=lambda mac, device_conn: _make_raw_target_on_state(connection, msg["id"], mac, device_conn),
+        log_prefix="subscribe_raw_targets",
     )
 
 
