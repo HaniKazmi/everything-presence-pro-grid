@@ -19,7 +19,13 @@ from typing import Any
 _LOGGER = logging.getLogger(__name__)
 
 
-@dataclass
+# `eq=False`: identity equality (and hashing), not the dataclass default of structural
+# equality over the fields. The record IS the subscription — the registry keeps a list
+# per mac and deregisters with `list.remove`, which drops the first EQUAL element. Two
+# streams on one mac whose fields happen to match (a caller sharing a callback pair
+# between them) would otherwise have the wrong one removed: the survivor would keep a
+# callback on the connection with no owner, and its subscriber count would go out of step.
+@dataclass(eq=False)
 class StateStream:
     """One client's durable subscription to a device's state frames."""
 

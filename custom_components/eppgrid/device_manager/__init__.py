@@ -1883,30 +1883,42 @@ class DeviceManager:
                     stream.notify(False)
                 return
             armed_any = False
-            for stream in pending:
-                if await self._arm_stream(stream):
-                    armed_any = True
-            if armed_any:
-                # Counts are already recorded; the device's pipeline was set from
-                # the defaults on reconnect, so re-push it now that we're live.
-                self.request_pipeline_push(mac)
-            # Anything still unarmed means the device looked available but our own
-            # connect (or subscribe) failed. No further trigger is coming — the
-            # availability transition already happened — so drive a backoff retry.
-            # Re-read the list rather than reusing `pending`: an arm can await, and
-            # a client may have unsubbed (closing its stream) meanwhile.
-            if self._unarmed_streams(mac):
-                self._schedule_stream_retry(mac)
-            elif (retry := self._stream_retry_tasks.get(mac)) is not None and retry is not asyncio.current_task():
-                # Everything armed while a backoff task from an earlier failure was still
-                # sleeping. Retire it: parked, it owns the mac's retry slot for the rest of
-                # its delay, so a device that flaps in that window would have to wait that
-                # delay out instead of rescheduling from the first one. Cancelling here is
-                # safe because we hold `_stream_locks[mac]`: a retry task can only be in its
-                # sleep or blocked on this very lock, never mid-network-I/O. It never cancels
-                # ITSELF — its own pass leaves through the loop's post-arm exit.
-                self._stream_retry_tasks.pop(mac, None)
-                retry.cancel()
+            try:
+                for stream in pending:
+                    if await self._arm_stream(stream):
+                        armed_any = True
+            finally:
+                # `finally`, not a plain tail: the pass belongs to EVERY stream in
+                # `pending`, but it runs inside whichever caller triggered it — in
+                # practice a WS handler's task, via `async_add_state_stream`, which HA
+                # cancels when the client goes away. `_arm_stream` propagates that
+                # cancellation, and the caller's rollback closes only ITS OWN stream, so
+                # without reconciling on the way out another client's stream would be
+                # left registered-but-unarmed on an available device with no retry armed
+                # — #334's failure mode, until the next flap. `_schedule_stream_retry`
+                # no-ops while stopping, so the shutdown path stays clean.
+                if armed_any:
+                    # Counts are already recorded; the device's pipeline was set from
+                    # the defaults on reconnect, so re-push it now that we're live.
+                    self.request_pipeline_push(mac)
+                # Anything still unarmed means the device looked available but our own
+                # connect (or subscribe) failed (or, on the exception path, that the arm
+                # pass never got to it). No further trigger is coming — the availability
+                # transition already happened — so drive a backoff retry. Re-read the
+                # list rather than reusing `pending`: an arm can await, and a client may
+                # have unsubbed (closing its stream) meanwhile.
+                if self._unarmed_streams(mac):
+                    self._schedule_stream_retry(mac)
+                elif (retry := self._stream_retry_tasks.get(mac)) is not None and retry is not asyncio.current_task():
+                    # Everything armed while a backoff task from an earlier failure was still
+                    # sleeping. Retire it: parked, it owns the mac's retry slot for the rest of
+                    # its delay, so a device that flaps in that window would have to wait that
+                    # delay out instead of rescheduling from the first one. Cancelling here is
+                    # safe because we hold `_stream_locks[mac]`: a retry task can only be in its
+                    # sleep or blocked on this very lock, never mid-network-I/O. It never cancels
+                    # ITSELF — its own pass leaves through the loop's post-arm exit.
+                    self._stream_retry_tasks.pop(mac, None)
+                    retry.cancel()
 
     def _schedule_stream_retry(self, mac: str) -> None:
         """Keep retrying `_ensure_streams(mac)` while streams remain unarmed.

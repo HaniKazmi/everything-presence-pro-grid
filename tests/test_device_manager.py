@@ -9139,6 +9139,42 @@ class TestStateStream:
         stream = self._stream(on_availability=MagicMock(side_effect=RuntimeError("ws closed")))
         stream.notify(True)  # must not raise
 
+    def test_records_with_matching_fields_are_still_distinct(self):
+        """The record is used with IDENTITY semantics — `eq=False` is load-bearing.
+
+        `async_add_state_stream`'s close does `streams.remove(stream)`, which removes the
+        first EQUAL element, not the identical one. Structural equality (a dataclass's
+        default) would therefore drop the WRONG record for two streams on a mac whose
+        fields happen to match — the survivor would keep a callback on the connection
+        with no owner, and the subscriber count would go out of step. Today's callers
+        build per-WS-command closures so no two streams ever match, but the manager API
+        is general: a caller sharing a module-level callback pair would hit it.
+        """
+        from custom_components.eppgrid.device_manager._streams import StateStream
+
+        def make_on_state(mac, conn):
+            return lambda state: None
+
+        def on_availability(available):
+            return None
+
+        # Same callables in both records: structurally equal, distinct subscriptions.
+        fields = {
+            "mac": "AA:BB:CC:DD:EE:01",
+            "counter_attr": "grid_target_subs",
+            "make_on_state": make_on_state,
+            "on_availability": on_availability,
+        }
+        first, second = StateStream(**fields), StateStream(**fields)
+
+        assert first != second
+        assert len({first, second}) == 2  # hashable, by identity
+
+        streams = [first, second]
+        streams.remove(second)
+        assert streams == [first]
+        assert streams[0] is first
+
 
 async def _settle(rounds: int = 20) -> None:
     """Drain the loop's ready queue without advancing time.
@@ -9620,6 +9656,43 @@ class TestStateStreams:
         assert mac not in manager._state_streams
         assert mac not in manager._target_subs
         assert manager.release_session.call_count == 2
+
+    async def test_unsub_removes_the_identical_record_not_a_matching_one(self, hass, manager):
+        """Two streams whose fields match: the unsub must drop the one it belongs to.
+
+        The registry stores streams in a list and the close does `list.remove`, which
+        goes by equality. A future caller sharing a module-level callback pair between
+        two streams on one mac (nothing in the API forbids it) would otherwise have the
+        WRONG record removed: the survivor keeps a callback on the connection with no
+        owner, and its subscriber count is released while it is still streaming.
+        """
+        mac, _conn = self._armable(manager)
+
+        def make_on_state(_mac, _conn):
+            return on_state
+
+        def on_state(state):
+            return None
+
+        def on_availability(available):
+            return None
+
+        shared = {
+            "counter_attr": "grid_target_subs",
+            "make_on_state": make_on_state,
+            "on_availability": on_availability,
+        }
+        await manager.async_add_state_stream(mac, **shared)
+        unsub_second = await manager.async_add_state_stream(mac, **shared)
+        first, second = manager._state_streams[mac]
+
+        unsub_second()
+
+        assert manager._state_streams[mac] == [first]
+        assert manager._state_streams[mac][0] is first
+        assert first.armed is True
+        assert second.armed is False
+        assert manager._target_subs[mac]["grid_target_subs"] == 1
 
     async def test_stream_lock_identity_survives_unsub_to_empty(self, hass, manager):
         """The per-mac lock object must never be swapped out.
@@ -10363,6 +10436,66 @@ class TestStateStreams:
         )
 
         assert manager._stream_retry_tasks == {}
+
+    async def test_cancelled_arm_still_leaves_a_retry_for_the_other_streams(self, hass, manager):
+        """A cancelled arm pass must not strand ANOTHER client's stream unarmed.
+
+        The reconciler arms every unarmed stream for the mac, so the pass belongs to all
+        of them — but it runs inside whichever WS handler triggered it, and that handler's
+        task can be cancelled (the user closes the tab) while it is parked in the open for
+        someone else's stream. `async_add_state_stream`'s rollback closes only ITS OWN
+        stream; without the reconciliation running on the way out, the other stream is
+        left registered-but-unarmed on an AVAILABLE device with no retry armed and no
+        further trigger coming — #334's failure mode, until the next flap.
+        """
+        mac, conn = self._armable(manager)
+        manager._stream_retry_delays = (30.0,)
+
+        # A heatmap card subscribes while the device is offline: registered, unarmed,
+        # and deliberately without a retry (the availability transition is its trigger).
+        manager._is_device_available = MagicMock(return_value=False)
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="heatmap_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        heatmap = manager._state_streams[mac][0]
+        assert manager._stream_retry_tasks == {}
+
+        # The device comes back. A second card's subscribe handler wins the mac's stream
+        # lock, snapshots both streams, and parks in the open for the heatmap one.
+        manager._is_device_available = MagicMock(return_value=True)
+        gate = asyncio.Event()
+
+        async def gated_open(_mac):
+            await gate.wait()
+            return conn
+
+        manager.async_open_session = AsyncMock(side_effect=gated_open)
+        adder = asyncio.create_task(
+            manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+        )
+        await _settle()
+        assert heatmap.armed is False  # the pass is parked opening the heatmap's session
+
+        # The second card's tab closes: HA cancels its WS handler task mid-arm.
+        adder.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await adder
+        await _settle()
+
+        # Only the cancelled handler's own stream is rolled back. The heatmap stream is
+        # still registered and still unarmed — so the backoff has to be armed for it.
+        assert manager._state_streams[mac] == [heatmap]
+        assert heatmap.armed is False
+        assert heatmap.closed is False
+        assert mac in manager._stream_retry_tasks, "the surviving stream has no way back"
 
     async def test_retry_stands_down_when_the_device_goes_offline(self, hass, manager):
         """HA marks the device unavailable a beat AFTER our own connect starts failing.
