@@ -5234,6 +5234,83 @@ class TestEventCallbacks:
         pipeline = mock_conn.async_execute_service.await_args.args[1]
         assert "heatmap_interval" not in pipeline
 
+    async def test_push_config_temp_connection_carries_the_live_subscriber_counts(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """The emission pipeline is DEVICE-global, so the temp-connection push must
+        carry the same subscriber counts a session push would: `_target_subs` is
+        per-mac precisely so it outlives any one connection. A card can be streaming
+        (counts held) while this branch runs — `_on_device_available` reaches the
+        push before the re-arm pass has stored its session — and pushing zeros there
+        turns target/zone emission OFF for a stream the client believes is live."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"settings": {"target_update_rate_ms": 500, "target_xy": True}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        # One card subscribed to the grid stream and the heatmap.
+        manager._target_subs[mac] = {"raw_target_subs": 0, "grid_target_subs": 1, "heatmap_subs": 1}
+
+        mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_execute_service = AsyncMock()
+        mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
+        mock_conn.async_disconnect = AsyncMock()
+
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=mock_conn,
+            ),
+        ):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        pipeline = mock_conn.async_execute_service.await_args.args[1]
+        assert pipeline["display_interval"] == 200
+        assert pipeline["zone_state_interval"] == 1000
+        assert pipeline["heatmap_interval"] == 2000
+
+    async def test_push_config_temp_and_session_paths_push_the_same_pipeline(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """The two pipeline writers must not disagree. Both paths can run for the
+        same mac within the same reconnect (the temp push while the session is still
+        connecting, the session push once it lands), and last-write-wins: if they
+        computed different payloads, the device's emission would depend on which
+        connect finished last."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"settings": {"zone_presence": True, "zone_update_rate_ms": 2000}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._target_subs[mac] = {"raw_target_subs": 1, "grid_target_subs": 1, "heatmap_subs": 0}
+
+        temp_conn = MagicMock()
+        temp_conn.async_connect = AsyncMock()
+        temp_conn.async_push_config = AsyncMock()
+        temp_conn.async_execute_service = AsyncMock()
+        temp_conn.async_fetch_build_flags = AsyncMock(return_value={})
+        temp_conn.async_disconnect = AsyncMock()
+
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=temp_conn,
+            ),
+        ):
+            assert await manager._push_config_to_device(mac) is True
+        temp_pipeline = temp_conn.async_execute_service.await_args.args[1]
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.async_execute_service = AsyncMock()
+        manager._active_connections[mac] = session_conn
+        with patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION):
+            await manager._push_pipeline_to_device(mac)
+        session_pipeline = session_conn.async_execute_service.await_args.args[1]
+
+        assert temp_pipeline == session_pipeline
+
     async def test_push_config_skips_disconnected_session(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
@@ -5927,6 +6004,31 @@ class TestEventCallbacks:
         mock_push.assert_not_awaited()
         assert mac not in manager._entity_update_clear_cancels
         assert mac not in manager._entity_update_macs
+
+    async def test_on_device_removed_cancels_the_pending_pipeline_push(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Same invariant as the debounced config push: nothing may still be
+        scheduled to push to a device that no longer exists."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._device_id_to_mac["dev123"] = mac
+        manager._request_pipeline_push(mac, delay=0.01)
+        assert mac in manager._pending_pipeline_pushes
+        pending = manager._pending_pipeline_pushes[mac]
+
+        with (
+            patch.object(manager, "async_close_session", new_callable=AsyncMock),
+            patch.object(manager, "_push_pipeline_to_device", new_callable=AsyncMock) as mock_push,
+        ):
+            await manager._on_device_removed(mac)
+            await hass.async_block_till_done()
+
+        assert mac not in manager._pending_pipeline_pushes
+        # The debounce task swallows its CancelledError (returns cleanly), so
+        # assert on the observable effect: the push body never ran.
+        assert pending.done()
+        mock_push.assert_not_awaited()
 
     async def test_on_device_removed_notifies_subscribers(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device removal fires device list callbacks."""

@@ -1485,12 +1485,14 @@ class DeviceManager:
         self._failed_pushes.discard(mac)
         self._pushing.discard(mac)
         self._last_repair_sync.pop(mac, None)
-        # Cancel the pending debounced push (it would push to a device that
+        # Cancel the pending debounced pushes (they would push to a device that
         # no longer exists) and the entity-update-clear timer (its mac entry
         # in `_entity_update_macs` is already gone; the timer would leak past
         # the device's lifetime otherwise).
         if (pending_push := self._pending_pushes.pop(mac, None)) is not None:
             pending_push.cancel()
+        if (pending_pipeline := self._pending_pipeline_pushes.pop(mac, None)) is not None:
+            pending_pipeline.cancel()
         if (cancel_clear := self._entity_update_clear_cancels.pop(mac, None)) is not None:
             cancel_clear()
         # Clear any Repairs issues we raised for this device — they'd
@@ -2085,7 +2087,7 @@ class DeviceManager:
         # the device's registry entries, and a card mounting against an OFFLINE device
         # requests a push all the same, so the wasted scan is not hypothetical.
         session = self.get_session(mac)
-        if session is None or not session.connected:
+        if session is None:
             return
 
         config = self._store.devices.get(mac, {})
@@ -2292,8 +2294,20 @@ class DeviceManager:
         try:
             async with self._temp_connection(mac) as conn:
                 await conn.async_push_config(config)
-                # Push pipeline directly (no subscribers on temp connections)
-                pipeline = _compute_pipeline(config, 0, 0, 0)
+                # The emission pipeline is DEVICE-global, and the subscriber counts are
+                # per-mac (see `_target_subs`) precisely so they outlive any one
+                # connection: a temp connection must therefore push the SAME pipeline a
+                # session would. This branch runs with clients streaming — a reconnect
+                # reaches the push before the re-arm pass has stored its session — and
+                # both writers land on the device with last-write-wins, so hard-coding
+                # zeros here would silence a stream the card still believes is live.
+                counts = self._target_subs.get(mac, {})
+                pipeline = _compute_pipeline(
+                    config,
+                    counts.get("raw_target_subs", 0),
+                    counts.get("grid_target_subs", 0),
+                    counts.get("heatmap_subs", 0),
+                )
                 # (`fw_ver` is already known-"compatible" here, so this strip is
                 # a no-op today — kept for defense if the gating above changes.)
                 strip_unsupported_pipeline_fields(pipeline, fw_ver)

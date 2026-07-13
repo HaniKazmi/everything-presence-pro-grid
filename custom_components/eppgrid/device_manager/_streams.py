@@ -111,6 +111,14 @@ class StateStream:
         and both required: `notify(False)` because the stream is no longer live, and
         `notify_closed` because — unlike an offline device, which comes back and re-arms
         — nothing here will ever revive it. Idempotent via the `closed` flag.
+
+        CALLER CONTRACT — the subscriber count is NOT released here. Flipping `closed`
+        makes the client's own unsub (`async_add_state_stream._close`) early-return, so
+        it never reaches its `note_target_unsubscribe`. Both current callers drop the
+        counts wholesale instead (`async_stop` clears `_target_subs`; `_on_device_removed`
+        pops the mac's entry), which is what keeps them balanced. A third caller that
+        marked a stream closed WITHOUT dropping its mac's counts would leak one, pinning
+        the device to the fast emission pipeline for the manager's lifetime.
         """
         if self.closed:
             return
