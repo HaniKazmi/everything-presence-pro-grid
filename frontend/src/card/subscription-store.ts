@@ -11,6 +11,19 @@
 
 type Listener<TState> = (state: TState) => void;
 
+// A `closed: true` message means the manager tore this stream down (config entry
+// reload/unload). The websocket subscription is still open but nothing behind it
+// is alive, so the client must re-subscribe to register a stream with the NEW
+// manager. That manager is not up yet — the entry is mid-reload and the WS
+// command answers `not_ready` — so re-open on a bounded backoff:
+// 0.5s, 1s, 2s, 4s, 8s (+jitter), i.e. give up after ~16s rather than hammer a
+// backend that is never coming back (integration removed).
+const REOPEN_MAX_ATTEMPTS = 5;
+const REOPEN_BASE_DELAY_MS = 500;
+const REOPEN_MAX_DELAY_MS = 8000;
+// Spreads the re-opens of many cards/devices that all saw the same reload.
+const REOPEN_JITTER_MS = 250;
+
 interface Entry<TState> {
 	state: TState;
 	listeners: Set<Listener<TState>>;
@@ -21,6 +34,11 @@ interface Entry<TState> {
 	// promise checks this on resolve and calls unsub immediately, so the
 	// backend subscription is not leaked.
 	closing: boolean;
+	// Pending re-open after a `closed` message. One timer per entry, so a device
+	// with two cards re-opens exactly once; cancelled by closeWs (last listener
+	// left, or the connection was swapped and the reconnect path reopens).
+	reopenTimer: ReturnType<typeof setTimeout> | null;
+	reopenAttempts: number;
 }
 
 export interface SubscriptionStoreConfig<TState> {
@@ -75,25 +93,77 @@ export function createSubscriptionStore<TState>(
 		emit(entry);
 	}
 
-	function handleMsg(entry: Entry<TState>, msg: unknown): void {
+	function handleMsg(
+		entry: Entry<TState>,
+		deviceId: string,
+		msg: unknown,
+	): void {
 		if (!msg || typeof msg !== "object") return;
 		const m = msg as Record<string, unknown>;
 		const next = reduce(entry.state, m);
-		if (next === null) return;
-		entry.state = next;
-		emit(entry);
+		if (next !== null) {
+			entry.state = next;
+			emit(entry);
+		}
+		// Only a manager teardown is recoverable by re-subscribing. An ordinary
+		// `available: false` is a device flap: the backend still owns that stream
+		// and re-arms it itself, so re-subscribing there would churn the wire and
+		// defeat the durable-stream design.
+		if (m.closed === true) reopen(entry, deviceId);
+	}
+
+	// Cached state and listeners are deliberately left intact: the card keeps
+	// rendering its last frame plus the offline banner until frames resume, and
+	// its listeners never notice the swap.
+	function reopen(entry: Entry<TState>, deviceId: string): void {
+		// A re-open is already pending. The closed subscription can still deliver a
+		// queued message (the HA websocket client drops the local handler only once
+		// its unsubscribe round-trips), so a second `closed` must not restart the
+		// backoff or open a second subscription for this device.
+		if (entry.reopenTimer !== null) return;
+		closeWs(entry);
+		entry.reopenAttempts = 0;
+		scheduleReopen(entry, deviceId);
+	}
+
+	function scheduleReopen(entry: Entry<TState>, deviceId: string): void {
+		// The entry can be torn down while a re-open is in flight (last listener
+		// leaves, then the open rejects into the retry path). Never open a
+		// subscription for a device nobody is watching — that leaks a backend
+		// stream and its subscriber count.
+		if (registry.get(deviceId) !== entry) return;
+		if (entry.reopenAttempts >= REOPEN_MAX_ATTEMPTS) return;
+
+		const attempt = entry.reopenAttempts++;
+		const backoff = Math.min(
+			REOPEN_BASE_DELAY_MS * 2 ** attempt,
+			REOPEN_MAX_DELAY_MS,
+		);
+		// The websocket connection itself is fine (it is the config entry that
+		// reloaded), so re-open on the same connection this entry is bound to.
+		const conn = entry.connection;
+		entry.reopenTimer = setTimeout(
+			() => {
+				entry.reopenTimer = null;
+				openWs({ connection: conn }, deviceId, entry, () =>
+					scheduleReopen(entry, deviceId),
+				);
+			},
+			backoff + Math.random() * REOPEN_JITTER_MS,
+		);
 	}
 
 	function openWs(
 		hass: { connection: any },
 		deviceId: string,
 		entry: Entry<TState>,
+		onFailure?: () => void,
 	): void {
 		const conn = hass.connection;
 		entry.connection = conn;
 		entry.closing = false;
 		conn
-			.subscribeMessage((msg: unknown) => handleMsg(entry, msg), {
+			.subscribeMessage((msg: unknown) => handleMsg(entry, deviceId, msg), {
 				type: wireType,
 				device_id: deviceId,
 			})
@@ -118,10 +188,18 @@ export function createSubscriptionStore<TState>(
 			})
 			.catch(() => {
 				applyHook(entry, onError);
+				onFailure?.();
 			});
 	}
 
 	function closeWs(entry: Entry<TState>): void {
+		// Single cancellation point for a pending re-open: both teardown paths (last
+		// listener leaves, connection swapped) route through here, and the swap path
+		// reopens on the fresh connection itself.
+		if (entry.reopenTimer !== null) {
+			clearTimeout(entry.reopenTimer);
+			entry.reopenTimer = null;
+		}
 		if (entry.unsubWs) {
 			entry.unsubWs();
 			entry.unsubWs = null;
@@ -145,6 +223,8 @@ export function createSubscriptionStore<TState>(
 				unsubWs: null,
 				connection: null,
 				closing: false,
+				reopenTimer: null,
+				reopenAttempts: 0,
 			};
 			registry.set(deviceId, entry);
 			openWs(hass as { connection: any }, deviceId, entry);
