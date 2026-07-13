@@ -729,6 +729,7 @@ async def _start_panel_stream(
     bundle does not, and reduces every message with `event.targets || []` — so it must
     keep seeing frames and nothing else.
     """
+    opted_in = bool(msg.get("availability"))
     await start_durable_stream(
         connection,
         msg,
@@ -737,9 +738,9 @@ async def _start_panel_stream(
         counter_attr=counter_attr,
         make_on_state=make_on_state,
         send_snapshot=False,
-        send_availability=bool(msg.get("availability")),
+        send_availability=opted_in,
         log_prefix=log_prefix,
-        send_unarmed_availability=bool(msg.get("availability")),
+        send_protocol_events=opted_in,
     )
 
 

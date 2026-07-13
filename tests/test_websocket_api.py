@@ -4162,17 +4162,21 @@ class TestWebSocketSubscriptions:
         unsub_stream.assert_called_once()
         mock_dm.note_target_unsubscribe.assert_not_called()
 
-    async def test_subscribe_grid_targets_succeeds_while_the_device_is_offline(
+    async def test_subscribe_grid_targets_opted_in_registration_failure_reports_unavailable(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        """A durable stream can be registered against an offline device — no `no_session`.
+        """Registration returning `None` still acks, with one `available: false` — no error.
 
-        The manager arms it when the device returns, so subscribing during an outage
-        must ack and report `available: false` instead of erroring (#336).
+        `async_add_state_stream` returns `None` when the mac is unknown to the manager
+        (`device_manager/__init__.py`'s `if mac not in self.devices: return None`) — NOT
+        when the device is merely offline. A genuinely offline-but-known device instead
+        gets a live unsub back, with `_ensure_streams` firing `on_availability(False)`
+        through it. Either way nothing was armed here, so the opted-in caller still needs
+        the one-shot fallback below rather than being left with no signal at all (#336).
         """
         mock_dm = await setup_integration(hass, config_entry)
         register_managed_device(mock_dm)
-        # Registration failed to arm: the manager reports the stream as offline.
+        # mac unknown to the manager: registration is a no-op, not an offline device.
         mock_dm.async_add_state_stream = AsyncMock(return_value=None)
 
         from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
