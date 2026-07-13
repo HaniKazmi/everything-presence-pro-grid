@@ -4191,6 +4191,36 @@ class TestWebSocketSubscriptions:
         connection.send_error.assert_not_called()
         assert connection.send_message.call_args.args[0]["event"] == {"available": False}
 
+    async def test_subscribe_grid_targets_opted_out_registration_failure_is_silent(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """An opted-out client whose registration comes back `None` gets ack + silence.
+
+        Same failed registration as the opted-in test above (`async_add_state_stream`
+        returning `None` — nothing was registered, e.g. the manager no longer knows
+        the mac), but without the `availability` flag: the `{"available": False}`
+        fallback is itself a non-frame message, so an opted-out (cached pre-upgrade
+        bundle) client must not see it either. It still acks — no error — even though
+        nothing is recoverable afterward (#336).
+        """
+        mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
+        mock_dm.async_add_state_stream = AsyncMock(return_value=None)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        # NO "availability" key — the old bundle's message shape.
+        msg = {"id": 35, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        connection.send_result.assert_called_once_with(35)
+        connection.send_error.assert_not_called()
+        connection.send_message.assert_not_called()
+        assert 35 not in connection.subscriptions
+
     async def test_subscribe_grid_targets_relays_availability_only_when_asked(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
