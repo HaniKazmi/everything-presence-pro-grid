@@ -7208,8 +7208,15 @@ class TestOverviewSubscribeHeatmap:
         connection.subscriptions[22]()
         unsub_stream.assert_called_once()
 
-    async def test_availability_callback_emits_available_events(self, hass, config_entry):
-        """The manager's arm/disarm notifications become `available` events — #334."""
+    async def test_no_live_availability_events_after_registration(self, hass, config_entry):
+        """Arm/disarm must NEVER reach the heatmap subscription — BWC guard for #334.
+
+        Deployed card bundles reduce this stream with `(_state, m) => m.cells ?? []`
+        (frontend/src/card/heatmap-store.ts), so ANY message without a `cells` field
+        blanks the overlay until the next heatmap frame. Relaying availability here
+        would wipe a user's heatmap on every device flap, and we cannot fix those
+        bundles by rebuilding — so this subscription's wire behaviour must not change.
+        """
         from custom_components.eppgrid.websocket_api import websocket_overview_subscribe_heatmap
 
         mock_dm = await setup_integration(hass, config_entry)
@@ -7222,18 +7229,25 @@ class TestOverviewSubscribeHeatmap:
         await call_async_handler(hass, websocket_overview_subscribe_heatmap, connection, msg)
 
         on_availability = mock_dm.async_add_state_stream.await_args.kwargs["on_availability"]
-        on_availability(False)
-        on_availability(True)
+        on_availability(True)  # manager armed the stream on a fresh connection
+        on_availability(False)  # ...and the device flapped again
 
         events = [
             c.args[0]["event"]
             for c in connection.send_message.call_args_list
             if c.args and isinstance(c.args[0], dict) and "available" in c.args[0].get("event", {})
         ]
-        assert events == [{"available": False}, {"available": True}]
+        assert events == []
 
     async def test_offline_device_sends_available_false_no_snapshot(self, hass, config_entry):
-        """Manager can't arm the stream -> available:false, no snapshot, still registered."""
+        """Manager can't arm the stream -> available:false, no snapshot, still registered.
+
+        This one-shot is the ONLY availability event this subscription has ever sent
+        (the pre-#334 handler emitted it when `async_open_session` returned None), and
+        it lands while the overlay is still empty, so it blanks nothing. It is kept
+        for BWC; the live arm/disarm events are not (see
+        `test_no_live_availability_events_after_registration`).
+        """
         from custom_components.eppgrid.websocket_api import websocket_overview_subscribe_heatmap
 
         mock_dm = await setup_integration(hass, config_entry)
@@ -7252,11 +7266,11 @@ class TestOverviewSubscribeHeatmap:
 
         connection.send_result.assert_called_once_with(21)
         avail_events = [
-            c
+            c.args[0]["event"]
             for c in connection.send_message.call_args_list
-            if c.args and isinstance(c.args[0], dict) and c.args[0].get("event", {}).get("available") is False
+            if c.args and isinstance(c.args[0], dict) and "available" in c.args[0].get("event", {})
         ]
-        assert avail_events, "expected an available:false event"
+        assert avail_events == [{"available": False}]
         snapshot_events = [
             c
             for c in connection.send_message.call_args_list

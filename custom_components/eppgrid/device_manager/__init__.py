@@ -1745,6 +1745,9 @@ class DeviceManager:
         arm/disarm. `_target_subs` is per-mac precisely so it survives a flap;
         decrementing it on connection loss would silence the device's pipeline
         for a client that is still subscribed.
+
+        Registration is all-or-nothing: if the arm pass below raises or is
+        cancelled, the stream is rolled back before the exception propagates.
         """
         if mac not in self.devices:
             return None
@@ -1759,10 +1762,14 @@ class DeviceManager:
         self.note_target_subscribe(mac, counter_attr)
         self.request_pipeline_push(mac)
 
-        await self._ensure_streams(mac)
-
         @callback
-        def _unsub() -> None:
+        def _close() -> None:
+            """Deregister the stream: disarm it, drop it, release its subscriber count.
+
+            Idempotent (the `closed` flag), which is what makes it safe as both the
+            caller's unsub and the rollback below — and safe when `async_stop` or
+            `_on_device_removed` already closed the stream out from under us.
+            """
             if stream.closed:
                 return
             stream.closed = True
@@ -1776,7 +1783,20 @@ class DeviceManager:
             self.note_target_unsubscribe(mac, counter_attr)
             self.request_pipeline_push(mac)
 
-        return _unsub
+        try:
+            await self._ensure_streams(mac)
+        except BaseException:
+            # The caller only gets its teardown handle on the happy path, so a stream
+            # left registered here could NEVER be closed: its subscriber count would
+            # pin the device to the fast pipeline for the life of the manager, and a
+            # later re-arm would push frames into a WS subscription id nobody owns.
+            # `CancelledError` is the live case — this runs inside the WS handler's
+            # task — hence `BaseException`, not `Exception`. The rollback IS this
+            # stream's close, pairing exactly once with the subscribe above.
+            _close()
+            raise
+
+        return _close
 
     def _disarm_stream(self, stream: StateStream) -> None:
         """Drop a stream's callback from its connection and release its session ref.

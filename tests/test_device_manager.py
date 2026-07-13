@@ -9252,6 +9252,68 @@ class TestStateStreams:
         assert conn.unsubscribe_states.call_count == 1
         assert manager.release_session.call_count == 1
 
+    async def test_add_stream_rolls_back_when_the_arm_pass_raises(self, hass, manager):
+        """Registration is all-or-nothing: no unsub handle means no registration.
+
+        The caller only receives its teardown handle on the happy path, so a stream
+        left behind here could never be torn down: its subscriber count would pin the
+        device to the fast pipeline for the life of the manager, and a later re-arm
+        would push frames into a WS subscription id nobody owns.
+        """
+        mac, _conn = self._armable(manager)
+        manager._ensure_streams = AsyncMock(side_effect=RuntimeError("boom"))
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+
+        assert mac not in manager._state_streams
+        assert mac not in manager._target_subs
+
+    async def test_add_stream_rolls_back_when_cancelled(self, hass, manager):
+        """Same rollback on cancellation — the WS handler task can be cancelled mid-await."""
+        mac, _conn = self._armable(manager)
+        manager._ensure_streams = AsyncMock(side_effect=asyncio.CancelledError())
+
+        with pytest.raises(asyncio.CancelledError):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+
+        assert mac not in manager._state_streams
+        assert mac not in manager._target_subs
+
+    async def test_add_stream_rollback_disarms_a_stream_that_already_armed(self, hass, manager):
+        """A failure AFTER the arm must also drop the callback and release the session ref."""
+        mac, conn = self._armable(manager)
+        real_ensure_streams = manager._ensure_streams
+
+        async def _arm_then_raise(stream_mac):
+            await real_ensure_streams(stream_mac)
+            raise RuntimeError("boom")
+
+        manager._ensure_streams = _arm_then_raise
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+
+        conn.unsubscribe_states.assert_called_once()
+        manager.release_session.assert_called_once_with(mac, conn)
+        assert mac not in manager._state_streams
+        assert mac not in manager._target_subs
+
     async def test_offline_device_registers_the_stream_unarmed(self, hass, manager):
         """No session yet — the stream still registers so it can arm on recovery."""
         mac, _conn = self._armable(manager)

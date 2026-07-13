@@ -31,6 +31,7 @@ async def _start_durable_target_stream(
     counter_attr: str,
     make_on_state: Callable[[str, Any], Callable[[Any], None]],
     send_snapshot: bool,
+    send_availability: bool,
     log_prefix: str,
 ) -> None:
     """Shared scaffolding for the non-admin overview subscribe commands.
@@ -38,10 +39,12 @@ async def _start_durable_target_stream(
     The card sits on a dashboard for hours, so its stream must outlive the
     device's `DeviceConnection`: we hand a DURABLE stream to the manager, which
     owns the session refcount, re-arms the stream on a fresh connection after a
-    device flap, and reports liveness through `on_availability` — which we relay
-    as the `available` events the card already renders (#334). The callback is
-    rebuilt per connection from `make_on_state`, since the device's entity keys
-    are only knowable from the live connection.
+    device flap, and reports liveness through `on_availability` (#334). The
+    callback is rebuilt per connection from `make_on_state`, since the device's
+    entity keys are only knowable from the live connection.
+
+    Relaying that liveness to the client is opt-in per command — see
+    `_on_availability` for why the heatmap subscription must not carry it.
     """
     device_id = msg["device_id"]
     mac = manager.mac_for_device_id(device_id)
@@ -60,8 +63,35 @@ async def _start_durable_target_stream(
         config = manager.store.devices.get(mac)
         connection.send_message(websocket_api.event_message(msg["id"], {"snapshot": dict(config) if config else {}}))
 
+    # True only while `async_add_state_stream` below is in flight — see
+    # `_on_availability`. The manager can call back synchronously from inside that
+    # await (it arms the stream there), and only from a later task afterwards.
+    registering: bool = True
+
     @callback
     def _on_availability(available: bool) -> None:
+        """Relay the manager's liveness notifications, per the command's contract.
+
+        `overview/subscribe` (send_availability=True) takes every event: the card
+        renders its offline banner from this stream's `available` field.
+
+        `overview/subscribe_heatmap` (send_availability=False) takes NONE of the live
+        ones. That subscription has never carried them, and already-deployed card
+        bundles — which we cannot fix by rebuilding — reduce it with
+        `(_state, m) => m.cells ?? []` (frontend/src/card/heatmap-store.ts), so ANY
+        message without a `cells` field resets the overlay to empty. An arm/disarm
+        event would therefore blank a user's heatmap on every device flap until the
+        next frame arrives (up to one `heatmap_interval`). The card loses nothing:
+        `available` still reaches it on the overview stream, and the heatmap repaints
+        itself once the re-armed stream delivers its next frame.
+
+        The one availability event the heatmap subscription DID ship is the
+        subscribe-time `available: false` for a device that is already offline (the
+        pre-#334 handler sent it when `async_open_session` returned None). It is kept:
+        it lands while the overlay is still empty, so it blanks nothing.
+        """
+        if not send_availability and (available or not registering):
+            return
         connection.send_message(websocket_api.event_message(msg["id"], {"available": available}))
 
     try:
@@ -74,6 +104,7 @@ async def _start_durable_target_stream(
     except Exception as err:
         _LOGGER.warning("%s: stream registration failed for %s: %s", log_prefix, mac, err)
         unsub_stream = None
+    registering = False
     if unsub_stream is None:
         connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
         return
@@ -152,6 +183,7 @@ async def websocket_overview_subscribe(
         counter_attr="grid_target_subs",
         make_on_state=lambda mac, dc: _make_grid_target_on_state(connection, msg["id"], mac, dc),
         send_snapshot=True,
+        send_availability=True,
         log_prefix="overview/subscribe",
     )
 
@@ -173,8 +205,10 @@ async def websocket_overview_subscribe_heatmap(
     """Stream the on-device activity heatmap for a device (non-admin).
 
     Resolves the card's device_id to a mac and registers a durable stream, same
-    lifecycle as websocket_overview_subscribe, but never sends a config
-    snapshot — this command only streams heatmap cells.
+    lifecycle as websocket_overview_subscribe, but never sends a config snapshot —
+    this command only streams heatmap cells — and never relays the manager's live
+    availability notifications, which deployed card bundles would mistake for an
+    empty heatmap frame (see `_on_availability`).
     """
     await _start_durable_target_stream(
         connection,
@@ -183,5 +217,6 @@ async def websocket_overview_subscribe_heatmap(
         counter_attr="heatmap_subs",
         make_on_state=lambda mac, dc: _make_heatmap_on_state(connection, msg["id"], mac, dc),
         send_snapshot=False,
+        send_availability=False,
         log_prefix="overview/subscribe_heatmap",
     )
