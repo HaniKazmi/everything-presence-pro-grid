@@ -9206,12 +9206,14 @@ class TestStateStreams:
     async def test_subscribe_failure_unsubscribes_the_orphaned_callback(self, hass, manager):
         """A failed subscribe must take its callback back off the connection.
 
-        `DeviceConnection.subscribe_states` appends the callback BEFORE the client
-        call that raises, so a failed subscribe can still leave it registered. The
-        stream is left unarmed (`conn is None`), so `_disarm_stream` can never remove
-        it: while another stream keeps the connection alive, the orphan keeps firing
-        into a dead handler and the next re-arm registers a SECOND callback on the
-        same connection — every frame delivered twice.
+        `DeviceConnection.subscribe_states` rolls back its own append on failure, so
+        against a real connection this cleanup is a no-op — it pins `_arm_stream`'s
+        own contract rather than relying on that connection-internal invariant. A
+        callback that did survive could never be removed: the stream is left unarmed
+        (`conn is None`), so `_disarm_stream` skips it; while another stream keeps
+        the connection alive, the orphan would keep firing into a dead handler and
+        the next re-arm would register a SECOND callback on the same connection —
+        every frame delivered twice.
         """
         mac, conn = self._armable(manager)
         conn.subscribe_states = AsyncMock(side_effect=RuntimeError("connection is closed"))

@@ -1754,13 +1754,14 @@ class DeviceManager:
             await conn.subscribe_states(cb)
         except Exception as err:
             _LOGGER.debug("State stream: subscribe failed for %s: %s", mac, err)
-            # `DeviceConnection.subscribe_states` appends `cb` to its subscriber
-            # list BEFORE the client call that raises, so a failed subscribe can
-            # still leave `cb` registered. Nothing else would ever remove it: the
-            # stream stays unarmed, so `_disarm_stream` sees `conn is None`. While
-            # another stream keeps the connection alive, the orphan keeps firing
-            # into a dead handler and the next re-arm adds a SECOND callback to the
-            # same connection — every frame delivered twice. Suppressed like
+            # Defence in depth. `DeviceConnection.subscribe_states` appends `cb`
+            # before the client call that can raise, and rolls that append back
+            # itself, so this is normally a no-op — but nothing else could ever
+            # remove a `cb` that did survive: the stream stays unarmed, so
+            # `_disarm_stream` sees `conn is None`. While another stream keeps the
+            # connection alive, such an orphan would keep firing into a dead
+            # handler and the next re-arm would add a SECOND callback to the same
+            # connection — every frame delivered twice. Suppressed like
             # `_disarm_stream`: a raise here must not skip the release below.
             if cb is not None:
                 with contextlib.suppress(Exception):
