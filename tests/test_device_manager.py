@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+from collections.abc import Callable
 from typing import Any
 from unittest.mock import ANY
 from unittest.mock import AsyncMock
@@ -10964,6 +10965,104 @@ class TestStateStreams:
         assert slept == [1.0], "the retry slept again holding the mac's slot after arming"
         assert task.done()
         assert manager._stream_retry_tasks == {}
+
+    async def test_unsub_of_the_last_stream_retires_the_sleeping_retry(self, hass, manager):
+        """The client's own unsub is a third way for the retry slot to go stale.
+
+        Popping the mac's last stream leaves a parked backoff task owning
+        `_stream_retry_tasks[mac]` for the rest of its (escalated) delay. It is not a
+        leak — it exits on its next tick — but a user who re-opens the dashboard before
+        it wakes gets a fresh subscription whose failed arm calls `_schedule_stream_retry`
+        into that stale slot, where it no-ops: recovery then waits out the OLD delay
+        (up to 30s) instead of restarting the backoff at the first.
+        """
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (1.0, 30.0)
+        manager.async_open_session = AsyncMock(return_value=None)
+        slept: list[float] = []
+        real_sleep = asyncio.sleep  # the patch below replaces the module attribute
+        parked = asyncio.Event()  # never set: a backoff that outlasts the test
+
+        async def fake_sleep(delay: float) -> None:
+            # `async_block_till_done` yields with `sleep(0)` — only the backoff's own
+            # (always non-zero) waits park here.
+            if delay:
+                slept.append(delay)
+                await parked.wait()
+            await real_sleep(0)
+
+        with patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=fake_sleep):
+            unsub = await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+            assert unsub is not None
+            await _settle()
+            stale = manager._stream_retry_tasks[mac]
+            assert slept == [1.0]  # parked on the first delay
+
+            unsub()  # the card's tab closes — the mac's last stream
+
+            assert manager._stream_retry_tasks == {}, "the unsubbed mac still owns a retry slot"
+            await _settle()
+            assert stale.done()
+
+            # The user re-opens the dashboard well inside the old backoff, and the arm
+            # fails again.
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+            await _settle()
+
+        fresh = manager._stream_retry_tasks[mac]
+        assert fresh is not stale, "the stale task still owns the slot"
+        assert slept == [1.0, 1.0], "the new backoff resumed the stale task's escalated delay"
+        fresh.cancel()
+
+    async def test_unsub_from_inside_the_retrys_own_pass_does_not_kill_it(self, hass, manager):
+        """`_close` is the CLIENT's callback and can run INSIDE the retry task.
+
+        The retry's `_ensure_streams` pass arms the stream and notifies the client, which
+        is free to unsub from that very callback — re-entering `_close` on the retry
+        task's own stack. Retiring the slot's task there without an identity check would
+        cancel the retry task from within itself, tearing down the pass mid-flight.
+        """
+        mac, conn = self._armable(manager)
+        manager._stream_retry_delays = (0.0,)
+        manager.async_open_session = AsyncMock(side_effect=[None, conn])
+        seen: list[bool] = []
+        handle: dict[str, Callable[[], None]] = {}
+
+        def on_availability(available: bool) -> None:
+            seen.append(available)
+            if available:
+                handle["unsub"]()
+
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=on_availability,
+        )
+        assert unsub is not None
+        handle["unsub"] = unsub
+        assert seen == [False]  # the initial arm failed; the backoff is armed
+        task = manager._stream_retry_tasks[mac]
+
+        await hass.async_block_till_done()
+
+        assert seen == [False, True]  # the retry's pass armed it and the client unsubbed
+        assert task.done()
+        assert not task.cancelled(), "the retry task cancelled itself from the client's unsub"
+        assert manager._stream_retry_tasks == {}
+        conn.unsubscribe_states.assert_called_once()  # the unsub still disarmed cleanly
+        assert mac not in manager._state_streams
+        assert mac not in manager._target_subs
 
     async def test_async_stop_is_bounded_when_a_retry_hangs_in_the_open(self, hass, manager):
         """Phase 1 must cancel the retries WITHOUT awaiting their unwind.

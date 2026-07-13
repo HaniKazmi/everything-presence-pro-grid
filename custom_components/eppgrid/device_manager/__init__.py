@@ -1803,6 +1803,20 @@ class DeviceManager:
                     streams.remove(stream)
                 if not streams:
                     self._state_streams.pop(mac, None)
+                    # Last stream for the mac: the backoff has nothing left to arm, and a
+                    # task parked on its (escalated) delay would own the mac's retry slot
+                    # until it woke — so a client that re-subscribes in that window and
+                    # fails to arm would find `_schedule_stream_retry` no-op against the
+                    # stale task and wait the old delay out instead of backing off from
+                    # the first. Identity-checked because this is the CLIENT's callback:
+                    # it re-enters from inside the retry task itself whenever that task's
+                    # `_ensure_streams` pass notifies a client that unsubs in response, and
+                    # cancelling there would kill the task mid-pass from within itself. Its
+                    # own exit is the loop's post-arm check, and `_drop` clears the slot.
+                    retry = self._stream_retry_tasks.get(mac)
+                    if retry is not None and retry is not asyncio.current_task():
+                        self._stream_retry_tasks.pop(mac, None)
+                        retry.cancel()
             # Read the counter key back off the record, not the parameter: the record
             # is what the subscribe was booked against, so it stays the one place the
             # key lives.
