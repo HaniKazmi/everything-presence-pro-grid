@@ -10344,6 +10344,41 @@ class TestStateStreams:
         await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), timeout=1.0)
         assert task.done()
 
+    async def test_retry_releases_its_slot_the_moment_its_own_pass_arms(self, hass, manager):
+        """The retry's own successful pass must not loop into another sleep holding the slot.
+
+        The sibling test covers the case where some OTHER path arms the streams. When the
+        retry task itself arms them, looping back to the top would park it on the next
+        (escalated) delay still owning `_stream_retry_tasks[mac]`, so the next failure
+        would find the slot taken and wait that delay out instead of retrying from the
+        first — the same stale-slot bug, reached from the other side.
+        """
+        mac, conn = self._armable(manager)
+        manager._stream_retry_delays = (1.0, 30.0)
+        manager.async_open_session = AsyncMock(side_effect=[None, conn])
+        slept: list[float] = []
+        real_sleep = asyncio.sleep
+
+        async def fake_sleep(delay: float) -> None:
+            if delay:
+                slept.append(delay)
+            await real_sleep(0)
+
+        with patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=fake_sleep):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+            task = manager._stream_retry_tasks[mac]
+            await hass.async_block_till_done()
+
+        conn.subscribe_states.assert_awaited_once()
+        assert slept == [1.0], "the retry slept again holding the mac's slot after arming"
+        assert task.done()
+        assert manager._stream_retry_tasks == {}
+
     async def test_async_stop_is_bounded_when_a_retry_hangs_in_the_open(self, hass, manager):
         """Phase 1 must cancel the retries WITHOUT awaiting their unwind.
 
