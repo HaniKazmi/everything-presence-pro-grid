@@ -230,6 +230,15 @@ class DeviceManager:
         # never released. Same rule as `_session_locks` / `_push_locks` /
         # `_ota_locks`.
         self._stream_locks: dict[str, asyncio.Lock] = {}
+        # Retry backoff for arming streams when HA reports the device available but
+        # our own API connect fails (the ESP32's API slots are limited, and HA's
+        # entity state lags a reboot). Without it a stream would sit unarmed until
+        # the next availability transition — which may never come. ONE task per mac
+        # drives the whole sequence (`_schedule_stream_retry`); the last delay
+        # repeats for as long as unarmed streams remain. Instance attributes so
+        # tests can shrink the delays.
+        self._stream_retry_delays: tuple[float, ...] = (1.0, 3.0, 9.0, 30.0)
+        self._stream_retry_tasks: dict[str, asyncio.Task] = {}
         # Skip cache for the static-presence (DFRobot) reconfigure, keyed by mac.
         # Lives HERE, at the manager/mac level, NOT on the ephemeral
         # `DeviceConnection` (same rationale as `_target_subs`): re-running the
@@ -556,6 +565,15 @@ class DeviceManager:
             for task in pipeline_push_tasks:
                 task.cancel()
             await asyncio.gather(*pipeline_push_tasks, return_exceptions=True)
+        # Same treatment for the stream-arming backoff tasks — each is parked in an
+        # `asyncio.sleep` that can outlast the whole drain, and resuming would re-enter
+        # `_ensure_streams` against a manager that is tearing its streams down.
+        if self._stream_retry_tasks:
+            retry_tasks = list(self._stream_retry_tasks.values())
+            self._stream_retry_tasks.clear()
+            for task in retry_tasks:
+                task.cancel()
+            await asyncio.gather(*retry_tasks, return_exceptions=True)
         # Same treatment for a pending debounced discovery — it must not
         # fire a full-registry scan against a manager that's shutting down.
         if (pending_discover := self._pending_discover) is not None:
@@ -1427,6 +1445,11 @@ class DeviceManager:
                 stream.closed = True
                 stream.notify(False)
         self._stream_locks.pop(mac, None)
+        # Nothing can ever arm this device's streams again, so the backoff has
+        # nothing left to retry — it would otherwise sit sleeping until its next
+        # tick (up to the last delay) past the device's lifetime.
+        if (retry := self._stream_retry_tasks.pop(mac, None)) is not None and not retry.done():
+            retry.cancel()
         self._build_flags.pop(mac, None)
         self._session_locks.pop(mac, None)
         self._ota_locks.pop(mac, None)
@@ -1826,6 +1849,64 @@ class DeviceManager:
                 # Counts are already recorded; the device's pipeline was set from
                 # the defaults on reconnect, so re-push it now that we're live.
                 self.request_pipeline_push(mac)
+            # Anything still unarmed means the device looked available but our own
+            # connect (or subscribe) failed. No further trigger is coming — the
+            # availability transition already happened — so drive a backoff retry.
+            # Re-read the list rather than reusing `pending`: an arm can await, and
+            # a client may have unsubbed (closing its stream) meanwhile.
+            still_unarmed = [s for s in self._state_streams.get(mac, []) if not s.closed and not s.armed]
+            if still_unarmed:
+                self._schedule_stream_retry(mac)
+
+    def _schedule_stream_retry(self, mac: str) -> None:
+        """Keep retrying `_ensure_streams(mac)` while streams remain unarmed.
+
+        ONE task per mac drives the entire backoff sequence, and it re-checks its own
+        exit conditions on every tick. A task per `_ensure_streams` pass would instead
+        restart the delays at their first entry each time it re-scheduled — a failing
+        connect would then be re-attempted at that shortest interval forever, never
+        backing off. Re-entrant calls (this task's own `_ensure_streams` still finds
+        the stream unarmed) therefore no-op against the live task.
+
+        Cancellable: the sleep is the only blocking point, `async_stop` Phase 1 cancels
+        it, and `_spawn` tracks the task so the Phase 2 drain settles it.
+        """
+        if self._stopping:
+            return
+        existing = self._stream_retry_tasks.get(mac)
+        if existing is not None and not existing.done():
+            return
+
+        async def _retry() -> None:
+            delays = self._stream_retry_delays
+            attempt = 0
+            while not self._stopping:
+                # Hold at the last delay for as long as unarmed streams remain: the
+                # device may be rebooting, or out of API slots, for a long time.
+                delay = delays[min(attempt, len(delays) - 1)]
+                attempt += 1
+                try:
+                    await asyncio.sleep(delay)
+                except asyncio.CancelledError:
+                    return
+                # Stop as soon as there is nothing left to arm — the streams armed,
+                # every client unsubbed, or the device was removed. Never a busy loop:
+                # each pass is gated behind the sleep above.
+                pending = [s for s in self._state_streams.get(mac, []) if not s.closed and not s.armed]
+                if not pending or self._stopping:
+                    return
+                await self._ensure_streams(mac)
+
+        task = self._spawn(_retry())
+        self._stream_retry_tasks[mac] = task
+
+        def _drop(_: asyncio.Task) -> None:
+            # Identity-checked: a later task may already own the slot (this one was
+            # cancelled and replaced), and `async_stop` clears the dict wholesale.
+            if self._stream_retry_tasks.get(mac) is task:
+                self._stream_retry_tasks.pop(mac, None)
+
+        task.add_done_callback(_drop)
 
     async def _arm_stream(self, stream: StateStream) -> bool:
         """Open/reuse a session and register this stream's callback on it."""

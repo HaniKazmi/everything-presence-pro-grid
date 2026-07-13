@@ -9150,6 +9150,23 @@ async def _settle(rounds: int = 20) -> None:
 class TestStateStreams:
     """Durable frontend state streams: arm, close, and refcount behaviour."""
 
+    @pytest.fixture(autouse=True)
+    async def _cancel_stream_retries(self, manager):
+        """Cancel any stream-arming backoff task a test leaves behind.
+
+        A stream left unarmed on an available device schedules a retry that keeps
+        running by design (#334) — in production `async_stop` cancels it. Tests that
+        drive those failure paths without a manager teardown would otherwise leave a
+        task sleeping on the backoff past the end of the test.
+        """
+        yield
+        tasks = list(manager._stream_retry_tasks.values())
+        manager._stream_retry_tasks.clear()
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
     def _armable(self, manager):
         """Give the manager one available device and a stubbed session open.
 
@@ -10096,3 +10113,160 @@ class TestStateStreams:
         assert manager._active_connections == {}
         assert manager._session_refcounts == {}
         conn.async_disconnect.assert_awaited_once()  # the parked open cleaned up after itself
+
+    # -- retry backoff (device available, our own connect fails) ------------
+
+    async def test_failed_open_retries_until_it_arms(self, hass, manager):
+        mac, conn = self._armable(manager)
+        manager._stream_retry_delays = (0.0,)
+        manager.async_open_session = AsyncMock(side_effect=[None, conn])
+        seen: list[bool] = []
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=seen.append,
+        )
+        assert seen == [False]
+
+        await asyncio.sleep(0)
+        await hass.async_block_till_done()
+
+        assert manager.async_open_session.await_count == 2
+        conn.subscribe_states.assert_awaited_once()
+        assert seen == [False, True]
+
+    async def test_retry_stops_once_the_stream_is_closed(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (0.0,)
+        manager.async_open_session = AsyncMock(return_value=None)
+
+        unsub = await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        unsub()
+        await hass.async_block_till_done()
+
+        assert mac not in manager._stream_retry_tasks
+
+    async def test_only_one_retry_task_per_mac(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (30.0,)
+        manager.async_open_session = AsyncMock(return_value=None)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        first = manager._stream_retry_tasks[mac]
+        await manager._ensure_streams(mac)
+
+        assert manager._stream_retry_tasks[mac] is first
+        first.cancel()
+
+    async def test_async_stop_cancels_retry_tasks(self, hass, manager):
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (30.0,)
+        manager.async_open_session = AsyncMock(return_value=None)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        task = manager._stream_retry_tasks[mac]
+
+        await manager.async_stop()
+
+        assert task.cancelled() or task.done()
+        assert manager._stream_retry_tasks == {}
+
+    async def test_retry_backoff_escalates_and_holds_at_the_last_delay(self, hass, manager):
+        """One task drives the whole backoff — a fresh task per pass would reset it.
+
+        Re-entering the schedule from each `_ensure_streams` pass would restart the
+        sequence at its first delay: a permanently-failing connect would then poll the
+        device forever at that interval instead of backing off.
+        """
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (1.0, 3.0)
+        manager.async_open_session = AsyncMock(return_value=None)
+        slept: list[float] = []
+        real_sleep = asyncio.sleep  # the patch below replaces the module attribute
+
+        async def fake_sleep(delay: float) -> None:
+            # Patching the module attribute catches every sleeper on the loop, and
+            # `async_block_till_done` yields with `sleep(0)` — record only the
+            # backoff's own (always non-zero) waits.
+            if delay:
+                slept.append(delay)
+                if len(slept) == 4:
+                    # Let the retry loop exit: the client's WS subscription went away.
+                    manager._state_streams.pop(mac, None)
+            await real_sleep(0)
+
+        with patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=fake_sleep):
+            await manager.async_add_state_stream(
+                mac,
+                counter_attr="grid_target_subs",
+                make_on_state=lambda m, c: lambda s: None,
+                on_availability=lambda a: None,
+            )
+            await hass.async_block_till_done()
+
+        assert slept == [1.0, 3.0, 3.0, 3.0]
+        assert mac not in manager._stream_retry_tasks
+
+    async def test_device_removed_cancels_the_retry(self, hass, manager):
+        """Nothing can arm a removed device's streams — the backoff must not outlive it."""
+        mac, _conn = self._armable(manager)
+        manager._stream_retry_delays = (30.0,)
+        manager.async_open_session = AsyncMock(return_value=None)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+        task = manager._stream_retry_tasks[mac]
+
+        await manager._on_device_removed(mac)
+        await hass.async_block_till_done()
+
+        assert manager._stream_retry_tasks == {}
+        assert task.done()
+
+    async def test_no_retry_is_scheduled_while_stopping(self, hass, manager):
+        """async_stop cancels the retries in Phase 1 — one spawned after that (from a
+        reconcile still settling in the Phase 2 drain) would outlive the config entry."""
+        mac, _conn = self._armable(manager)
+        manager._stopping = True
+
+        with patch.object(manager, "_spawn") as spawn:
+            manager._schedule_stream_retry(mac)
+
+        spawn.assert_not_called()
+        assert manager._stream_retry_tasks == {}
+
+    async def test_offline_device_does_not_schedule_a_retry(self, hass, manager):
+        """The availability transition already re-runs the reconciler — polling an
+        offline device on top of that is pure churn."""
+        mac, _conn = self._armable(manager)
+        manager._is_device_available = MagicMock(return_value=False)
+
+        await manager.async_add_state_stream(
+            mac,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, c: lambda s: None,
+            on_availability=lambda a: None,
+        )
+
+        assert manager._stream_retry_tasks == {}
