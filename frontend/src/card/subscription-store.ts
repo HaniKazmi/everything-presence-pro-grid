@@ -165,6 +165,12 @@ export function createSubscriptionStore<TState>(
 		// stream and its subscriber count. This is the ONLY thing that ends the
 		// retry loop, apart from a terminal error.
 		if (registry.get(entry.deviceId) !== entry) return;
+		// One timer per entry, always. Overwriting a live `reopenTimer` would leave
+		// the previous `setTimeout` armed but unreferenced, and `closeWs` can only
+		// cancel the one the entry still points at: the orphan would fire after
+		// teardown and open a subscription nobody owns. Callers that mean to
+		// re-schedule cancel the pending timer first.
+		if (entry.reopenTimer !== null) return;
 
 		const attempt = entry.reopenAttempts++;
 		const backoff = Math.min(
@@ -177,17 +183,20 @@ export function createSubscriptionStore<TState>(
 		entry.reopenTimer = setTimeout(
 			() => {
 				entry.reopenTimer = null;
-				openWs(conn, entry, () => scheduleReopen(entry));
+				openWs(conn, entry);
 			},
 			backoff + Math.random() * REOPEN_JITTER_MS,
 		);
 	}
 
-	function openWs(
-		conn: any,
-		entry: Entry<TState>,
-		onFailure?: () => void,
-	): void {
+	// EVERY open retries on failure — the first one at mount included. An HA restart
+	// with a dashboard open has the card subscribing before the config entry has
+	// finished setting up, so the command answers `not_ready` and the open rejects;
+	// nothing else would ever retry, and the card would wear its offline banner until
+	// the element remounts. That is #334 by another trigger. The retry loop is bounded
+	// by the same two guards as any re-open: `isTerminalError` and `scheduleReopen`'s
+	// registry-identity check.
+	function openWs(conn: any, entry: Entry<TState>): void {
 		entry.connection = conn;
 		const gen = ++entry.openGen;
 		conn
@@ -209,8 +218,13 @@ export function createSubscriptionStore<TState>(
 			})
 			.catch((err: unknown) => {
 				applyHook(entry, onError);
+				// Superseded, as above: a stale open must schedule NOTHING. Its retry
+				// would arm a second timer behind the live one's back — orphaning
+				// whichever `entry.reopenTimer` no longer points at, to fire past a
+				// teardown `closeWs` cannot reach it.
+				if (entry.openGen !== gen) return;
 				if (isTerminalError(err)) return;
-				onFailure?.();
+				scheduleReopen(entry);
 			});
 	}
 
@@ -262,6 +276,16 @@ export function createSubscriptionStore<TState>(
 			closeWs(entry);
 			applyHook(entry, onReconnect);
 			openWs(hass.connection, entry);
+		} else if (entry.unsubWs === null && entry.reopenTimer !== null) {
+			// Joining an entry that has no live subscription and is asleep on its
+			// backoff (up to the 30s cap). A fresh mount is a natural moment to retry,
+			// and this card would otherwise wear the offline banner for the rest of that
+			// interval. Cancel-then-schedule, never schedule-on-top: a storm of cards
+			// mounting on one device must still leave exactly ONE pending re-open.
+			clearTimeout(entry.reopenTimer);
+			entry.reopenTimer = null;
+			entry.reopenAttempts = 0;
+			scheduleReopen(entry);
 		}
 
 		entry.listeners.add(listener);

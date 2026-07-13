@@ -650,6 +650,176 @@ describe("createSubscriptionStore re-subscribe on closed", () => {
 		expect(conn2.subscribeMessage).toHaveBeenCalledTimes(1);
 	});
 
+	it("retries a FIRST open the backend rejected as not_ready, and streams once it comes up", async () => {
+		// HA restarted (or the entry reloaded) with a dashboard open: the card
+		// subscribes before eppgrid has finished setting up and the command answers
+		// `not_ready`. Nothing else would ever retry — the card would sit on its
+		// offline banner until the element remounts: #334 by another trigger.
+		const store = makeStore();
+		let openCb!: (msg: any) => void;
+		let calls = 0;
+		const subscribeMessage = vi.fn((callback: any) => {
+			calls += 1;
+			if (calls < 3) return Promise.reject({ code: "not_ready" });
+			openCb = callback;
+			return Promise.resolve(vi.fn());
+		});
+		const l = vi.fn();
+		const off = store.subscribe(
+			{ connection: { subscribeMessage } },
+			"devNotReadyAtMount",
+			l,
+		);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(subscribeMessage).toHaveBeenCalledTimes(1);
+
+		await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFF_MS);
+		// Two rejections, then the backend came up — and it stops there.
+		expect(subscribeMessage).toHaveBeenCalledTimes(3);
+		openCb({ value: 3 });
+		expect(l).toHaveBeenLastCalledWith({ value: 3, available: true });
+		off();
+	});
+
+	it("does not retry a FIRST open rejected as device_not_found", async () => {
+		const store = makeStore();
+		const subscribeMessage = vi.fn(() =>
+			Promise.reject({ code: "device_not_found" }),
+		);
+		const off = store.subscribe(
+			{ connection: { subscribeMessage } },
+			"devGoneAtMount",
+			vi.fn(),
+		);
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+		// The card's configured device_id will never resolve: retrying can only fail.
+		expect(subscribeMessage).toHaveBeenCalledTimes(1);
+		off();
+	});
+
+	it("retries an open on a swapped connection that the backend rejected", async () => {
+		// The websocket reconnected mid-reload: the reconnect path's open hits the
+		// same `not_ready` and must retry like any other.
+		const store = makeStore();
+		const h = makeReopenableHass();
+		const off1 = store.subscribe(h.hass, "devSwapReject", vi.fn());
+		await vi.advanceTimersByTimeAsync(0);
+
+		let calls = 0;
+		const subscribeMessage = vi.fn(() => {
+			calls += 1;
+			return calls < 3
+				? Promise.reject({ code: "not_ready" })
+				: Promise.resolve(vi.fn());
+		});
+		const off2 = store.subscribe(
+			{ connection: { subscribeMessage } },
+			"devSwapReject",
+			vi.fn(),
+		);
+		await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFF_MS);
+
+		expect(subscribeMessage).toHaveBeenCalledTimes(3);
+		off1();
+		off2();
+	});
+
+	it("does not orphan a re-open timer when a superseded open rejects", async () => {
+		// A superseded open (another re-open overtook it) must schedule nothing: its
+		// timer would overwrite the live `reopenTimer`, leaving the previous one armed
+		// but unreferenced. `closeWs` then cancels only one; the orphan fires after
+		// teardown and stores its unsub on an entry nobody holds — leaking a backend
+		// StateStream and its subscriber count, which gates the emission pipeline.
+		const store = makeStore();
+		let openCb!: (msg: any) => void;
+		let rejectStale!: (err: unknown) => void;
+		const unsubLive = vi.fn();
+		const subscribeMessage = vi
+			.fn()
+			.mockImplementationOnce((callback: any) => {
+				openCb = callback;
+				return Promise.resolve(vi.fn());
+			})
+			.mockImplementationOnce(
+				() =>
+					new Promise<() => void>((_res, rej) => {
+						rejectStale = rej;
+					}),
+			)
+			.mockImplementationOnce(() => Promise.resolve(unsubLive))
+			.mockImplementation(() => Promise.resolve(vi.fn()));
+
+		const off = store.subscribe(
+			{ connection: { subscribeMessage } },
+			"devOrphanTimer",
+			vi.fn(),
+		);
+		await vi.advanceTimersByTimeAsync(0);
+
+		// Re-open #1 fires and is still in flight...
+		openCb({ available: false, closed: true });
+		await vi.advanceTimersByTimeAsync(600);
+		expect(subscribeMessage).toHaveBeenCalledTimes(2);
+
+		// ...when a queued `closed` on the old handler schedules re-open #2, which
+		// opens and resolves first — superseding #1.
+		openCb({ available: false, closed: true });
+		await vi.advanceTimersByTimeAsync(600);
+		expect(subscribeMessage).toHaveBeenCalledTimes(3);
+
+		rejectStale({ code: "not_ready" });
+		await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFF_MS);
+		// #1's rejection must not open a fourth subscription over the live one.
+		expect(subscribeMessage).toHaveBeenCalledTimes(3);
+
+		// ...and the entry still holds the LIVE subscription, so teardown closes it.
+		off();
+		expect(unsubLive).toHaveBeenCalledTimes(1);
+	});
+
+	it("retries promptly when a card mounts onto an entry that is mid-backoff", async () => {
+		// A fresh mount is a natural moment to retry: a second dashboard opening on a
+		// device whose entry is asleep on the 30s cap must not wear the offline banner
+		// for the rest of that interval.
+		const store = makeStore();
+		const h = makeFailingReopenHass({ code: "not_ready" });
+		const off1 = store.subscribe(h.hass, "devJoinsBackoff", vi.fn());
+		await vi.advanceTimersByTimeAsync(0);
+
+		h.close();
+		// Backoff has grown to the cap: the entry is asleep for another ~30s.
+		await vi.advanceTimersByTimeAsync(90_000);
+		const before = h.attempts();
+		expect(h.delays().at(-1)).toBe(REOPEN_CAP_MS);
+
+		const off2 = store.subscribe(h.hass, "devJoinsBackoff", vi.fn());
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(h.attempts()).toBe(before + 1);
+		off1();
+		off2();
+	});
+
+	it("leaves exactly ONE pending re-open when a storm of cards mounts onto one entry", async () => {
+		const store = makeStore();
+		const h = makeFailingReopenHass({ code: "not_ready" });
+		const offs = [store.subscribe(h.hass, "devMountStorm", vi.fn())];
+		await vi.advanceTimersByTimeAsync(0);
+
+		h.close();
+		await vi.advanceTimersByTimeAsync(90_000);
+		const before = h.attempts();
+
+		for (let i = 0; i < 5; i++) {
+			offs.push(store.subscribe(h.hass, "devMountStorm", vi.fn()));
+		}
+		await vi.advanceTimersByTimeAsync(1_000);
+
+		// Five joiners, ONE re-open — not one per card.
+		expect(h.attempts()).toBe(before + 1);
+		for (const off of offs) off();
+	});
+
 	it("does not re-subscribe on an ordinary available:false (device flap — the backend re-arms that stream)", async () => {
 		const store = makeStore();
 		const h = makeReopenableHass();
