@@ -15,25 +15,54 @@ type Listener<TState> = (state: TState) => void;
 // reload/unload). The websocket subscription is still open but nothing behind it
 // is alive, so the client must re-subscribe to register a stream with the NEW
 // manager. That manager is not up yet — the entry is mid-reload and the WS
-// command answers `not_ready` — so re-open on a bounded backoff:
-// 0.5s, 1s, 2s, 4s, 8s (+jitter), i.e. give up after ~16s rather than hammer a
-// backend that is never coming back (integration removed).
-const REOPEN_MAX_ATTEMPTS = 5;
+// command answers `not_ready` — so re-open on an exponential backoff with jitter:
+// 0.5s, 1s, 2s, 4s, 8s, 16s, then every 30s.
+//
+// The retries are NOT capped in number. A card left on a dashboard has no other
+// recovery trigger — short of a websocket reconnect or a remount, which is the
+// #334 freeze itself — so it must keep trying for as long as anyone is watching
+// the device, however slow the reload was on a busy host. The DELAY is capped
+// instead: 30s bounds how stale a recovered card can be to one cap interval past
+// the backend coming up (an offline banner for up to ~30s is acceptable), at a
+// steady-state cost of two websocket calls per device per minute, and only while
+// a card is actually on screen. A 60s cap would halve that chatter but double the
+// worst-case staleness, which is the wrong trade for the symptom we are fixing.
 const REOPEN_BASE_DELAY_MS = 500;
-const REOPEN_MAX_DELAY_MS = 8000;
+const REOPEN_MAX_DELAY_MS = 30_000;
 // Spreads the re-opens of many cards/devices that all saw the same reload.
 const REOPEN_JITTER_MS = 250;
+
+// Wire codes on which retrying can never succeed. `device_not_found`: the card's
+// configured device_id no longer resolves (the device was removed), so every
+// re-open would be rejected forever — including the `_on_device_removed` teardown
+// path, which puts `closed` on the wire precisely because the device is gone.
+// Everything else is transient and must keep retrying: `not_ready` (the entry is
+// still reloading) above all, but also an unrecognised code, a rejection with no
+// code, or a non-object rejection — never strand the card on a shape we did not
+// expect.
+const TERMINAL_REOPEN_CODES = new Set(["device_not_found"]);
+
+/** home-assistant-js-websocket rejects with the wire error object ({code, message}). */
+function isTerminalError(err: unknown): boolean {
+	if (!err || typeof err !== "object") return false;
+	const code = (err as { code?: unknown }).code;
+	return typeof code === "string" && TERMINAL_REOPEN_CODES.has(code);
+}
 
 interface Entry<TState> {
 	state: TState;
 	listeners: Set<Listener<TState>>;
 	unsubWs: (() => void) | null;
 	connection: unknown;
-	// True while a websocket open is in flight whose entry has been torn down
-	// (last subscriber left before subscribeMessage resolved). The pending
-	// promise checks this on resolve and calls unsub immediately, so the
-	// backend subscription is not leaked.
-	closing: boolean;
+	// Monotonic open counter. openWs takes a token before it awaits and re-checks
+	// it on resolve; BOTH openWs and closeWs advance it, so any later open or
+	// teardown supersedes an in-flight one, which then drops its subscription
+	// instead of storing it. A plain "is this the current connection?" check cannot
+	// do that: two opens can race on the SAME connection object (a re-open still in
+	// flight when a second `closed` schedules another), and both would store their
+	// unsub — leaking a backend subscription, its subscriber count (which gates the
+	// device's emission pipeline) and a duplicate message handler.
+	openGen: number;
 	// Pending re-open after a `closed` message. One timer per entry, so a device
 	// with two cards re-opens exactly once; cancelled by closeWs (last listener
 	// left, or the connection was swapped and the reconnect path reopens).
@@ -119,7 +148,8 @@ export function createSubscriptionStore<TState>(
 		// A re-open is already pending. The closed subscription can still deliver a
 		// queued message (the HA websocket client drops the local handler only once
 		// its unsubscribe round-trips), so a second `closed` must not restart the
-		// backoff or open a second subscription for this device.
+		// backoff: that would collapse the delay back to 0.5s and hammer a backend
+		// that is still coming up.
 		if (entry.reopenTimer !== null) return;
 		closeWs(entry);
 		entry.reopenAttempts = 0;
@@ -130,9 +160,9 @@ export function createSubscriptionStore<TState>(
 		// The entry can be torn down while a re-open is in flight (last listener
 		// leaves, then the open rejects into the retry path). Never open a
 		// subscription for a device nobody is watching — that leaks a backend
-		// stream and its subscriber count.
+		// stream and its subscriber count. This is the ONLY thing that ends the
+		// retry loop, apart from a terminal error.
 		if (registry.get(deviceId) !== entry) return;
-		if (entry.reopenAttempts >= REOPEN_MAX_ATTEMPTS) return;
 
 		const attempt = entry.reopenAttempts++;
 		const backoff = Math.min(
@@ -161,33 +191,27 @@ export function createSubscriptionStore<TState>(
 	): void {
 		const conn = hass.connection;
 		entry.connection = conn;
-		entry.closing = false;
+		const gen = ++entry.openGen;
 		conn
 			.subscribeMessage((msg: unknown) => handleMsg(entry, deviceId, msg), {
 				type: wireType,
 				device_id: deviceId,
 			})
 			.then((unsub: () => void) => {
-				// If the entry was torn down (last subscriber left, or it was
-				// reopened on a fresh connection) while this open was in flight,
-				// drop the resolved subscription immediately so it isn't leaked.
-				// The connection check catches the reconnect-during-in-flight case:
-				// when openWs is called again for a new connection, entry.connection
-				// advances to conn2, so this stale conn1 resolve sees the mismatch
-				// and calls unsub() instead of storing it.
-				if (
-					entry.closing ||
-					entry.connection !== conn ||
-					registry.get(deviceId) !== entry
-				) {
+				// Superseded while in flight — the entry was torn down (last subscriber
+				// left), the connection was swapped, or another re-open overtook this
+				// one. Drop the resolved subscription instead of storing it on a dead or
+				// superseded entry, or it is leaked.
+				if (entry.openGen !== gen) {
 					unsub();
 					return;
 				}
 				entry.unsubWs = unsub;
 				applyHook(entry, onOpen);
 			})
-			.catch(() => {
+			.catch((err: unknown) => {
 				applyHook(entry, onError);
+				if (isTerminalError(err)) return;
 				onFailure?.();
 			});
 	}
@@ -200,13 +224,12 @@ export function createSubscriptionStore<TState>(
 			clearTimeout(entry.reopenTimer);
 			entry.reopenTimer = null;
 		}
+		// Supersede any open still in flight: with no unsub to call yet, this is what
+		// makes its resolve drop the subscription rather than store it.
+		entry.openGen++;
 		if (entry.unsubWs) {
 			entry.unsubWs();
 			entry.unsubWs = null;
-		} else {
-			// No unsub yet — the open is still in flight. Flag it so the pending
-			// promise calls unsub on resolve instead of storing it on a dead entry.
-			entry.closing = true;
 		}
 	}
 
@@ -222,7 +245,7 @@ export function createSubscriptionStore<TState>(
 				listeners: new Set(),
 				unsubWs: null,
 				connection: null,
-				closing: false,
+				openGen: 0,
 				reopenTimer: null,
 				reopenAttempts: 0,
 			};

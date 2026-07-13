@@ -317,9 +317,10 @@ describe("createSubscriptionStore", () => {
 });
 
 describe("createSubscriptionStore re-subscribe on closed", () => {
-	// Longer than the whole bounded backoff window, so one advance drains every
-	// scheduled re-open attempt.
+	// Long enough to drain the whole backoff schedule of a re-open that succeeds.
 	const PAST_ALL_BACKOFF_MS = 120_000;
+	// The delay the backoff must not exceed, however long the reload takes.
+	const REOPEN_CAP_MS = 30_000;
 
 	function makeStore() {
 		return createSubscriptionStore<{ value: number; available: boolean }>({
@@ -334,12 +335,42 @@ describe("createSubscriptionStore re-subscribe on closed", () => {
 		});
 	}
 
+	/** First open succeeds; every re-open rejects with `err`. Records the fake-clock
+	 *  time of each open so the backoff schedule can be asserted exactly. */
+	function makeFailingReopenHass(err: unknown) {
+		let openCb!: (msg: any) => void;
+		let calls = 0;
+		const times: number[] = [];
+		const subscribeMessage = vi.fn((callback: any) => {
+			times.push(Date.now());
+			calls += 1;
+			if (calls === 1) {
+				openCb = callback;
+				return Promise.resolve(vi.fn());
+			}
+			return Promise.reject(err);
+		});
+		return {
+			hass: { connection: { subscribeMessage } },
+			subscribeMessage,
+			/** Delay before each re-open attempt. */
+			delays: () => times.slice(1).map((t, i) => t - times[i]),
+			attempts: () => calls - 1,
+			/** Deliver a `closed` on the FIRST open's handler (the manager tore the
+			 *  stream down; that handler outlives its unsubscribe round-trip). */
+			close: () => openCb({ available: false, closed: true }),
+		};
+	}
+
 	beforeEach(() => {
 		vi.useFakeTimers();
+		// Deterministic jitter, so the backoff schedule is exactly assertable.
+		vi.spyOn(Math, "random").mockReturnValue(0);
 	});
 
 	afterEach(() => {
 		vi.useRealTimers();
+		vi.restoreAllMocks();
 	});
 
 	it("closes the websocket subscription and opens a fresh one for the same device", async () => {
@@ -401,51 +432,160 @@ describe("createSubscriptionStore re-subscribe on closed", () => {
 		off2();
 	});
 
-	it("re-opens once when a second closed message arrives while a re-open is pending", async () => {
+	it("re-opens once, without restarting the backoff, when a second closed message arrives while a re-open is pending", async () => {
 		const store = makeStore();
-		const h = makeReopenableHass();
+		const h = makeFailingReopenHass({ code: "not_ready" });
 		const off = store.subscribe(h.hass, "devDoubleClosed", vi.fn());
 		await vi.advanceTimersByTimeAsync(0);
 
-		// The closed subscription can still deliver a queued message after its
-		// unsub; that must not restart the backoff or open a second subscription.
-		h.emit({ available: false, closed: true });
-		h.emit({ available: false, closed: true });
-		await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFF_MS);
+		// Every re-open is rejected (the entry is still reloading), so the backoff
+		// grows: attempts land at +0.5s, +1.5s and +3.5s, the next is due at +7.5s.
+		h.close();
+		await vi.advanceTimersByTimeAsync(4_000);
+		expect(h.attempts()).toBe(3);
 
-		expect(h.opens()).toBe(2);
-		expect(h.unsubs[0]).toHaveBeenCalledTimes(1);
+		// The closed subscription can still deliver a queued message (the HA client
+		// drops the local handler only once its unsubscribe round-trips). That must
+		// not restart the backoff — otherwise the delay collapses back to 0.5s and
+		// the retry budget is spent hammering a backend that is still coming up.
+		h.close();
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(h.attempts()).toBe(3);
+
+		// ...and the already-pending re-open still fires, exactly once, on schedule.
+		await vi.advanceTimersByTimeAsync(3_000);
+		expect(h.attempts()).toBe(4);
+		expect(h.delays()).toEqual([500, 1000, 2000, 4000]);
 		off();
 	});
 
-	it("retries a rejected re-open with backoff and gives up after a bounded number of attempts", async () => {
+	it("drops a late re-open resolve superseded by a second re-open on the same connection", async () => {
 		const store = makeStore();
 		let openCb!: (msg: any) => void;
-		// First open succeeds; every re-open is rejected, as it would be while the
-		// config entry is still reloading (`not_ready`).
+		let resolveStale!: (u: () => void) => void;
+		const unsubFirst = vi.fn();
+		const unsubStale = vi.fn();
+		const unsubLive = vi.fn();
 		const subscribeMessage = vi
 			.fn()
 			.mockImplementationOnce((callback: any) => {
 				openCb = callback;
-				return Promise.resolve(vi.fn());
+				return Promise.resolve(unsubFirst);
 			})
-			.mockImplementation(() => Promise.reject(new Error("not_ready")));
+			.mockImplementationOnce(
+				() =>
+					new Promise<() => void>((r) => {
+						resolveStale = r;
+					}),
+			)
+			.mockImplementationOnce(() => Promise.resolve(unsubLive));
 		const hass = { connection: { subscribeMessage } };
 
-		store.subscribe(hass, "devRetry", vi.fn());
+		const off = store.subscribe(hass, "devDoubleOpen", vi.fn());
 		await vi.advanceTimersByTimeAsync(0);
-		expect(subscribeMessage).toHaveBeenCalledTimes(1);
-
 		openCb({ available: false, closed: true });
-		await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFF_MS);
+		expect(unsubFirst).toHaveBeenCalledTimes(1);
 
-		// 1 initial open + REOPEN_MAX_ATTEMPTS retried re-opens, then it gives up
-		// rather than hammering a backend that may never come back.
-		const attempts = subscribeMessage.mock.calls.length - 1;
-		expect(attempts).toBe(5);
+		// Re-open #1 has fired and is still in flight...
+		await vi.advanceTimersByTimeAsync(600);
+		expect(subscribeMessage).toHaveBeenCalledTimes(2);
 
-		await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFF_MS);
-		expect(subscribeMessage.mock.calls.length - 1).toBe(attempts);
+		// ...when a queued `closed` arrives on the old handler: it schedules re-open
+		// #2, which opens and resolves FIRST, on the SAME connection object.
+		openCb({ available: false, closed: true });
+		await vi.advanceTimersByTimeAsync(600);
+		expect(subscribeMessage).toHaveBeenCalledTimes(3);
+
+		// Re-open #1 now resolves, superseded. Storing its unsub would overwrite the
+		// live one, leaking a backend subscription (and its subscriber count, which
+		// gates the device's emission pipeline) plus a duplicate message handler.
+		resolveStale(unsubStale);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(unsubStale).toHaveBeenCalledTimes(1);
+		expect(unsubLive).not.toHaveBeenCalled();
+
+		// The live subscription is the one the entry holds, and it is closed on exit.
+		off();
+		expect(unsubLive).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps retrying a rejected re-open for as long as a listener remains", async () => {
+		const store = makeStore();
+		const h = makeFailingReopenHass({ code: "not_ready" });
+		const off = store.subscribe(h.hass, "devRetryForever", vi.fn());
+		await vi.advanceTimersByTimeAsync(0);
+
+		h.close();
+		// Far past the old 5-attempt (~16s) budget: a reload slower than that must
+		// still be recovered from, or the card is stranded on the offline banner.
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+		const attempts = h.attempts();
+		expect(attempts).toBeGreaterThan(15);
+
+		// Still trying.
+		await vi.advanceTimersByTimeAsync(5 * 60_000);
+		expect(h.attempts()).toBeGreaterThan(attempts);
+		off();
+	});
+
+	it("caps the re-open backoff delay instead of growing it without bound", async () => {
+		const store = makeStore();
+		const h = makeFailingReopenHass({ code: "not_ready" });
+		const off = store.subscribe(h.hass, "devBackoffCap", vi.fn());
+		await vi.advanceTimersByTimeAsync(0);
+
+		h.close();
+		await vi.advanceTimersByTimeAsync(5 * 60_000);
+
+		const delays = h.delays();
+		expect(delays.slice(0, 6)).toEqual([500, 1000, 2000, 4000, 8000, 16_000]);
+		// One websocket call per device per cap interval, only while a card is open.
+		expect(delays.slice(6)).not.toHaveLength(0);
+		expect(delays.slice(6).every((d) => d === REOPEN_CAP_MS)).toBe(true);
+		off();
+	});
+
+	it("stops retrying on a terminal device_not_found rejection", async () => {
+		const store = makeStore();
+		const h = makeFailingReopenHass({
+			code: "device_not_found",
+			message: "Device not found",
+		});
+		const off = store.subscribe(h.hass, "devGone", vi.fn());
+		await vi.advanceTimersByTimeAsync(0);
+
+		h.close();
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+		// The card's configured device_id will never resolve again (the device was
+		// removed): retrying it can only ever fail.
+		expect(h.attempts()).toBe(1);
+		off();
+	});
+
+	it("keeps retrying when the rejection has an unknown, absent or non-object error code", async () => {
+		// An unrecognised failure shape must never be treated as terminal — that
+		// would strand the card exactly as a spent budget does.
+		const errors: unknown[] = [
+			{ code: "kaboom", message: "unknown code" },
+			{ message: "no code at all" },
+			new Error("transport blew up"),
+			"not even an object",
+			null,
+		];
+
+		for (const [i, err] of errors.entries()) {
+			const store = makeStore();
+			const h = makeFailingReopenHass(err);
+			const off = store.subscribe(h.hass, `devUnknownErr${i}`, vi.fn());
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.close();
+			await vi.advanceTimersByTimeAsync(PAST_ALL_BACKOFF_MS);
+
+			expect(h.attempts()).toBeGreaterThan(5);
+			off();
+		}
 	});
 
 	it("cancels a pending re-open when the last listener unsubscribes", async () => {
