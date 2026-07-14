@@ -340,12 +340,23 @@ export class DeviceController implements ReactiveController {
 		// disarming the `!hasDeviceSession` bootstrap guards
 		// (onDeviceListChanged/updated() in eppgrid-panel.ts) — so a
 		// re-added device (USB reflash / re-adoption with the same mac) would
-		// never get a session again short of a page reload. Gated on a
-		// non-empty push: an empty list is ambiguous with a transient reload
-		// (see below) and must not be treated as a real deletion.
+		// never get a session again short of a page reload.
+		//
+		// NOT gated on a non-empty push: an empty list is never an
+		// availability blip. `_on_state_changed` keeps an offline device IN
+		// `self.devices` (only sets `available = False`), and
+		// `_fire_device_list_changed` always emits the full
+		// `list_devices()` snapshot over that dict — so the only way the
+		// selected mac is missing is a genuine `_on_device_removed`
+		// (`async_discover` is purely additive). That includes the
+		// single-device case, where removal empties the list outright: the
+		// canonical delete/reflash/re-adopt flow. (A push landing mid-
+		// discovery would also show this shape, but only right after a
+		// connection swap that already tore the session down — this just
+		// confirms it, and the next non-empty push re-arms via the
+		// `!hasDeviceSession` bootstrap.)
 		if (
 			prevSelectedMac !== "" &&
-			devices.length > 0 &&
 			!devices.some((d) => d.mac === prevSelectedMac)
 		) {
 			this.closeDeviceSession();

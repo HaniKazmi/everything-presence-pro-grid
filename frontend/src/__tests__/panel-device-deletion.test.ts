@@ -238,16 +238,27 @@ describe("panel device list transitions", () => {
 
 	// --- Session close behaviour when the device becomes unavailable ---
 	//
-	// Recovery is the manager's job now (#336): the device-list edge that
-	// used to tear the session down and clear live data on a mere
-	// missing-from-list observation is retired. That clear now happens from
-	// the durable stream's own `onAvailability(mac, false)` signal instead
-	// (see device-controller.test.ts's "device-list availability edge" and
-	// panel-reconnect-state.test.ts's onAvailability coverage) — a
-	// device-list-only mock like this file's never fires it, so none of
-	// this should happen from `pushDeviceList` alone.
+	// Two distinct edges, two distinct owners (#336):
+	//
+	// - A device merely going unavailable while still LISTED is a flap —
+	//   the manager's own recovery to make. It does NOT close the session
+	//   here, and does NOT clear live data here; that clear happens from the
+	//   durable stream's own `onAvailability(mac, false)` signal instead
+	//   (see device-controller.test.ts's "does not tear the session down
+	//   when the selected device goes offline" and
+	//   panel-reconnect-state.test.ts's onAvailability coverage). A
+	//   device-list-only mock like this file's never fires that signal, so
+	//   the live-state/zone-engine tests below correctly see no change from
+	//   `pushDeviceList` alone.
+	// - A device disappearing from the list entirely (this block's
+	//   `pushDeviceList([])`, the sole-device case) IS a removal — the
+	//   backend has already torn down its side, and the frontend's
+	//   `closeDeviceSession()` call below is what lets `hasDeviceSession`
+	//   re-arm the bootstrap when the device comes back. See the
+	//   "Removal (not availability) recovery" block further down for the
+	//   full close → reopen → resubscribe round trip.
 
-	it("does not close the device session when the selected device disappears from the list", async () => {
+	it("closes the device session when the selected device disappears from the list", async () => {
 		const dev1 = mockDeviceInfo("aa", "Alpha");
 		const { el, a, pushDeviceList } = await mountPanel([dev1]);
 		const closeSpy = vi.spyOn(a._deviceCtrl, "closeDeviceSession");
@@ -255,7 +266,7 @@ describe("panel device list transitions", () => {
 		pushDeviceList([]);
 		await el.updateComplete;
 
-		expect(closeSpy).not.toHaveBeenCalled();
+		expect(closeSpy).toHaveBeenCalled();
 	});
 
 	it("does not clear live state when the selected device disappears from the list", async () => {
@@ -344,16 +355,20 @@ describe("panel device list transitions", () => {
 
 	// --- Removal (not availability) recovery: USB-reflash flow (#336) ---
 	//
-	// Distinct from "Session close behaviour" above: those tests push an
-	// EMPTY list, which is deliberately ambiguous with a transient reload and
-	// must not tear the session down. Here the selected device disappears
-	// from a NON-empty push (another device remains) — a genuine removal,
+	// Builds on "Session close behaviour" above (which pins the plain
+	// closeDeviceSession() call) with the full end-to-end round trip: the
+	// selected device disappears — whether from a NON-empty push (another
+	// device remains) or the list going EMPTY outright (the sole-device
+	// case, no fallback device at all) — a genuine removal either way,
 	// which the backend has already force-closed its own session for
 	// (`_on_device_removed` -> `async_close_session`). Without the frontend
 	// also closing its side, `hasDeviceSession` stays true forever and the
 	// bootstrap that re-establishes it when the device reappears
 	// (onDeviceListChanged's `!hasDeviceSession` guard) never fires again —
-	// the regression this end-to-end flow pins.
+	// the regression this end-to-end flow pins. The single-device variant
+	// below is the canonical delete/reflash/re-adopt flow and is the shape
+	// that let this bug ship: it was the one case an earlier, overly cautious
+	// "only close on a non-empty push" gate skipped.
 
 	it("closes the session when the selected device is removed, and re-opens + resubscribes when it reappears with the same mac", async () => {
 		const dev1 = mockDeviceInfo("aa", "Alpha");
@@ -383,6 +398,46 @@ describe("panel device list transitions", () => {
 
 		// "aa" re-added with the same mac (USB reflash / re-adoption).
 		pushDeviceList([dev1, dev2]);
+		await el.updateComplete;
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(a._selectedMac).toBe("aa");
+		expect(a._deviceCtrl.hasDeviceSession).toBe(true);
+		expect(sessionSubCount()).toBeGreaterThan(before);
+	});
+
+	it("closes the session when the sole device is removed (list goes empty), and re-opens + resubscribes when it reappears with the same mac", async () => {
+		// The canonical single-device flow: delete the only EPP device in HA,
+		// reflash it over USB, re-adopt it with the same mac. The backend pops
+		// the last device and pushes an EMPTY list — there's no second device
+		// to fall back on, unlike the multi-device test above. An empty push
+		// is NOT ambiguous with a transient reload here: the selected mac is
+		// genuinely gone, so the session must close just the same, or
+		// `hasDeviceSession` never re-arms and the panel freezes offline
+		// forever once the device comes back (the bug this test pins).
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const { el, a, pushDeviceList } = await mountPanel([dev1]);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(a._deviceCtrl.hasDeviceSession).toBe(true);
+
+		const sessionSubCount = () =>
+			(a.hass.connection.subscribeMessage as any).mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_device",
+			).length;
+		const before = sessionSubCount();
+
+		// The only device is removed; the backend pushes an empty list.
+		pushDeviceList([]);
+		await el.updateComplete;
+		await new Promise((r) => setTimeout(r, 0));
+
+		// No replacement to switch to, so the selection is retained (same as
+		// the "transient absence" tests above) — but the session must close.
+		expect(a._selectedMac).toBe("aa");
+		expect(a._deviceCtrl.hasDeviceSession).toBe(false);
+
+		// "aa" re-added with the same mac (USB reflash / re-adoption).
+		pushDeviceList([dev1]);
 		await el.updateComplete;
 		await new Promise((r) => setTimeout(r, 0));
 
