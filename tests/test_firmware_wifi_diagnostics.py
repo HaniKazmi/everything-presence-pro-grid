@@ -32,61 +32,78 @@ A healthy device sends nothing, so they cost no traffic on a device that is
 already streaming BLE proxy advertisements. States set while the device is
 offline are held and shipped in the initial-state burst when the API
 reconnects: that is what makes them survive the outage.
+
+The *decision* logic — when an event counts as a drop, when to publish, when to
+reset — lives in `epp_wifi_diag.h` and is host-tested in
+`firmware/lib/epp_component_helpers/tests/test_wifi_diag.cpp`, because YAML
+lambdas cannot be. What is tested here is the wiring: that the variant calls that
+logic from the right places, and that the entities are shaped so HA reads them
+correctly. These assertions match against the lambda bodies with `//` comments
+stripped — see `_strip_cpp_comments`.
 """
 
-from pathlib import Path
+import re
 
-import yaml
-
-from tests.esphome_yaml import ESPHomeLoader
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-BASE_YAML = REPO_ROOT / "firmware" / "common" / "everything-presence-pro-base.yaml"
-WIFI_VARIANT_YAML = REPO_ROOT / "firmware" / "variants" / "wifi-ble-co2.yaml"
-
-
-def _load(path: Path) -> dict:
-    return yaml.load(path.read_text(), Loader=ESPHomeLoader)
+from tests.esphome_yaml import BASE_YAML
+from tests.esphome_yaml import WIFI_VARIANT_YAML
+from tests.esphome_yaml import find_by_id
+from tests.esphome_yaml import find_by_platform
+from tests.esphome_yaml import load_yaml
 
 
 def _variant() -> dict:
-    return _load(WIFI_VARIANT_YAML)
-
-
-def _find_by_id(entries: list | None, entry_id: str) -> dict | None:
-    for entry in entries or []:
-        if isinstance(entry, dict) and entry.get("id") == entry_id:
-            return entry
-    return None
-
-
-def _find_by_platform(entries: list | None, platform: str) -> dict | None:
-    for entry in entries or []:
-        if isinstance(entry, dict) and entry.get("platform") == platform:
-            return entry
-    return None
+    return load_yaml(WIFI_VARIANT_YAML)
 
 
 def _sensor(sensor_id: str) -> dict | None:
-    return _find_by_id(_variant().get("sensor"), sensor_id)
+    return find_by_id(_variant().get("sensor"), sensor_id)
 
 
 def _text_sensor(sensor_id: str) -> dict | None:
-    return _find_by_id(_variant().get("text_sensor"), sensor_id)
+    return find_by_id(_variant().get("text_sensor"), sensor_id)
 
 
 def _global(global_id: str) -> dict | None:
-    return _find_by_id(_variant().get("globals"), global_id)
+    return find_by_id(_variant().get("globals"), global_id)
+
+
+def _action_code(node) -> str:
+    """Every lambda/action string under a trigger, with `//` comments stripped.
+
+    Two traps, both of which produced a test that could not fail:
+
+    `yaml.dump()` is not usable here. It re-wraps the lambda into physical lines
+    where the newlines are literal `\\n` escapes, so stripping "to end of line"
+    swallows the code that follows a comment on the same dumped line. Walking the
+    parsed structure keeps each lambda's real newlines intact.
+
+    And the comments must go. The YAML carries lambdas as opaque strings, comments
+    and all, so `"record_disconnect" in text` passes just as happily when the call
+    is commented out — or merely *described* in a comment — as when it is actually
+    made. A reviewer proved the point by commenting out every functional line in
+    the variant and watching this whole module still pass. Matching only on code is
+    what makes these assertions mean anything.
+    """
+    if isinstance(node, str):
+        parts = [node]
+    elif isinstance(node, dict):
+        parts = [_action_code(value) for value in node.values()]
+    elif isinstance(node, list):
+        parts = [_action_code(item) for item in node]
+    else:
+        parts = [str(node)]
+    text = "\n".join(part for part in parts if part)
+    return re.sub(r"//[^\n]*", "", text)
 
 
 def _wifi_trigger_text(trigger: str) -> str:
-    """All lambda/action text under `wifi: on_connect:` / `on_disconnect:`."""
-    return yaml.dump(_variant().get("wifi", {}).get(trigger, {}))
+    """Executable lambda/action code under `wifi: on_connect:` / `on_disconnect:`."""
+    return _action_code(_variant().get("wifi", {}).get(trigger, {}))
 
 
 def _on_boot_text() -> str:
-    """All action text under the variant's `esphome: on_boot:` hooks."""
-    return yaml.dump(_variant().get("esphome", {}).get("on_boot", []))
+    """Executable action code under the variant's `esphome: on_boot:` hooks."""
+    return _action_code(_variant().get("esphome", {}).get("on_boot", []))
 
 
 # -- The raw ESP-IDF event handler --------------------------------------------
@@ -124,48 +141,44 @@ def test_disconnect_handler_captures_reason_and_rssi():
     )
 
 
-def test_disconnect_count_is_edge_triggered_not_per_event():
-    """Count drops, not disconnect events — they are very different numbers.
+def test_handler_delegates_to_the_recorder_and_never_publishes():
+    """The event task may record, but must not publish, and must not decide.
 
-    While the device is off the network ESPHome keeps retrying, and every failed
-    attempt fires another WIFI_EVENT_STA_DISCONNECTED. Counting raw events would
-    report a single 60-second outage as ~10 disconnects, which is exactly the
-    kind of inflated number that would send us chasing a nonexistent storm.
+    Two rules, both of which the firmware got wrong once:
 
-    ESPHome's `wifi.on_disconnect` fires only on the connected→disconnected edge
-    (wifi_component.cpp: guarded by `handled_connected_state_`), so the counter
-    belongs there. The raw handler only stashes the reason and RSSI.
+    1. `publish_state()` from the IDF event task would reach into ESPHome's
+       single-threaded loop from another task. The handler records; the wifi
+       triggers publish.
+    2. The event re-fires on every failed reconnect attempt during an outage, so
+       anything that treats each event as a drop measures the retry storm instead.
+       `record_disconnect` keeps only the first event of an outage — that decision
+       is host-tested in test_wifi_diag.cpp, and the handler's only job is to hand
+       the event over intact.
     """
     boot = _on_boot_text()
-    assert "wifi_disconnect_total" not in boot, (
-        "the raw esp_event handler must NOT increment wifi_disconnect_total — it "
-        "fires again on every failed reconnect attempt during an outage, so the "
-        "count would measure retries, not drops."
+    assert "record_disconnect" in boot, (
+        "the esp_event handler must hand the event to epp::record_disconnect, which "
+        "is where the first-event-of-an-outage rule lives (and is tested)."
     )
-    assert "wifi_disconnect_total" in _wifi_trigger_text("on_disconnect"), (
-        "wifi_disconnect_total must be incremented from wifi.on_disconnect, which "
-        "fires once per connected→disconnected transition."
+    assert "publish_state" not in boot, (
+        "the esp_event handler runs in the IDF event task and must never call "
+        "publish_state() — that reaches into the ESPHome loop from another task."
     )
 
 
-def test_disconnect_globals_declared():
-    """The handler runs in the IDF event task; it may only touch plain globals.
+def test_handler_registration_failure_is_logged():
+    """A diagnostic that fails silently into a reassuring reading is worse than none.
 
-    Publishing an entity from the event task would reach into ESPHome's
-    single-threaded loop from another task. The handler stashes; the
-    `wifi.on_disconnect` trigger (main loop) publishes.
+    If the handler never registers, no drop is ever recorded, so every entity here
+    stays quiet — which is precisely what a device with no drops looks like. The
+    one reading a user would take from that ("WiFi Disconnects: 0") is the reading
+    that ends the investigation.
     """
-    for global_id in (
-        "wifi_disconnect_total",
-        "wifi_disconnect_reason_code",
-        "wifi_disconnect_rssi",
-        "wifi_disconnect_at_ms",
-    ):
-        assert _global(global_id) is not None, (
-            f"expected a global `{global_id}` — the esp_event handler runs in "
-            "the IDF event task and must stash into globals for the main-loop "
-            "trigger to publish, never call publish_state() itself."
-        )
+    boot = _on_boot_text()
+    assert "ESP_LOGE" in boot, (
+        "the return of esp_event_handler_instance_register must be checked and "
+        "logged on failure — otherwise the whole feature no-ops invisibly."
+    )
 
 
 # -- The entities -------------------------------------------------------------
@@ -209,7 +222,7 @@ def test_disconnect_rssi_sensor():
 def test_bssid_text_sensor():
     """Which AP we are on. A BSSID change at each drop is mesh steering."""
     text_sensors = _variant().get("text_sensor")
-    wifi_info = _find_by_platform(text_sensors, "wifi_info")
+    wifi_info = find_by_platform(text_sensors, "wifi_info")
     assert wifi_info is not None, (
         "expected a `platform: wifi_info` text_sensor exposing the BSSID — on a "
         "mesh (the #291 reporter is on eero) a BSSID that changes at every drop "
@@ -265,53 +278,81 @@ def test_diagnostic_sensors_never_poll():
     assert reason.get("update_interval") == "never"
 
 
-def test_disconnect_trigger_publishes_the_drop():
-    """Published from the main-loop trigger, while offline.
+def test_count_publishes_on_connect_so_a_healthy_device_reads_zero():
+    """`unknown` cannot answer the question the user guide asks.
 
-    ESPHome holds the state and ships it in the initial-state burst when the API
-    reconnects — which is the whole trick: the values describe an outage that,
-    by definition, we could not transmit during.
+    The guide's headline test is "WiFi Disconnects stays at 0 while HA still shows
+    the device unavailable ⇒ the device never lost WiFi". A template sensor with no
+    lambda publishes nothing until its first drop, so on exactly the device where
+    that test applies, HA renders `unknown` — indistinguishable from a broken
+    entity or firmware too old to have it. Publishing the count on every connect
+    means the first boot reports 0.
     """
-    text = _wifi_trigger_text("on_disconnect")
-    for sensor_id in (
-        "wifi_disconnect_count_sensor",
-        "wifi_disconnect_reason_sensor",
-        "wifi_disconnect_rssi_sensor",
-    ):
-        assert sensor_id in text, f"wifi.on_disconnect must publish {sensor_id}"
-
-
-def test_connect_trigger_publishes_downtime():
-    """Downtime is only knowable on the way back up."""
-    assert "wifi_downtime_sensor" in _wifi_trigger_text("on_connect"), (
-        "wifi.on_connect must publish wifi_downtime_sensor — the length of the "
-        "outage can only be computed once the link returns."
+    assert "wifi_disconnect_count_sensor" in _wifi_trigger_text("on_connect"), (
+        "wifi.on_connect must publish the count unconditionally, so a device that "
+        "has never dropped reports 0 rather than `unknown`."
     )
 
 
-def test_connect_trigger_republishes_reason_and_rssi():
-    """Closes the handler-ordering race, by making its outcome unobservable.
+def test_disconnect_trigger_republishes_the_count():
+    """So a brief blip that the API session survives is reported without waiting."""
+    assert "wifi_disconnect_count_sensor" in _wifi_trigger_text("on_disconnect"), (
+        "wifi.on_disconnect must publish the count"
+    )
 
-    Two handlers run for each disconnect: ESPHome's (registered first, in its
-    setup) queues the event for the main loop, and ours (registered in on_boot,
-    so second) stashes the reason and RSSI. If the loop were to pick the event up
-    in the window between the two, `wifi.on_disconnect` would publish the
-    *previous* drop's reason — precisely the misleading value we built this to
-    avoid.
 
-    The fix is not a handshake. The disconnect-time publish never reaches HA at
-    all: the device is offline, so the value merely sits in the entity until the
-    API reconnects and ESPHome ships it in the initial-state burst. What matters
-    is the value held at *reconnect*, and by then the handler has long since run.
-    Re-publishing here overwrites any stale value before anything could have
-    transmitted it, which makes the race unobservable rather than merely rare.
+def test_drop_is_described_on_reconnect_not_at_the_drop():
+    """Reason, RSSI and downtime are all taken on the way back up. Deliberately.
+
+    Reading the record at disconnect would race the IDF event handler: ESPHome's
+    own handler (registered first, in its setup) queues the event for the loop,
+    while ours — registered in on_boot, so second — writes the record. Were the loop
+    to pick the event up in the window between the two, on_disconnect would publish
+    the *previous* drop's reason: precisely the misleading value these entities
+    exist to prevent.
+
+    Publishing on reconnect costs nothing, because a state published during an
+    outage never reaches HA anyway — the device is offline, so it merely sits in
+    the entity until the API reconnects. Only the value held at reconnect is ever
+    transmitted, and by then the record has long settled.
     """
-    text = _wifi_trigger_text("on_connect")
-    for sensor_id in ("wifi_disconnect_reason_sensor", "wifi_disconnect_rssi_sensor"):
-        assert sensor_id in text, (
-            f"wifi.on_connect must re-publish {sensor_id} — the value published "
-            "during the outage was never transmitted, and re-publishing it now "
-            "is what closes the event-handler ordering race."
+    connect = _wifi_trigger_text("on_connect")
+    disconnect = _wifi_trigger_text("on_disconnect")
+
+    assert "take_drop" in connect, (
+        "wifi.on_connect must call epp::take_drop — it both marks the link up and "
+        "consumes the pending drop, so a reconnect with no IDF disconnect behind "
+        "it (a roam scan, a lost DHCP lease) republishes nothing."
+    )
+    for sensor_id in (
+        "wifi_disconnect_reason_sensor",
+        "wifi_disconnect_rssi_sensor",
+        "wifi_downtime_sensor",
+    ):
+        assert sensor_id in connect, f"wifi.on_connect must publish {sensor_id}"
+        assert sensor_id not in disconnect, (
+            f"wifi.on_disconnect must NOT publish {sensor_id} — reading the record "
+            "at disconnect races the IDF event handler, and the value would never "
+            "reach HA from there anyway."
+        )
+
+
+def test_latched_sensors_have_no_state_class():
+    """They hold the last drop's value forever; HA must not treat that as a series.
+
+    With `state_class: measurement`, HA records 5-minute long-term statistics of a
+    value that does not change between drops. After one bad drop the Disconnect
+    Signal graph is a flat -90 dBm line stretching indefinitely, sitting next to a
+    live WiFi Signal of -56 dBm — it reads as a permanently terrible signal. These
+    are attributes of the last event, not measurements of anything.
+    """
+    for sensor_id in ("wifi_disconnect_rssi_sensor", "wifi_downtime_sensor"):
+        sensor = _sensor(sensor_id)
+        assert sensor is not None
+        assert "state_class" not in sensor, (
+            f"{sensor_id} must not declare a state_class — it latches the last "
+            "drop's value, and long-term statistics of a held constant are "
+            "actively misleading."
         )
 
 
@@ -338,13 +379,13 @@ def test_wifi_diagnostics_absent_from_shared_base():
     text sensor in the shared base fails the ethernet config outright with
     `requires component wifi`. Keep all of this in the wifi variant.
     """
-    base = _load(BASE_YAML)
-    assert _find_by_platform(base.get("text_sensor"), "wifi_info") is None, (
+    base = load_yaml(BASE_YAML)
+    assert find_by_platform(base.get("text_sensor"), "wifi_info") is None, (
         "wifi_info must not live in everything-presence-pro-base.yaml — the "
         "ethernet-ble-co2 variant includes the base but has no `wifi:` "
         "component, so ESPHome fails its config."
     )
     for sensor_id in ("wifi_disconnect_count_sensor", "wifi_disconnect_rssi_sensor", "wifi_downtime_sensor"):
-        assert _find_by_id(base.get("sensor"), sensor_id) is None, (
+        assert find_by_id(base.get("sensor"), sensor_id) is None, (
             f"{sensor_id} must live in the wifi variant, not the shared base"
         )
