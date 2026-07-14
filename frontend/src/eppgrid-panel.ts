@@ -2626,11 +2626,25 @@ export class EPPGridPanel extends LitElement {
 			</div>`;
 		}
 
+		const dev = this._devices.find((d) => d.mac === this._selectedMac);
+		// Missing-from-list is treated as offline so a transient empty
+		// device list during HA reload shows the offline banner instead
+		// of falling through to a half-rendered grid without data.
+		//
+		// `_streamOffline` is the durable stream's own liveness (#336): our session
+		// socket can die while HA still lists the device as available, and only the
+		// stream knows.
+		const isOffline =
+			!!this._selectedMac &&
+			(!dev || dev.firmware_status === "unavailable" || this._streamOffline);
+		const protocolOk = !dev || dev.firmware_status === "compatible";
+
 		if (this._view === "tutorial" || this._view === "calibrate") {
 			return html`<div class="tab-layout">
         ${this._renderTabBar()}
         <div class="panel">
           ${this._renderHeader()}
+          ${isOffline ? this._renderConnectionBanner() : nothing}
           <epp-wizard
             .rawTargets=${this._rawTargets}
             .sensorState=${this._getWizardSensorState()}
@@ -2650,14 +2664,6 @@ export class EPPGridPanel extends LitElement {
         </div>
       </div>`;
 		}
-
-		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		// Missing-from-list is treated as offline so a transient empty
-		// device list during HA reload shows the offline banner instead
-		// of falling through to a half-rendered grid without data.
-		const isOffline =
-			!!this._selectedMac && (!dev || dev.firmware_status === "unavailable");
-		const protocolOk = !dev || dev.firmware_status === "compatible";
 
 		// Compute the inline status banner for settings-view editing (see the
 		// `inSettingsEdit` comment above for why the full-page branches must
@@ -2976,7 +2982,8 @@ export class EPPGridPanel extends LitElement {
 	private _renderConnectionBanner() {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		const isOffline =
-			!!this._selectedMac && (!dev || dev.firmware_status === "unavailable");
+			!!this._selectedMac &&
+			(!dev || dev.firmware_status === "unavailable" || this._streamOffline);
 
 		if (!this._deviceCtrl.connectionFailed && !isOffline) return nothing;
 

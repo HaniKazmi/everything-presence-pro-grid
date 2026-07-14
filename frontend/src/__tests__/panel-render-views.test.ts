@@ -633,6 +633,75 @@ describe("render() handles offline device", () => {
 	});
 });
 
+describe("render() shows the calibration wizard an offline device (#336)", () => {
+	it("renders the offline banner while calibrating", () => {
+		const a = createPanel() as any;
+		a._view = "calibrate";
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: false,
+				configured: true,
+				firmware_status: "unavailable",
+			},
+		];
+
+		const str = JSON.stringify(a.render());
+
+		expect(str).toContain("connection.offline");
+	});
+
+	it("keeps the wizard mounted so captured corners survive the drop", () => {
+		// The wizard holds the user's captured corners in its own component state.
+		// Unmounting it (the full-page banner the other views use) would throw away
+		// their progress on a transient flap and restart calibration at step 1.
+		const a = createPanel() as any;
+		a._view = "calibrate";
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: false,
+				configured: true,
+				firmware_status: "unavailable",
+			},
+		];
+
+		const str = JSON.stringify(a.render());
+
+		expect(str).toContain("epp-wizard");
+	});
+
+	it("shows the banner when the stream drops but HA still thinks the device is fine", () => {
+		// The session-only socket drop (#334's class): HA's device list still says
+		// available, so only the stream knows.
+		const a = createPanel() as any;
+		a._view = "calibrate";
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: true,
+				configured: true,
+				firmware_status: "compatible",
+			},
+		];
+		a._streamOffline = true;
+
+		const str = JSON.stringify(a.render());
+
+		expect(str).toContain("connection.offline");
+		expect(str).toContain("epp-wizard");
+	});
+});
+
 describe("render() preserves settings view across transient device states", () => {
 	// HA debounces ESPHome config-entry reloads 30s after the last entity
 	// disabled_by change, so saving an entity toggle in eppgrid causes the
