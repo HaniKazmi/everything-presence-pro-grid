@@ -180,7 +180,11 @@ describe("panel state survives device offline→online", () => {
 		expect(getConfigCallCount()).toBe(before);
 	});
 
-	it("re-opens a fresh device session when the device transitions back to available", async () => {
+	it("keeps the existing device session across a device-list availability blip", async () => {
+		// Recovery is the manager's job now (#336): a device-list flap alone
+		// must not tear down or reopen the frontend's session — the durable
+		// stream's own `available`/`closed` signal (onAvailability) drives
+		// that instead, and a device-list-only mock never fires it.
 		const { el, a, pushDeviceList, sessionSubCount } = await mountPanel([
 			makeDevice("aa", true),
 		]);
@@ -192,8 +196,96 @@ describe("panel state survives device offline→online", () => {
 		await el.updateComplete;
 		await new Promise((r) => setTimeout(r, 0));
 
-		expect(sessionSubCount()).toBeGreaterThan(before);
+		expect(sessionSubCount()).toBe(before);
 		expect(a._deviceCtrl.hasDeviceSession).toBe(true);
+	});
+
+	it("clears stale live data when the stream reports the device dropped", async () => {
+		const { el, a } = await mountPanel([makeDevice("aa", true)]);
+
+		a._targets = [{ x: 1, y: 2, status: "active", signal: 9 }];
+		a._rawTargets = [{ raw_x: 1, raw_y: 2 }];
+
+		// The durable stream reports the device dropped (#336).
+		a._deviceCtrl.onAvailability("aa", false);
+		await el.updateComplete;
+
+		expect(a._targets).toEqual([]);
+		expect(a._rawTargets).toEqual([]);
+		expect(a._streamOffline).toBe(true);
+
+		a._deviceCtrl.onAvailability("aa", true);
+		await el.updateComplete;
+		expect(a._streamOffline).toBe(false);
+	});
+
+	it("is idempotent across repeated available:false signals from sibling streams", async () => {
+		// All three live streams (grid, raw, heatmap) opt into availability
+		// and each call onAvailability independently, so a single flap
+		// fires this hook 2-3x with the same `false`. The clear (including
+		// the zone-engine reset) must only run once — repeating it risks
+		// dropping state that arrived between the calls and offers no
+		// benefit since the data is already clear.
+		const { el, a } = await mountPanel([makeDevice("aa", true)]);
+		const resetSpy = vi.spyOn(a._targetCtrl, "resetZoneEngineState");
+
+		a._targets = [{ x: 1, y: 2, status: "active", signal: 9 }];
+		a._deviceCtrl.onAvailability("aa", false);
+		a._deviceCtrl.onAvailability("aa", false);
+		a._deviceCtrl.onAvailability("aa", false);
+		await el.updateComplete;
+
+		expect(resetSpy).toHaveBeenCalledTimes(1);
+		expect(a._targets).toEqual([]);
+		expect(a._streamOffline).toBe(true);
+	});
+
+	it("clears live data again on a fresh flap after a false→true→false cycle", async () => {
+		const { el, a } = await mountPanel([makeDevice("aa", true)]);
+		const resetSpy = vi.spyOn(a._targetCtrl, "resetZoneEngineState");
+
+		a._deviceCtrl.onAvailability("aa", false);
+		await el.updateComplete;
+		expect(a._streamOffline).toBe(true);
+		expect(resetSpy).toHaveBeenCalledTimes(1);
+
+		a._deviceCtrl.onAvailability("aa", true);
+		await el.updateComplete;
+		expect(a._streamOffline).toBe(false);
+
+		// A genuinely new flap must clear again, not stay latched from the
+		// first one.
+		a._targets = [{ x: 3, y: 4, status: "active", signal: 4 }];
+		a._deviceCtrl.onAvailability("aa", false);
+		await el.updateComplete;
+
+		expect(a._streamOffline).toBe(true);
+		expect(a._targets).toEqual([]);
+		expect(resetSpy).toHaveBeenCalledTimes(2);
+	});
+
+	it("ignores an availability signal for a device other than the selected one", async () => {
+		// Guard: onAvailability's `mac !== this._selectedMac` check must
+		// actually gate. The retired device-controller-level mechanism had
+		// an equivalent invariant test ("does not fire onSelectedAvailable
+		// when a non-selected device flips availability"), but it was
+		// dropped rather than re-pointed at this handler when #336 replaced
+		// it — every other onAvailability test here uses the selected mac,
+		// so nothing else would catch a regression. Without the guard, a
+		// late `available: false` for a device the user has since switched
+		// away from would wipe the *currently selected* device's live state.
+		const { el, a } = await mountPanel([
+			makeDevice("aa", true),
+			makeDevice("bb", true),
+		]);
+		a._selectedMac = "aa";
+		a._targets = [{ x: 1, y: 2, status: "active", signal: 9 }];
+
+		a._deviceCtrl.onAvailability("bb", false);
+		await el.updateComplete;
+
+		expect(a._streamOffline).toBe(false);
+		expect(a._targets).toEqual([{ x: 1, y: 2, status: "active", signal: 9 }]);
 	});
 
 	// --- HA WebSocket disconnect/reconnect paths ---

@@ -305,6 +305,31 @@ describe("layout styles", () => {
 		expect(ovRule).toMatch(/position:\s*absolute/);
 	});
 
+	it("calibrate/tutorial wizard overlays the connection banner like the settings stage", () => {
+		// Like .settings-stage, .wizard-stage overlays the connection banner
+		// instead of stacking it as a block/flex sibling — .panel becomes a
+		// flex column on mobile, where a plain sibling's flex:1 would steal
+		// space from <epp-wizard> (no flex of its own) and clip it. Room
+		// calibration is typically done on a phone, so the wizard must stay
+		// fully visible (#336).
+		const pcss = panelStyles.cssText;
+		const stageIdx = pcss.indexOf(".wizard-stage {");
+		expect(stageIdx).toBeGreaterThan(-1);
+		const stageRule = pcss.slice(stageIdx, pcss.indexOf("}", stageIdx));
+		expect(stageRule).toMatch(/position:\s*relative/);
+		expect(stageRule).toMatch(/display:\s*flex/);
+		expect(stageRule).toMatch(/flex-direction:\s*column/);
+
+		const wizardIdx = pcss.indexOf(".wizard-stage > epp-wizard");
+		const wizardRule = pcss.slice(wizardIdx, pcss.indexOf("}", wizardIdx));
+		expect(wizardRule).toMatch(/flex:\s*1/);
+		expect(wizardRule).toMatch(/min-height:\s*0/);
+
+		const ovIdx = pcss.indexOf(".wizard-stage > .protocol-fullpage");
+		const ovRule = pcss.slice(ovIdx, pcss.indexOf("}", ovIdx));
+		expect(ovRule).toMatch(/position:\s*absolute/);
+	});
+
 	it("desktop frames the grid in an expansion-area card, reset on mobile", () => {
 		// .editor-shell .grid-container gets a themed surface + border on desktop
 		// (shows the area the grid can expand into; the log lines up with its left

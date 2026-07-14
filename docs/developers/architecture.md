@@ -287,12 +287,23 @@ rename. The integration is now the source of truth for firmware-update detection
 
 ### Durable frontend state streams (`device_manager/_streams.py`)
 
+A `DeviceConnection` (`_connection.py`) is a **second `aioesphomeapi.APIClient`
+socket** to the device, entirely separate from the ESPHome integration's own
+connection. That's the failure mode durability exists for: our socket can die —
+a device flap, an exhausted API-slot count, a Wi-Fi hiccup — while HA's
+device-list `available` flag still reads `true`, because that flag tracks the
+ESPHome integration's connection, not ours. Watching the device list was
+therefore never sufficient to detect (or recover from) our own connection dying.
+
 A `DeviceConnection` is disposable — a device flap kills it, and its death
 clears every state subscriber registered on it (`_release_references`). A
 frontend client's subscription is not: the dashboard card can sit on a wall
-tablet for days. The two are bridged by **durable state streams**: a
-`StateStream` record (`_streams.py`) that `DeviceManager` registers, arms, and
-re-arms across connection replacement.
+tablet for days, and the panel can be left open through a whole calibration
+session. The two are bridged by **durable state streams**: a `StateStream`
+record (`_streams.py`) that `DeviceManager` registers, arms, and re-arms across
+connection replacement. The manager is the single owner of stream recovery —
+neither the card nor the panel watches the device list to recover a stream
+themselves.
 
 A stream stores a *factory* (`make_on_state(mac, conn)`), not a bound callback,
 because the device's entity keys are only knowable from the live connection —
@@ -315,15 +326,26 @@ and released when it **closes**, never on arm/disarm. They are per-mac rather
 than per-connection precisely so they survive a connection replacement.
 
 Arm/disarm is reported to the stream's owner through `on_availability(bool)`.
-The overview WS commands (`websocket_api/_overview.py`,
-`_start_durable_target_stream`) hand their streams to the manager this way and
-relay the notification to the card as `{"available": …}` events — but only for
+Both consumers hand their streams to the manager through the shared scaffolding
+in `websocket_api/_durable_stream.py` (`start_durable_stream`): the card's
+`websocket_api/_overview.py` (`_start_overview_stream`) and the panel's
+`websocket_api/_devices.py` (`_start_panel_stream`, backing
+`subscribe_raw_targets` / `subscribe_grid_targets` / `subscribe_heatmap`).
+
+The card relays the notification as `{"available": …}` events, but only for
 `eppgrid/overview/subscribe`. `eppgrid/overview/subscribe_heatmap` deliberately
 keeps its live wire contract byte-identical to what shipped before durable
 streams (at most one subscribe-time `{"available": false}`, never a live event):
 already-deployed card bundles blank the heatmap overlay on any message without a
 `cells` field, so a live availability event would blank a working heatmap on
 every flap.
+
+The panel's three commands relay the same `{"available": …}` events, but only
+for a client that opts in with a request field, `availability: bool` (default
+`false` — see data-catalog.md). A cached pre-upgrade panel bundle does not set
+it, and its reducer replaces the whole message with `event.targets || []`, so it
+must keep seeing frames and nothing else; the current panel bundle always opts
+in.
 
 Re-arming heals a *device* flap, but not the manager's own death. On a config-
 entry unload/reload (an options change, a HACS update) `async_stop` drops every
@@ -337,14 +359,59 @@ for a device the backend is merely waiting on. So a second, terminal signal —
 re-subscribe*. It fires from those two manager-initiated teardowns ONLY: never
 on a client unsub (the client already knows) and never on a flap (the stream
 survives that). On the wire it is `{"available": false, "closed": true}` for
-`overview/subscribe` and `{"closed": true}` for `overview/subscribe_heatmap`;
-both are inert-or-harmless to a card bundle that predates them.
+`overview/subscribe` and the panel's three commands (when opted in via
+`availability: true`), and `{"closed": true}` for `overview/subscribe_heatmap`;
+all are inert-or-harmless to a bundle that predates them.
 
-The admin panel's streams (`_devices.py::_start_target_stream`) were
-deliberately not converted — the panel already recovers on its own by watching
-the device list and re-subscribing (`onSelectedAvailable` in
-`device-controller.ts`). The two mechanisms coexist safely: both go through the
-same refcounted session.
+The panel's own three streams (`subscribe_raw_targets`,
+`subscribe_grid_targets`, `subscribe_heatmap`, in `_devices.py`) go through this
+exact same machinery — they used to be an ephemeral `manager.get_session` +
+`device_conn.subscribe_states` subscription, hand-rolled per command, that died
+with the `DeviceConnection` and relied on the panel watching the device list and
+re-subscribing on the next availability transition. That mechanism is retired:
+it never covered a flap HA's device list didn't also report, which is exactly
+the failure mode above. The panel's `device-controller.ts` now speaks the same
+`available` / `closed` protocol as the card (`_subscribeStream`, opted in via
+`availability: true`), re-subscribing only on `closed`, with an exponential
+backoff (capped at 30s, uncapped attempt count) rather than on every device-list
+availability edge.
+
+The panel's `subscribe_device` session
+(`_devices.py::websocket_subscribe_device`) is **not** part of this durable
+machinery — it exists only for **writes** (`set_settings`, `dismiss_target`, OTA
+progress) that must land on a live connection when the user acts. Its reference
+is deliberately allowed to go stale across a flap: `release_session`
+identity-checks the connection it's asked to release against the manager's
+current `_active_connections[mac]` and no-ops when they differ — a force-close
+or a stream re-arm already replaced it — so a client releasing its pre-flap
+reference can never tear down someone else's session. Re-arming the streams
+itself re-opens the session as a side effect (`_ensure_streams` →
+`async_open_session`), so by the time the panel issues its next write,
+`manager.get_session(mac)` already returns the replacement connection and the
+write succeeds without the panel doing anything to recover it.
+
+**The whole recovery model reduces to one rule:** the manager owns the liveness
+of a stream that exists; the client owns whether a stream exists at all. Every
+frontend behaviour above is a consequence of that split, not a special case of
+its own:
+
+- A device flap → the stream still exists → the manager re-arms it and the
+    client does nothing (the `available` event round-trips false → true on its
+    own).
+- `closed` → the stream ceased to exist → the client re-creates it (uncapped
+    backoff).
+- No session at all (device offline at mount, or re-added after removal) →
+    nothing exists for the manager to re-arm → the client creates one itself.
+- Device removed from the device list → the stream can never exist again → the
+    client destroys its own session.
+- A first-subscribe rejection → the client's own *create* didn't take, so there
+    was never a stream for the manager to own → hence the connection-failed
+    banner, and why that retry is capped (`SUBSCRIBE_RETRY_LIMIT`) while the
+    `closed` re-open backoff is not.
+
+See the `DeviceController` class docstring
+(`frontend/src/controllers/device-controller.ts`) for the same derivation
+alongside the code it explains.
 
 ### Storage (`storage.py`)
 

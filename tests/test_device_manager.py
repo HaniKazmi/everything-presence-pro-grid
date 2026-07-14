@@ -5858,10 +5858,14 @@ class TestEventCallbacks:
         ESPHome reload triggered by an entity-registry change flips the device
         offline (which fires _fire_device_list_changed with available=False),
         then online. _on_device_available sets dev.available=True; if the
-        guard-skip path returns without firing the broadcast, the frontend's
-        recovery hook (device-controller.ts: onSelectedAvailable on false→true
-        transition) never runs, the WS subscription stays attached to the
-        torn-down session, and the user sees a stuck target until they refresh.
+        guard-skip path returns without firing the broadcast, the panel's
+        bootstrap (onDeviceListChanged's `!hasDeviceSession` guard, #336) never
+        sees the device come back, so a device that has no session (e.g. it was
+        offline when the panel mounted, or was removed and re-added) never gets
+        one — the user sees a stuck/empty grid until they refresh. Stream
+        recovery for a device that ALREADY has a session is the manager's own
+        job (`_ensure_streams`, above); this broadcast is what the device-list
+        push still needs to carry on top of that.
         """
         mac = "AA:BB:CC:DD:EE:FF"
         store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
@@ -7548,6 +7552,75 @@ class TestSessionRefcounting:
 
         conn.async_disconnect.assert_awaited_once()
         assert manager._session_refcounts == {}
+
+    async def test_stale_release_after_a_flap_does_not_touch_the_replacement_refcount(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """The panel holds its session across a flap; its unsub carries a dead conn.
+
+        Once the panel stops closing its session on the availability edge (#336), the
+        `subscribe_device` unsub fires with the PRE-flap connection. That release must
+        not decrement the refcount that now belongs to the replacement session (which
+        the re-armed streams own) — otherwise the first view teardown after a flap
+        closes a session other subscribers are still using.
+        """
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._is_device_available = MagicMock(return_value=True)
+
+        conn1 = self._make_conn()
+        conn2 = self._make_conn()
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_cls.side_effect = [conn1, conn2]
+
+            # The panel opens its write session.
+            opened = await manager.async_open_session(mac)
+            assert opened is conn1
+            assert manager._session_refcounts[mac] == 1
+
+            # The device flaps: conn1 dies. A fresh open (what a re-armed stream does)
+            # evicts the dead conn and starts the replacement's count from zero.
+            conn1.connected = False
+            manager._on_session_lost(conn1)
+            await hass.async_block_till_done()
+
+            reopened = await manager.async_open_session(mac)
+            assert reopened is conn2
+            assert manager._session_refcounts[mac] == 1
+
+            # The panel's unsub finally fires, carrying the DEAD conn.
+            manager.release_session(mac, conn1)
+
+            # The replacement's reference is untouched and the session is still live.
+            assert manager._session_refcounts[mac] == 1
+            assert manager.get_session(mac) is conn2
+
+    async def test_writes_reach_the_replacement_session_after_a_flap(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """`get_session` returns the NEW connection after a flap, so panel writes work.
+
+        The panel's write commands (set_settings, dismiss_target) resolve the session
+        via `get_session(mac)`. With durable streams re-opening the session, the panel
+        does not reopen anything itself — this is what makes that safe (#336).
+        """
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._is_device_available = MagicMock(return_value=True)
+
+        conn1 = self._make_conn()
+        conn2 = self._make_conn()
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_cls.side_effect = [conn1, conn2]
+
+            await manager.async_open_session(mac)
+            conn1.connected = False
+            manager._on_session_lost(conn1)
+            await hass.async_block_till_done()
+            assert manager.get_session(mac) is None  # nothing live between the two
+
+            await manager.async_open_session(mac)
+            assert manager.get_session(mac) is conn2
 
 
 # ---------------------------------------------------------------------------
@@ -11122,10 +11195,12 @@ class TestOverviewStreamRecovery:
     """The card's stream must survive a device flap — issue #334.
 
     End-to-end across the two layers that broke: the REAL non-admin WS scaffolding
-    (`_start_durable_target_stream`) on a REAL `DeviceManager`. The panel recovers by
-    watching the device list and resubscribing, but the card is non-admin and has no
-    such hook, so recovery has to come from the manager — the callback is bound to a
-    disposable `DeviceConnection`, and nothing re-armed it when that connection died.
+    (`_start_overview_stream`) on a REAL `DeviceManager`. The card is non-admin and
+    has no device-list hook of its own, so recovery has to come from the manager —
+    the callback is bound to a disposable `DeviceConnection`, and nothing re-armed
+    it when that connection died. (The panel used to recover by watching the device
+    list and resubscribing instead; #336 retired that and moved the panel's own
+    three streams onto this same manager-owned recovery.)
     """
 
     class FakeDeviceConnection:
@@ -11167,7 +11242,7 @@ class TestOverviewStreamRecovery:
 
     async def test_card_keeps_streaming_after_a_device_flap(self, hass, manager):
         from custom_components.eppgrid.websocket_api._devices import _make_grid_target_on_state
-        from custom_components.eppgrid.websocket_api._overview import _start_durable_target_stream
+        from custom_components.eppgrid.websocket_api._overview import _start_overview_stream
 
         mac = "AA:BB:CC:DD:EE:01"
         manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
@@ -11194,15 +11269,14 @@ class TestOverviewStreamRecovery:
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/overview/subscribe", "device_id": "dev1"}
 
-        await _start_durable_target_stream(
+        await _start_overview_stream(
             connection,
             msg,
             manager,
             counter_attr="grid_target_subs",
             make_on_state=lambda m, dc: _make_grid_target_on_state(connection, msg["id"], m, dc),
             send_snapshot=True,
-            send_availability=True,
-            log_prefix="test",
+            protocol="full",
         )
 
         assert len(opened) == 1
@@ -11252,7 +11326,7 @@ class TestOverviewStreamRecovery:
         """
         from custom_components.eppgrid.websocket_api._devices import _make_grid_target_on_state
         from custom_components.eppgrid.websocket_api._devices import _make_heatmap_on_state
-        from custom_components.eppgrid.websocket_api._overview import _start_durable_target_stream
+        from custom_components.eppgrid.websocket_api._overview import _start_overview_stream
 
         mac = "AA:BB:CC:DD:EE:01"
         manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50", device_id="dev1")
@@ -11272,25 +11346,23 @@ class TestOverviewStreamRecovery:
         connection.subscriptions = {}
 
         with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=conn):
-            await _start_durable_target_stream(
+            await _start_overview_stream(
                 connection,
                 {"id": 1, "type": "eppgrid/overview/subscribe", "device_id": "dev1"},
                 manager,
                 counter_attr="grid_target_subs",
                 make_on_state=lambda m, dc: _make_grid_target_on_state(connection, 1, m, dc),
                 send_snapshot=True,
-                send_availability=True,
-                log_prefix="test",
+                protocol="full",
             )
-            await _start_durable_target_stream(
+            await _start_overview_stream(
                 connection,
                 {"id": 2, "type": "eppgrid/overview/subscribe_heatmap", "device_id": "dev1"},
                 manager,
                 counter_attr="heatmap_subs",
                 make_on_state=lambda m, dc: _make_heatmap_on_state(connection, 2, m, dc),
                 send_snapshot=False,
-                send_availability=False,
-                log_prefix="test",
+                protocol="closed_only",
             )
             await hass.async_block_till_done()
 
@@ -11309,5 +11381,109 @@ class TestOverviewStreamRecovery:
 
         connection.subscriptions[1]()
         connection.subscriptions[2]()
+        await manager.async_stop()
+        await hass.async_block_till_done()
+
+
+class TestPanelStreamRecovery:
+    """The panel's live streams must survive a device flap — issue #336.
+
+    The card got this in #334/#335; the panel was left on the hand-rolled path, so its
+    live view, zone editor, calibration wizard and heatmap froze silently when our
+    session socket died while HA still believed the device was available.
+    """
+
+    async def test_panel_keeps_streaming_after_a_device_flap(self, hass, manager):
+        from custom_components.eppgrid.websocket_api._devices import _make_grid_target_on_state
+        from custom_components.eppgrid.websocket_api._devices import _start_panel_stream
+
+        mac = "AA:BB:CC:DD:EE:01"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Bedroom", host="192.168.1.50")
+        manager._store.devices = {mac: {}}
+        manager._is_device_available = MagicMock(return_value=True)
+
+        # The replacement renumbers its entities (an OTA can): a re-arm that reused the
+        # dead conn's key map would decode nothing.
+        conns = [
+            TestOverviewStreamRecovery.FakeDeviceConnection(key=1),
+            TestOverviewStreamRecovery.FakeDeviceConnection(key=2),
+        ]
+        opened: list[Any] = []
+
+        async def _open(_mac):
+            conn = conns[len(opened)]
+            opened.append(conn)
+            return conn
+
+        manager.async_open_session = AsyncMock(side_effect=_open)
+        manager.release_session = MagicMock(return_value=None)
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {
+            "id": 1,
+            "type": "eppgrid/subscribe_grid_targets",
+            "mac": mac,
+            "availability": True,
+        }
+
+        await _start_panel_stream(
+            connection,
+            msg,
+            manager,
+            counter_attr="grid_target_subs",
+            make_on_state=lambda m, dc: _make_grid_target_on_state(connection, msg["id"], m, dc),
+        )
+
+        assert len(opened) == 1
+        assert len(conns[0].subscribers) == 1
+
+        # Reset so only the flap's own availability events are captured below — the
+        # initial arm already sent its own rising `{"available": True}` (`_arm_stream`
+        # notifies True on every successful arm, including the first), which would
+        # otherwise satisfy a set-membership check on `events` even if the flap's
+        # events came out in the wrong ORDER (see the ordered assertion below).
+        connection.send_message.reset_mock()
+
+        # The device flaps: its API connection dies, taking every state subscriber with
+        # it (exactly what `_release_references` does).
+        conns[0].kill()
+        manager._on_session_lost(conns[0])
+        # `_settle`, not `async_block_till_done`: the latter would also await the
+        # debounced pipeline push's real-time sleep.
+        await _settle()
+
+        # Re-armed on the REPLACEMENT connection, callback rebuilt from the factory.
+        assert len(opened) == 2
+        assert len(conns[1].subscribers) == 1
+
+        # The panel was told the device dropped and came back, in that ORDER. A bug
+        # that fires `notify(False)` right after the re-arm's `notify(True)` — frames
+        # flow but the panel stays stuck on the offline banner — would still satisfy
+        # a set-membership `{"available": True} in events` / `{"available": False} in
+        # events` check; asserting the exact ordered sequence catches it.
+        events = [
+            c.args[0]["event"]
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and "available" in c.args[0].get("event", {})
+        ]
+        assert events == [{"available": False}, {"available": True}]
+
+        # A frame on the new connection reaches the panel.
+        connection.send_message.reset_mock()
+        conns[1].emit_target("100,200,active")
+        target_events = [
+            c
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and "targets" in c.args[0].get("event", {})
+        ]
+        assert target_events, "expected the panel to receive a frame after the flap"
+
+        # The subscriber count survived the flap — taken once at registration, never
+        # re-taken. Decrementing it on connection loss would silence the device's
+        # pipeline for a still-subscribed client ("target disappears").
+        assert manager._target_subs[mac]["grid_target_subs"] == 1
+
+        connection.subscriptions[1]()
         await manager.async_stop()
         await hass.async_block_till_done()

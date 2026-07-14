@@ -10,6 +10,32 @@ import type { DeviceInfo, RawTarget, Target, TargetStatus } from "../types.js";
 const SUBSCRIBE_RETRY_LIMIT = 5;
 const SUBSCRIBE_RETRY_DELAY_MS = 2000;
 
+// Re-open backoff for a stream the manager tore down (`closed`). Same base/cap and
+// doubling as the card's schedule (frontend/src/card/subscription-store.ts) — an
+// integration reload can take a while, so this backs off exponentially and NEVER
+// gives up: giving up would leave the panel frozen, which is the bug (#334/#336).
+// Deliberately differs from the card in two ways: no `Math.random()` jitter (the
+// card spreads re-opens across many dashboard cards sharing a connection; the panel
+// has at most 3 streams total, so jitter buys nothing) and no TERMINAL_REOPEN_CODES
+// (the card can't tell a removed device from a reload failure on its own; the panel's
+// device-list push cancels the retry timer for all three streams — including the
+// heatmap overlay — via closeDeviceSession (which now folds in _unsubscribeHeatmap
+// too, #336) / unsubscribeTargets, only when the device disappears from the list
+// entirely — see _applyDeviceList's removal-scoped teardown. A device that merely
+// goes unavailable while still LISTED does NOT cancel it: that flap is the manager's
+// own recovery to make, and the backoff here is what keeps re-opening until the
+// re-arm lands). Distinct from SUBSCRIBE_RETRY_*, which covers a rejected *initial*
+// subscribe and does latch a banner after 5 tries.
+const REOPEN_BASE_MS = 500;
+const REOPEN_CAP_MS = 30_000;
+
+// Synthetic key for the device-list resubscribe's entry in `_reopenAttempts`
+// (see `_retryDeviceListSubscribe`). Not a real `subscribeMessage` type —
+// the device list has no `available`/`closed` envelope of its own — but
+// sharing the same counter map keeps the never-give-up backoff bookkeeping
+// in one place rather than a second, parallel counter.
+const DEVICE_LIST_RETRY_KEY = "eppgrid/subscribe_device_list";
+
 /**
  * Structured target/sensor/zone data delivered by the grid-targets subscription.
  */
@@ -44,6 +70,26 @@ export interface TargetData {
  *
  * It implements Lit's ReactiveController interface so the host element
  * re-renders when the controller's observable state changes.
+ *
+ * Recovery model (#334/#336): the manager owns the liveness of a stream that
+ * exists; the client owns whether a stream exists at all. Every recovery
+ * behaviour below is a consequence of that one split, not a special case of
+ * its own:
+ *  - A device flap: the stream still exists, so the manager re-arms it and the
+ *    client does nothing — the `available` event round-trips false → true on
+ *    its own.
+ *  - `closed`: the manager tore the stream down, so it ceased to exist — the
+ *    client re-creates it (uncapped backoff; see `REOPEN_BASE_MS`/`REOPEN_CAP_MS`
+ *    above).
+ *  - No session at all (device offline at mount, or re-added after removal):
+ *    nothing exists for the manager to re-arm, so the client has to create one
+ *    itself.
+ *  - Device removed from the device list: the stream can never exist again, so
+ *    the client destroys its own session/subscriptions instead of waiting on it.
+ *  - A first-subscribe rejection: the client's own *create* didn't take, so
+ *    there was never a stream for the manager to own — hence the
+ *    connection-failed banner, and why that retry is capped
+ *    (`SUBSCRIBE_RETRY_LIMIT` above) while the `closed` re-open backoff is not.
  */
 export class DeviceController implements ReactiveController {
 	// --- Observable state ---
@@ -56,10 +102,9 @@ export class DeviceController implements ReactiveController {
 	onRawTargetData?: (targets: RawTarget[]) => void;
 	onHeatmapData?: (cells: number[]) => void;
 	onDeviceListChanged?: () => void;
-	onSessionClosed?: () => void;
-	/** Selected device transitioned to available. Host decides whether to
-	 * reopen the session (config already loaded) or load config fresh. */
-	onSelectedAvailable?: (mac: string) => void;
+	/** The device behind a live stream dropped (false) or came back (true).
+	 *  Drives the panel's offline banner and its stale-live-data clear. */
+	onAvailability?: (mac: string, available: boolean) => void;
 	/** Host's unsaved-edits state. While true, _applyDeviceList defers the
 	 * auto-switch to another device when the selected mac disappears from a
 	 * non-empty push — switching would make the host load the replacement
@@ -76,15 +121,66 @@ export class DeviceController implements ReactiveController {
 	private _targetRetryTimer?: ReturnType<typeof setTimeout>;
 	private _displayRetryTimer?: ReturnType<typeof setTimeout>;
 	private _heatmapRetryTimer?: ReturnType<typeof setTimeout>;
+	// Backoff timer for `_retryDeviceListSubscribe` (see below). Separate from
+	// the three stream retry timers above since the device-list resubscribe
+	// isn't one of `_subscribeStream`'s streams — it reuses the same
+	// REOPEN_BASE_MS/REOPEN_CAP_MS constants and never-give-up shape, not the
+	// mechanism itself.
+	private _deviceListRetryTimer?: ReturnType<typeof setTimeout>;
+	// Per-stream re-open attempt count, keyed by stream.type. Zero/absent means
+	// "not re-opening" — the `_subscribeStream` catch uses that to tell a
+	// rejected re-open (keep backing off, never give up) from a rejected
+	// *initial* subscribe (the capped SUBSCRIBE_RETRY_LIMIT path). Reset to 0
+	// by a successful open AND by every intentional teardown
+	// (unsubscribeTargets/unsubscribeDisplay/_unsubscribeHeatmap) — otherwise a
+	// pending re-open abandoned by a device switch would leak into the next,
+	// unrelated subscribe and mistake a genuine failure for "still reopening",
+	// backing off forever instead of ever latching the banner.
+	private _reopenAttempts: Record<string, number> = {};
 	// Heatmap subscription *intent* — true between setHeatmapEnabled(true) and
 	// setHeatmapEnabled(false)/teardown. Mirrors `_wantDeviceListSub`: a
 	// connection swap or resubscribe (subscribeTargets) needs to know whether
 	// to re-open the heatmap sub, independent of whether one happens to be
 	// in flight or already stashed.
 	private _heatmapEnabled = false;
+	// Per-stream liveness for the currently-selected device, keyed by
+	// stream.type (one of the three subscribe_* commands). The manager arms
+	// these streams ONE AT A TIME (`_ensure_streams` in
+	// device_manager/__init__.py), so a single re-arm pass can report grid
+	// `available:true` and then raw `available:false` moments later.
+	// Aggregated in `_reportStreamAvailability` below, which is the ONLY
+	// thing allowed to call `onAvailability` — reporting a lone stream's edge
+	// directly (as the code used to) would flip the panel's offline banner
+	// AND run its stream-offline clear (which resets the zone-engine
+	// replica) while a sibling stream is still live and delivering frames,
+	// desyncing the frontend's zone-engine replica from the firmware's
+	// (#336). Reset on every `subscribeTargets` so a previous device's
+	// entries can never leak into this one's aggregate. A stream that is
+	// torn down (unsubscribeTargets/unsubscribeDisplay/_unsubscribeHeatmap)
+	// deletes its own entry rather than leaving its last value behind — a
+	// stream that is not subscribed must not vote, or a stranded `true`
+	// (e.g. the heatmap overlay disabled after reporting available) could
+	// mask a genuine outage on the remaining streams forever (#336
+	// regression).
+	private _streamAvailability: Partial<Record<string, boolean>> = {};
+	// The last aggregate ("is any stream up") reported to the host, so a
+	// same-valued update doesn't re-fire onAvailability. `undefined` (reset
+	// alongside `_streamAvailability`) ensures the first genuine report for a
+	// freshly (re)subscribed device is never suppressed by a stale value left
+	// over from the device it replaced.
+	private _lastReportedAvailable: boolean | undefined;
+	// True while a `closed`-triggered device-list resubscribe is in flight.
+	// A config-entry reload replaces the manager instance — its
+	// `_device_list_callbacks` list goes with it, so this subscription's
+	// registration on the OLD manager is orphaned forever; nothing else ever
+	// re-subscribes it (`_onHaReady` only fires on an HA *websocket*
+	// reconnect, which a config-entry reload does not cause). All three
+	// panel streams share one manager, so the same reload notifies `closed`
+	// on each of them in quick succession — this flag collapses that into
+	// ONE device-list resubscribe instead of one per stream (#336).
+	private _deviceListReopenPending = false;
 	private _reconnecting = false;
 	private _connectionFailed = false;
-	private _lastSelectedOnline: boolean | null = null;
 	private _reopenInFlight?: { mac: string; promise: Promise<void> };
 	private _loadConfigInFlight?: { mac: string; promise: Promise<any> };
 	// Generation tokens — incremented on (un)subscribe and connection swap.
@@ -151,8 +247,9 @@ export class DeviceController implements ReactiveController {
 	hostDisconnected(): void {
 		this._disposed = true;
 		this.unsubscribeDeviceList();
+		// closeDeviceSession tears the heatmap sub down too (see its comment) —
+		// no separate _unsubscribeHeatmap call needed here anymore.
 		this.closeDeviceSession();
-		this._unsubscribeHeatmap();
 	}
 
 	// --- Hass reference ---
@@ -187,6 +284,21 @@ export class DeviceController implements ReactiveController {
 				clearTimeout(this._heatmapRetryTimer);
 				this._heatmapRetryTimer = undefined;
 			}
+			if (this._deviceListRetryTimer) {
+				clearTimeout(this._deviceListRetryTimer);
+				this._deviceListRetryTimer = undefined;
+			}
+			// A `closed`-triggered device-list retry loop belongs to the OLD
+			// connection — the immediate resubscribe below (gated on
+			// `wantsDeviceListSub`) is what owns recovery on the new one now.
+			// Reset its attempt counter too: `subscribeDeviceList()` never
+			// resets it on success (only `unsubscribeDeviceList()` and a
+			// completed retry-loop cycle do), so leaving it here would strand
+			// it at its last value — a LATER `closed` reusing this same key
+			// would then resume the backoff escalated instead of at the base
+			// delay (#336 follow-up).
+			this._deviceListReopenPending = false;
+			this._reopenAttempts[DEVICE_LIST_RETRY_KEY] = 0;
 			// Bump generation tokens so any in-flight subscribeMessage
 			// promises against the old connection drop their unsub when
 			// they finally resolve.
@@ -245,17 +357,10 @@ export class DeviceController implements ReactiveController {
 			return;
 		}
 
-		const prevSelectedMac = this.selectedMac;
 		const stored = readStoredMac();
 		const match =
 			stored && this.devices.find((d: DeviceInfo) => d.mac === stored);
 		this.selectedMac = match ? stored! : (this.devices[0]?.mac ?? "");
-		if (prevSelectedMac !== this.selectedMac) {
-			// Same reset as _applyDeviceList: treat the next push as an
-			// initial observation for the new device so we don't fire a stale
-			// false→true rising edge latched from the previous selection.
-			this._lastSelectedOnline = null;
-		}
 		this._host.requestUpdate();
 	}
 
@@ -299,20 +404,141 @@ export class DeviceController implements ReactiveController {
 	unsubscribeDeviceList(): void {
 		this._wantDeviceListSub = false;
 		this._deviceListGen++;
+		if (this._deviceListRetryTimer) {
+			clearTimeout(this._deviceListRetryTimer);
+			this._deviceListRetryTimer = undefined;
+		}
+		this._deviceListReopenPending = false;
+		this._reopenAttempts[DEVICE_LIST_RETRY_KEY] = 0;
 		safeUnsub(this._unsubDeviceList);
 		this._unsubDeviceList = undefined;
 	}
 
+	/**
+	 * Re-establish the device-list subscription after a stream reports
+	 * `closed`. A config-entry reload replaces the manager instance
+	 * backend-side, taking this subscription's registration with it — the
+	 * durable streams recover on their own via `closed` (see
+	 * `_reopenStream`), but the device-list push has no such mechanism, so
+	 * without this it never arrives again and `_isSelectedOffline` is stuck
+	 * reading a frozen `firmware_status` forever (#336).
+	 *
+	 * Gated on `_wantDeviceListSub` (intent, not `_unsubDeviceList` — a
+	 * `closed` can race a subscribe already in flight) and deduped via
+	 * `_deviceListReopenPending`: all three panel streams share one manager,
+	 * so the same reload fires `closed` on each of them in quick succession,
+	 * and this must collapse into a single resubscribe rather than one per
+	 * stream.
+	 *
+	 * `_deviceListReopenPending` now spans the WHOLE retry loop (see
+	 * `_retryDeviceListSubscribe`), not just one attempt: `__init__.py` pops
+	 * `hass.data[DOMAIN]` before `manager.async_stop()` fires `closed`, so the
+	 * very first resubscribe attempt is guaranteed to race a `not_ready`
+	 * backend (both `subscribe_device_list` and its `list_devices` fallback
+	 * are `@_require_manager`). A single attempt used to give up silently and
+	 * never try again, freezing the panel on a stale offline banner exactly
+	 * like the bug this mechanism exists to fix — so this backs off the same
+	 * never-give-up way `_reopenStream` does for the durable streams.
+	 */
+	private _resubscribeDeviceListOnClosed(): void {
+		if (!this._wantDeviceListSub || this._deviceListReopenPending) return;
+		this._deviceListReopenPending = true;
+		this._retryDeviceListSubscribe();
+	}
+
+	/**
+	 * Backoff loop for the device-list resubscribe, reusing `_reopenStream`'s
+	 * constants (`REOPEN_BASE_MS`/`REOPEN_CAP_MS`) and never-give-up shape —
+	 * a config-entry reload can take many seconds, and giving up would leave
+	 * the panel frozen (#336). Not built on `_subscribeStream`/`_reopenStream`
+	 * directly: those speak the durable-stream `available`/`closed` protocol,
+	 * while the device list is a plain push with no such envelope.
+	 *
+	 * Cancellation: `unsubscribeDeviceList()` (called by `hostDisconnected()`
+	 * and directly) clears `_deviceListRetryTimer` and resets
+	 * `_deviceListReopenPending`/`_reopenAttempts`, and this method itself
+	 * bails the moment `_wantDeviceListSub` goes false or the connection
+	 * changes out from under it — so no queued timer can ever resurrect a
+	 * torn-down controller or fight a connection swap's own immediate
+	 * resubscribe (see the `hass` setter).
+	 */
+	private _retryDeviceListSubscribe(): void {
+		const conn = this._hass?.connection;
+		void this.subscribeDeviceList().finally(() => {
+			if (this._unsubDeviceList) {
+				// Established — the retry loop is done.
+				this._deviceListReopenPending = false;
+				this._reopenAttempts[DEVICE_LIST_RETRY_KEY] = 0;
+				return;
+			}
+			if (!this._wantDeviceListSub || this._hass?.connection !== conn) {
+				// Cancelled, or the connection already swapped — the swap's
+				// own resubscribe (the `hass` setter) owns recovery now.
+				this._deviceListReopenPending = false;
+				return;
+			}
+			const attempt = (this._reopenAttempts[DEVICE_LIST_RETRY_KEY] ?? 0) + 1;
+			this._reopenAttempts[DEVICE_LIST_RETRY_KEY] = attempt;
+			const delay = Math.min(
+				REOPEN_BASE_MS * 2 ** (attempt - 1),
+				REOPEN_CAP_MS,
+			);
+			if (this._deviceListRetryTimer) clearTimeout(this._deviceListRetryTimer);
+			this._deviceListRetryTimer = setTimeout(() => {
+				this._deviceListRetryTimer = undefined;
+				if (this._hass?.connection !== conn) {
+					this._deviceListReopenPending = false;
+					return;
+				}
+				this._retryDeviceListSubscribe();
+			}, delay);
+		});
+	}
+
 	private _applyDeviceList(devices: DeviceInfo[]): void {
+		const prevSelectedMac = this.selectedMac;
 		this.devices = [...devices].sort((a, b) =>
 			(a.name || "").localeCompare(b.name || ""),
 		);
+		// Removal (not availability) teardown. A device merely going
+		// unavailable while still LISTED must NOT close the session — that's
+		// the retired edge's job, now the manager's (#336), and re-tearing it
+		// down here would race the manager's own re-arm. But a device the
+		// manager no longer knows about at all (`_on_device_removed`) has no
+		// stream left to re-arm: its `available`/`closed` signal already
+		// stopped (the backend's registration returns `None` for an unknown
+		// mac, so a re-subscribe attempt gets one `available: false` and then
+		// silence — see `_start_panel_stream`). Without closing the session
+		// here, `hasDeviceSession` would stay true forever, permanently
+		// disarming the `!hasDeviceSession` bootstrap guards
+		// (onDeviceListChanged/updated() in eppgrid-panel.ts) — so a
+		// re-added device (USB reflash / re-adoption with the same mac) would
+		// never get a session again short of a page reload.
+		//
+		// NOT gated on a non-empty push: an empty list is never an
+		// availability blip. `_on_state_changed` keeps an offline device IN
+		// `self.devices` (only sets `available = False`), and
+		// `_fire_device_list_changed` always emits the full
+		// `list_devices()` snapshot over that dict — so the only way the
+		// selected mac is missing is a genuine `_on_device_removed`
+		// (`async_discover` is purely additive). That includes the
+		// single-device case, where removal empties the list outright: the
+		// canonical delete/reflash/re-adopt flow. (A push landing mid-
+		// discovery would also show this shape, but only right after a
+		// connection swap that already tore the session down — this just
+		// confirms it, and the next non-empty push re-arms via the
+		// `!hasDeviceSession` bootstrap.)
+		if (
+			prevSelectedMac !== "" &&
+			!devices.some((d) => d.mac === prevSelectedMac)
+		) {
+			this.closeDeviceSession();
+		}
 		// A transient empty list during HA/integration reload is
 		// indistinguishable from a real deletion, so never invalidate the
 		// current selection on an empty list — otherwise the panel flips
 		// to the "no devices" placeholder mid-reconnect. An empty list
 		// just means "I don't know yet".
-		const prevSelectedMac = this.selectedMac;
 		const stored = readStoredMac();
 		if (this.devices.length > 0) {
 			const match = stored && this.devices.find((d) => d.mac === stored);
@@ -323,10 +549,12 @@ export class DeviceController implements ReactiveController {
 			// path already treats missing-from-list as offline, and the user
 			// can still switch via the picker's unsaved-changes guard. The
 			// switch happens on the next push once the host is clean, and a
-			// re-added device (USB reflash) reconnects through the normal
-			// offline→online edge below. Boundary: the guard only covers the
-			// selected-mac-missing case — a stored-mac change while the device
-			// is still listed intentionally switches (out of scope here).
+			// re-added device (USB reflash) is picked up by the bootstrap in
+			// onDeviceListChanged once hasDeviceSession is false again (see
+			// the removal teardown above) — not by this method (#336).
+			// Boundary: the guard only covers the selected-mac-missing case —
+			// a stored-mac change while the device is still listed
+			// intentionally switches (out of scope here).
 			const deferSwitch =
 				next !== this.selectedMac &&
 				!!this.selectedMac &&
@@ -341,37 +569,6 @@ export class DeviceController implements ReactiveController {
 			// (which treats missing-from-list as offline) instead of the
 			// "no devices configured" placeholder.
 			this.selectedMac = stored;
-		}
-		if (prevSelectedMac !== this.selectedMac) {
-			// Treat the next push as an initial observation for the new
-			// device so we don't fire a stale false→true rising edge.
-			this._lastSelectedOnline = null;
-		}
-
-		const selected = this.devices.find((d) => d.mac === this.selectedMac);
-		// Treat `firmware_status="unavailable"` as offline even when HA still
-		// reports `available: true` — that combination happens when only the
-		// `firmware_version` text sensor went unavailable while other entities
-		// are still reporting. The backend's per-state handler closes its end
-		// of the session whenever any entity goes offline, so without
-		// tracking firmware_status we'd leave the live target stream dead
-		// once it recovers.
-		const nowOnline =
-			(selected?.available ?? false) &&
-			selected?.firmware_status !== "unavailable";
-		const prev = this._lastSelectedOnline;
-		this._lastSelectedOnline = nowOnline;
-
-		if (prev === true && !nowOnline) {
-			this.closeDeviceSession();
-			this.onSessionClosed?.();
-		}
-		// Initial push (prev === null) is skipped — the host's first-load
-		// flow drives the initial connect.  On a real offline→online
-		// transition, hand off to the host so it can choose between
-		// reopenSession (config already in memory) and a fresh config load.
-		if (prev === false && nowOnline && this.selectedMac) {
-			this.onSelectedAvailable?.(this.selectedMac);
 		}
 
 		this.onDeviceListChanged?.();
@@ -522,6 +719,15 @@ export class DeviceController implements ReactiveController {
 	closeDeviceSession(): void {
 		this._sessionGen++;
 		this.unsubscribeTargets();
+		// The heatmap sub (and its retry timer) is independent of the target/
+		// display streams `unsubscribeTargets` tears down above — without this
+		// a sole-device removal left it dangling, its pending reopen timer
+		// still armed to resubscribe against a mac the manager may no longer
+		// know about (#336). `_unsubscribeHeatmap` only tears down the
+		// SUBSCRIPTION, not the `_heatmapEnabled` *intent* — a later
+		// subscribeTargets for the same (or a re-added) device still re-opens
+		// the overlay.
+		this._unsubscribeHeatmap();
 		safeUnsub(this._unsubDevice);
 		this._unsubDevice = undefined;
 	}
@@ -533,6 +739,12 @@ export class DeviceController implements ReactiveController {
 		// unsubscribe path. A stale unsub against a dead connection throws,
 		// and would otherwise abort the whole resubscribe pipeline.
 		this.unsubscribeTargets();
+		// Forget the previous device's per-stream liveness — see
+		// `_streamAvailability` above. Silent (no onAvailability call here):
+		// this is bookkeeping for a fresh round of subscriptions about to
+		// start, not a liveness signal of its own.
+		this._streamAvailability = {};
+		this._lastReportedAvailable = undefined;
 		if (!this._hass || !mac) return;
 
 		const conn = this._hass.connection;
@@ -549,6 +761,13 @@ export class DeviceController implements ReactiveController {
 			clearTimeout(this._targetRetryTimer);
 			this._targetRetryTimer = undefined;
 		}
+		this._reopenAttempts["eppgrid/subscribe_grid_targets"] = 0;
+		// A stream that is not subscribed must not vote in the aggregate
+		// (see `_streamAvailability`) — otherwise its last-known value is
+		// stranded there forever, potentially masking a genuine outage on
+		// the other streams (#336). No recompute/onAvailability call here:
+		// tearing a stream down is bookkeeping, not a liveness signal.
+		delete this._streamAvailability["eppgrid/subscribe_grid_targets"];
 		safeUnsub(this._unsubTargets);
 		this._unsubTargets = undefined;
 	}
@@ -633,6 +852,30 @@ export class DeviceController implements ReactiveController {
 	}
 
 	/**
+	 * Aggregate liveness across the panel's streams (#336) and report the
+	 * host only on a genuine edge of "is ANY of them up". See
+	 * `_streamAvailability` for why: the manager arms these streams one at a
+	 * time, so treating a single stream's edge as the device's own status
+	 * would spuriously flip the offline banner (and the zone-engine reset
+	 * that goes with it) while a sibling stream is still live.
+	 *
+	 * `onAvailability`'s host-facing signature is unchanged — `(mac,
+	 * available)` — so the panel's handler stays as simple as it was before
+	 * this aggregation existed.
+	 */
+	private _reportStreamAvailability(
+		streamType: string,
+		mac: string,
+		available: boolean,
+	): void {
+		this._streamAvailability[streamType] = available;
+		const anyAvailable = Object.values(this._streamAvailability).some((v) => v);
+		if (anyAvailable === this._lastReportedAvailable) return;
+		this._lastReportedAvailable = anyAvailable;
+		this.onAvailability?.(mac, anyAvailable);
+	}
+
+	/**
 	 * Shared subscribe/retry scaffolding for the live data streams (grid
 	 * targets, raw targets, heatmap). Each stream owns its own generation
 	 * token, retry timer and unsub slot — named via `stream` — so the
@@ -662,8 +905,45 @@ export class DeviceController implements ReactiveController {
 		attempt = 1,
 	): void {
 		const claim = this._claimGen(stream.genField);
+		const handleMsg = (msg: any): void => {
+			// A superseded subscription can still deliver a queued message: the
+			// HA WS client only drops the local handler once its
+			// unsubscribe_events round-trips, so a message sent before that
+			// completes lands here regardless. Acting on it would re-subscribe
+			// the wrong mac (device switch superseded this claim), resurrect a
+			// torn-down controller (hostDisconnected superseded it), or restart
+			// the reopen backoff — drop it instead.
+			if (claim.stale()) return;
+			// The durable-stream protocol (#336). A frame carries the stream's
+			// payload field; anything else is protocol. Reducing a protocol
+			// message as a frame would blank the live view (`event.targets || []`).
+			if (msg?.closed) {
+				// The manager dropped the stream (config-entry reload/unload,
+				// device removed). Our subscription is still open but nothing
+				// will ever revive it — re-subscribe. Ordinary `available: false`
+				// must NOT do this: the manager re-arms a flapped stream itself.
+				this._reportStreamAvailability(stream.type, mac, false);
+				// The manager INSTANCE is gone too (a config-entry reload builds a
+				// fresh one) — re-establish the device-list subscription, or it
+				// never receives another push and _isSelectedOffline is stuck
+				// reading a frozen firmware_status forever (#336).
+				this._resubscribeDeviceListOnClosed();
+				this._reopenStream(conn, mac, stream);
+				return;
+			}
+			if (msg && "available" in msg) {
+				this._reportStreamAvailability(stream.type, mac, !!msg.available);
+				return;
+			}
+			stream.onEvent(msg);
+		};
+
 		conn
-			.subscribeMessage(stream.onEvent, { type: stream.type, mac })
+			.subscribeMessage(handleMsg, {
+				type: stream.type,
+				mac,
+				availability: true,
+			})
 			.then((unsub: () => void) => {
 				if (claim.stale()) {
 					// Torn down (or resubscribed) while the subscribe was in
@@ -672,6 +952,7 @@ export class DeviceController implements ReactiveController {
 					return;
 				}
 				this[stream.unsubField] = unsub;
+				this._reopenAttempts[stream.type] = 0;
 				if (this._connectionFailed) {
 					// An earlier attempt exhausted its retries and latched the
 					// connection banner — a subscribe succeeding now means the
@@ -686,6 +967,13 @@ export class DeviceController implements ReactiveController {
 				// which would leave the stream silently dead. Retry on a timer,
 				// then surface connection-failed.
 				if (claim.stale()) return;
+				if ((this._reopenAttempts[stream.type] ?? 0) > 0) {
+					// Re-opening after a manager teardown — keep backing off,
+					// don't latch the banner and don't stop after 5 (a reload
+					// can take a while).
+					this._reopenStream(conn, mac, stream);
+					return;
+				}
 				if (attempt >= SUBSCRIBE_RETRY_LIMIT) {
 					// Out of retries — surface the same connection-failed
 					// state the session-open path uses so the panel shows the
@@ -693,6 +981,17 @@ export class DeviceController implements ReactiveController {
 					// optional streams (heatmap): those can legitimately fail
 					// (e.g. no device session open yet) while the core streams
 					// are fine, so they must not trigger the banner.
+					//
+					// This branch is now near-unreachable for the panel's three
+					// streams (#336): `start_durable_stream` sends its ack
+					// before anything that can fail and swallows registration
+					// failure into an `available: false` event rather than a
+					// WS error, so a `subscribeMessage` promise for one of
+					// these only ever rejects on `require_admin`/
+					// `_require_manager` (not logged in / integration not
+					// loaded) — not on a bad device or a failed connect. The
+					// connection-failed banner is now driven by
+					// `openDeviceSession` instead; don't rely on this path.
 					if (!stream.optional) {
 						this._connectionFailed = true;
 						this._host.requestUpdate();
@@ -711,12 +1010,46 @@ export class DeviceController implements ReactiveController {
 			});
 	}
 
+	/**
+	 * Re-subscribe a stream the manager tore down (`closed`). Bumps the
+	 * generation (dropping the dead subscription), then re-opens on an
+	 * exponential backoff that never gives up: an integration reload can take
+	 * a while, and giving up would leave the panel frozen — the bug this
+	 * protocol exists to prevent (#334/#336).
+	 */
+	private _reopenStream(
+		conn: any,
+		mac: string,
+		stream: Parameters<DeviceController["_subscribeStream"]>[2],
+	): void {
+		const dead = this[stream.unsubField];
+		this[stream.genField]++;
+		safeUnsub(dead);
+		this[stream.unsubField] = undefined;
+
+		const attempt = (this._reopenAttempts[stream.type] ?? 0) + 1;
+		this._reopenAttempts[stream.type] = attempt;
+		const delay = Math.min(REOPEN_BASE_MS * 2 ** (attempt - 1), REOPEN_CAP_MS);
+
+		const pending = this[stream.timerField];
+		if (pending) clearTimeout(pending);
+		this[stream.timerField] = setTimeout(() => {
+			this[stream.timerField] = undefined;
+			if (this._hass?.connection !== conn) return;
+			this._subscribeStream(conn, mac, stream);
+		}, delay);
+	}
+
 	unsubscribeDisplay(): void {
 		this._displayGen++;
 		if (this._displayRetryTimer) {
 			clearTimeout(this._displayRetryTimer);
 			this._displayRetryTimer = undefined;
 		}
+		this._reopenAttempts["eppgrid/subscribe_raw_targets"] = 0;
+		// See unsubscribeTargets — a torn-down stream must not keep voting
+		// in the aggregate (#336).
+		delete this._streamAvailability["eppgrid/subscribe_raw_targets"];
 		safeUnsub(this._unsubDisplay);
 		this._unsubDisplay = undefined;
 	}
@@ -759,6 +1092,13 @@ export class DeviceController implements ReactiveController {
 			clearTimeout(this._heatmapRetryTimer);
 			this._heatmapRetryTimer = undefined;
 		}
+		this._reopenAttempts["eppgrid/subscribe_heatmap"] = 0;
+		// The heatmap overlay is optional and can be toggled off while grid/
+		// raw keep streaming — its last-known `true` must not be stranded in
+		// the aggregate forever, or a genuine outage on the other streams
+		// would never flip `onAvailability` to false (#336 regression: this
+		// was the ONLY one of the three unsubscribe paths missing this).
+		delete this._streamAvailability["eppgrid/subscribe_heatmap"];
 		safeUnsub(this._unsubHeatmap);
 		this._unsubHeatmap = undefined;
 	}
@@ -766,7 +1106,6 @@ export class DeviceController implements ReactiveController {
 	// --- Device selection ---
 	selectDevice(mac: string): void {
 		this.selectedMac = mac;
-		this._lastSelectedOnline = null;
 		this._connectionFailed = false;
 		persistSelectedMac(mac);
 		this._host.requestUpdate();

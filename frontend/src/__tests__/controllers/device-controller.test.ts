@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DeviceController } from "../../controllers/device-controller.js";
 import type { DeviceInfo } from "../../types.js";
 
@@ -672,6 +672,77 @@ describe("DeviceController", () => {
 			ctrl.closeDeviceSession();
 			expect(ctrl.hasDeviceSession).toBe(false);
 		});
+
+		it("tears down the heatmap sub too, not just the target/display streams (#336)", async () => {
+			// Only hostDisconnected used to call _unsubscribeHeatmap as a
+			// separate line — a sole-device removal (closeDeviceSession via
+			// _applyDeviceList) left the heatmap sub (and its retry timer)
+			// dangling against a mac the manager no longer knows about.
+			ctrl.selectedMac = "aa";
+			ctrl.setHeatmapEnabled(true);
+			await new Promise((r) => setTimeout(r, 0));
+			const unsub = (ctrl as any)._unsubHeatmap;
+			expect(unsub).toBeDefined();
+
+			ctrl.closeDeviceSession();
+
+			expect(unsub).toHaveBeenCalled();
+			expect((ctrl as any)._unsubHeatmap).toBeUndefined();
+		});
+
+		it("cancels a pending heatmap reopen timer, so it can't fire an orphan resubscribe later", async () => {
+			vi.useFakeTimers();
+			try {
+				const subscribeMock = vi.fn((_cb: any, msg: any) => {
+					if (msg.type === "eppgrid/subscribe_heatmap") {
+						return Promise.reject(new Error("boom"));
+					}
+					return Promise.resolve(vi.fn());
+				});
+				ctrl.hass = {
+					callWS: vi.fn(),
+					connection: { subscribeMessage: subscribeMock },
+				};
+				ctrl.selectedMac = "aa";
+				ctrl.setHeatmapEnabled(true);
+				// First attempt rejects and schedules a backoff retry timer.
+				await vi.advanceTimersByTimeAsync(0);
+
+				ctrl.closeDeviceSession();
+
+				subscribeMock.mockClear();
+				// If the retry timer survived, it would fire in here and
+				// re-subscribe against a mac the manager may no longer know.
+				await vi.advanceTimersByTimeAsync(30_000);
+				const heatmapCalls = subscribeMock.mock.calls.filter(
+					(c: any[]) => c[1]?.type === "eppgrid/subscribe_heatmap",
+				);
+				expect(heatmapCalls).toHaveLength(0);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("does not clear heatmap-enabled intent — a later subscribeTargets still re-opens the overlay", async () => {
+			// `_subscribeHeatmap` is gated on `_heatmapEnabled` intent, not on
+			// whether a sub currently exists — tearing down here must not
+			// clear that intent, or a reconnect for the SAME device would
+			// silently drop the overlay the user had enabled.
+			ctrl.selectedMac = "aa";
+			ctrl.setHeatmapEnabled(true);
+			await new Promise((r) => setTimeout(r, 0));
+
+			ctrl.closeDeviceSession();
+
+			hass.connection.subscribeMessage.mockClear();
+			ctrl.subscribeTargets("aa");
+			await new Promise((r) => setTimeout(r, 0));
+
+			const heatmapCalls = hass.connection.subscribeMessage.mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_heatmap",
+			);
+			expect(heatmapCalls.length).toBeGreaterThan(0);
+		});
 	});
 
 	// --- Target subscription ---
@@ -683,10 +754,12 @@ describe("DeviceController", () => {
 			expect(calls[0][1]).toEqual({
 				type: "eppgrid/subscribe_grid_targets",
 				mac: "aa",
+				availability: true,
 			});
 			expect(calls[1][1]).toEqual({
 				type: "eppgrid/subscribe_raw_targets",
 				mac: "aa",
+				availability: true,
 			});
 		});
 
@@ -910,7 +983,11 @@ describe("DeviceController", () => {
 			ctrl.subscribeDisplay("aa");
 			expect(hass.connection.subscribeMessage).toHaveBeenCalledWith(
 				expect.any(Function),
-				{ type: "eppgrid/subscribe_raw_targets", mac: "aa" },
+				{
+					type: "eppgrid/subscribe_raw_targets",
+					mac: "aa",
+					availability: true,
+				},
 			);
 		});
 
@@ -1006,6 +1083,7 @@ describe("DeviceController", () => {
 			expect(subscribeMessage).toHaveBeenCalledWith(expect.any(Function), {
 				type: "eppgrid/subscribe_heatmap",
 				mac: "AA:BB:CC:DD:EE:FF",
+				availability: true,
 			});
 
 			ctrl.setHeatmapEnabled(false);
@@ -1166,6 +1244,7 @@ describe("DeviceController", () => {
 			expect(heatmapCall![1]).toEqual({
 				type: "eppgrid/subscribe_heatmap",
 				mac: "aa",
+				availability: true,
 			});
 		});
 
@@ -1270,24 +1349,6 @@ describe("DeviceController", () => {
 			ctrl.selectDevice("cc:dd");
 			expect(host.requestUpdate).toHaveBeenCalled();
 		});
-
-		it("resets availability tracker to avoid stale-edge reconnect", () => {
-			const onSelectedAvailable = vi.fn();
-			ctrl.onSelectedAvailable = onSelectedAvailable;
-
-			// Prime: "aa" available → offline. Tracker latches to false.
-			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
-			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
-			onSelectedAvailable.mockClear();
-
-			// User switches to "bb" — tracker must reset so the next push
-			// is treated as an initial observation (prev === null) and not
-			// a stale false→true rising edge.
-			ctrl.selectDevice("bb");
-			(ctrl as any)._applyDeviceList([makeDevice("bb", true)]);
-
-			expect(onSelectedAvailable).not.toHaveBeenCalled();
-		});
 	});
 
 	// --- hass getter/setter ---
@@ -1383,62 +1444,12 @@ describe("DeviceController", () => {
 		});
 	});
 
-	// --- Availability edge transitions ---
-	describe("availability transitions", () => {
-		it("fires onSelectedAvailable (not reopenSession directly) when selected device transitions offline→online", async () => {
-			// The controller hands off to the host via onSelectedAvailable
-			// so the host can choose reopenSession vs loadDeviceConfig based
-			// on whether it has already loaded config for this device.
-			const onSelectedAvailable = vi.fn();
-			ctrl.onSelectedAvailable = onSelectedAvailable;
-
-			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
-			ctrl.selectedMac = "aa";
-			onSelectedAvailable.mockClear();
-
-			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
-			expect(onSelectedAvailable).not.toHaveBeenCalled();
-
-			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
-			expect(onSelectedAvailable).toHaveBeenCalledWith("aa");
-		});
-
-		it("does not fire onSelectedAvailable when a non-selected device flips availability", async () => {
-			const onSelectedAvailable = vi.fn();
-			ctrl.onSelectedAvailable = onSelectedAvailable;
-
-			(ctrl as any)._applyDeviceList([
-				makeDevice("aa", true),
-				makeDevice("bb", true),
-			]);
-			ctrl.selectedMac = "aa";
-			onSelectedAvailable.mockClear();
-
-			(ctrl as any)._applyDeviceList([
-				makeDevice("aa", true),
-				makeDevice("bb", false),
-			]);
-			(ctrl as any)._applyDeviceList([
-				makeDevice("aa", true),
-				makeDevice("bb", true),
-			]);
-
-			expect(onSelectedAvailable).not.toHaveBeenCalled();
-		});
-
-		it("does not fire onSelectedAvailable on the first device_list message", async () => {
-			// The host's first-load flow drives the initial connect, so the
-			// controller must not pre-empt it when prev === null.
-			const onSelectedAvailable = vi.fn();
-			ctrl.onSelectedAvailable = onSelectedAvailable;
-
-			ctrl.selectedMac = "aa";
-			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
-
-			expect(onSelectedAvailable).not.toHaveBeenCalled();
-		});
-
-		it("closes device session when selected device transitions online→offline", async () => {
+	// --- Availability edge retired (#336) ---
+	describe("device-list availability edge", () => {
+		it("does not tear the session down when the selected device goes offline", () => {
+			// Recovery is the manager's job now: it re-arms the durable streams on a
+			// fresh connection. A frontend teardown+resubscribe would race that re-arm
+			// — two owners of the same recovery is the bug class of #334.
 			const closeSpy = vi.spyOn(ctrl, "closeDeviceSession");
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
@@ -1447,84 +1458,29 @@ describe("DeviceController", () => {
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
 
-			expect(closeSpy).toHaveBeenCalledTimes(1);
+			expect(closeSpy).not.toHaveBeenCalled();
 		});
 
-		it("fires onSessionClosed so host can clear live-target state", () => {
-			const onClosed = vi.fn();
-			ctrl.onSessionClosed = onClosed;
+		it("does not resubscribe the streams when the device comes back", async () => {
+			const subscribeSpy = vi.spyOn(ctrl, "subscribeTargets");
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 			ctrl.selectedMac = "aa";
-			onClosed.mockClear();
+			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
+			subscribeSpy.mockClear();
+
+			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
+
+			expect(subscribeSpy).not.toHaveBeenCalled();
+		});
+
+		it("still pushes the device list to the host", () => {
+			const onDeviceListChanged = vi.fn();
+			ctrl.onDeviceListChanged = onDeviceListChanged;
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
 
-			expect(onClosed).toHaveBeenCalledTimes(1);
-		});
-
-		it("fires onSessionClosed when firmware_status flips to unavailable while available stays true", () => {
-			// Entity-level flap scenario: a non-critical entity stays online so
-			// HA still reports `available: true`, but the firmware_version
-			// sensor went unavailable (so `firmware_status="unavailable"`). The
-			// backend's per-state close fired when any entity went offline,
-			// leaving the live-target stream dead even though `available`
-			// never flipped.
-			const onClosed = vi.fn();
-			ctrl.onSessionClosed = onClosed;
-
-			(ctrl as any)._applyDeviceList([
-				{
-					...makeDevice("aa", true),
-					firmware_status: "compatible",
-				},
-			]);
-			ctrl.selectedMac = "aa";
-			onClosed.mockClear();
-
-			(ctrl as any)._applyDeviceList([
-				{
-					...makeDevice("aa", true),
-					firmware_status: "unavailable",
-				},
-			]);
-
-			expect(onClosed).toHaveBeenCalledTimes(1);
-		});
-
-		it("fires onSelectedAvailable when firmware_status recovers from unavailable while available stays true", () => {
-			const onSelectedAvailable = vi.fn();
-			ctrl.onSelectedAvailable = onSelectedAvailable;
-
-			(ctrl as any)._applyDeviceList([
-				{
-					...makeDevice("aa", true),
-					firmware_status: "compatible",
-				},
-			]);
-			ctrl.selectedMac = "aa";
-			onSelectedAvailable.mockClear();
-
-			// firmware_version sensor goes unavailable — `available` stays
-			// true because other entities are still reporting.
-			(ctrl as any)._applyDeviceList([
-				{
-					...makeDevice("aa", true),
-					firmware_status: "unavailable",
-				},
-			]);
-			expect(onSelectedAvailable).not.toHaveBeenCalled();
-
-			// firmware_version sensor comes back. The host needs to re-open
-			// the session (the backend closed its end when the entity went
-			// offline) so the live target stream resumes.
-			(ctrl as any)._applyDeviceList([
-				{
-					...makeDevice("aa", true),
-					firmware_status: "compatible",
-				},
-			]);
-			expect(onSelectedAvailable).toHaveBeenCalledWith("aa");
+			expect(onDeviceListChanged).toHaveBeenCalled();
 		});
 	});
 
@@ -1666,56 +1622,41 @@ describe("DeviceController", () => {
 			expect(ctrl.selectedMac).toBe("bb");
 		});
 
-		it("reconnects to the deferred device when it returns (USB-reflash flow)", () => {
-			// Delete + re-add with the same mac: the deferred selection must
-			// observe offline (session closed) then online (host reopens via
-			// onSelectedAvailable), exactly like a regular availability blip.
+		it("keeps the deferred device selected across a delete/re-add cycle, but closes the session on the delete (USB-reflash flow, #336)", async () => {
+			// Delete + re-add with the same mac: the deferred SELECTION stays
+			// put across the blip (dirty-guard, same as above) — but this is
+			// a real REMOVAL, not a mere availability blip, so the session
+			// itself must still close. Without that, `hasDeviceSession`
+			// would stay true forever once the backend force-closes its own
+			// session (`_on_device_removed`), permanently disarming the
+			// `!hasDeviceSession` bootstrap that re-establishes the session
+			// when the device comes back — the regression this test pins.
 			localStorage.setItem("epp_selected_mac", "aa");
-			const onClosed = vi.fn();
-			const onSelectedAvailable = vi.fn();
 			ctrl.isHostDirty = () => true;
-			ctrl.onSessionClosed = onClosed;
-			ctrl.onSelectedAvailable = onSelectedAvailable;
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
+			await ctrl.openDeviceSession("aa");
+			expect(ctrl.hasDeviceSession).toBe(true);
+			const closeSpy = vi.spyOn(ctrl, "closeDeviceSession");
 
-			// Device deleted; another remains. Deferred — but the missing
-			// device counts as offline, so the session closes.
+			// Device deleted; another remains. Deferred — selection stays
+			// "aa" — but the session closes: "aa" is gone, not just offline.
 			(ctrl as any)._applyDeviceList([makeDevice("bb", true)]);
 			expect(ctrl.selectedMac).toBe("aa");
-			expect(onClosed).toHaveBeenCalledTimes(1);
+			expect(closeSpy).toHaveBeenCalledTimes(1);
+			expect(ctrl.hasDeviceSession).toBe(false);
 
-			// Device re-added (same mac) — selection sticks and the host is
-			// told to reconnect.
+			// Device re-added (same mac) — selection sticks. The controller
+			// itself does not reopen anything here (that's the host's job,
+			// gated on `!hasDeviceSession`) — it just leaves the session
+			// closed so the host's bootstrap can act on it.
+			closeSpy.mockClear();
 			(ctrl as any)._applyDeviceList([
 				makeDevice("aa", true),
 				makeDevice("bb", true),
 			]);
 			expect(ctrl.selectedMac).toBe("aa");
-			expect(onSelectedAvailable).toHaveBeenCalledWith("aa");
-		});
-	});
-
-	describe("loadDevices availability tracker", () => {
-		it("resets the availability tracker when loadDevices changes the selection", async () => {
-			// Same contract as _applyDeviceList/selectDevice: a selection
-			// change must treat the next push as an initial observation, not
-			// fire a stale false→true rising edge from the previous device.
-			localStorage.setItem("epp_selected_mac", "aa");
-			const onSelectedAvailable = vi.fn();
-			ctrl.onSelectedAvailable = onSelectedAvailable;
-			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
-			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
-			onSelectedAvailable.mockClear();
-
-			// One-shot reload returns a different device set; selection moves
-			// to "bb".
-			ctrl.hass = mockHass([makeDevice("bb", true)]);
-			await ctrl.loadDevices();
-			expect(ctrl.selectedMac).toBe("bb");
-
-			(ctrl as any)._applyDeviceList([makeDevice("bb", true)]);
-
-			expect(onSelectedAvailable).not.toHaveBeenCalled();
+			expect(closeSpy).not.toHaveBeenCalled();
+			expect(ctrl.hasDeviceSession).toBe(false);
 		});
 	});
 
@@ -1970,6 +1911,806 @@ describe("DeviceController", () => {
 			} finally {
 				vi.useRealTimers();
 			}
+		});
+	});
+
+	// --- Durable stream protocol (#336) ---
+	describe("stream protocol: available / closed", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+		afterEach(() => {
+			vi.useRealTimers();
+			vi.restoreAllMocks();
+		});
+
+		/** Keeps every open's callback + unsub so a re-open can be told from the original. */
+		function makeReopenableHass() {
+			const callbacks: ((msg: any) => void)[] = [];
+			const unsubs: ReturnType<typeof vi.fn>[] = [];
+			const subscribeMessage = vi.fn((_cb: any, msg: any) => {
+				if (msg.type !== "eppgrid/subscribe_grid_targets") {
+					return Promise.resolve(vi.fn());
+				}
+				callbacks.push(_cb);
+				const unsub = vi.fn();
+				unsubs.push(unsub);
+				return Promise.resolve(unsub);
+			});
+			return {
+				hass: { callWS: vi.fn(), connection: { subscribeMessage } },
+				subscribeMessage,
+				unsubs,
+				emit: (msg: any, n = callbacks.length - 1) => callbacks[n]?.(msg),
+				opens: () =>
+					subscribeMessage.mock.calls.filter(
+						(c: any[]) => c[1]?.type === "eppgrid/subscribe_grid_targets",
+					).length,
+			};
+		}
+
+		it("opts in to the availability protocol on subscribe", async () => {
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(h.subscribeMessage).toHaveBeenCalledWith(expect.any(Function), {
+				type: "eppgrid/subscribe_grid_targets",
+				mac: "aa",
+				availability: true,
+			});
+		});
+
+		it("reports availability to the host instead of treating it as a frame", async () => {
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			const onTargetData = vi.fn();
+			ctrl.onAvailability = onAvailability;
+			ctrl.onTargetData = onTargetData;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emit({ available: false });
+
+			expect(onAvailability).toHaveBeenCalledWith("aa", false);
+			// An availability message is NOT a frame — reducing it as one would blank
+			// the live view (`event.targets || []`).
+			expect(onTargetData).not.toHaveBeenCalled();
+		});
+
+		it("does NOT re-subscribe on a mere device flap", async () => {
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			expect(h.opens()).toBe(1);
+
+			h.emit({ available: false });
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			// The manager re-arms the durable stream itself; churning the wire here
+			// would defeat it.
+			expect(h.opens()).toBe(1);
+			expect(h.unsubs[0]).not.toHaveBeenCalled();
+		});
+
+		it("re-subscribes when the manager says the stream is closed", async () => {
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emit({ available: false, closed: true });
+
+			// The dead subscription is dropped immediately...
+			expect(h.unsubs[0]).toHaveBeenCalledTimes(1);
+			// ...and the re-open is delayed (the integration is still reloading).
+			expect(h.opens()).toBe(1);
+
+			await vi.advanceTimersByTimeAsync(120_000);
+			expect(h.opens()).toBe(2);
+		});
+
+		it("delivers frames from the re-opened subscription", async () => {
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			const onTargetData = vi.fn();
+			ctrl.onTargetData = onTargetData;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emit({ available: false, closed: true });
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			onTargetData.mockClear();
+			h.emit({ targets: [{ x: 1, y: 2, status: "active", signal: 9 }] }, 1);
+			expect(onTargetData).toHaveBeenCalledTimes(1);
+		});
+
+		it("backs off between failed re-opens and never gives up", async () => {
+			const times: number[] = [];
+			let openCb!: (msg: any) => void;
+			let calls = 0;
+			const subscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type !== "eppgrid/subscribe_grid_targets") {
+					return Promise.resolve(vi.fn());
+				}
+				times.push(Date.now());
+				calls += 1;
+				if (calls === 1) {
+					openCb = cb;
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.reject(new Error("not_ready"));
+			});
+			ctrl.hass = { callWS: vi.fn(), connection: { subscribeMessage } };
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			openCb({ available: false, closed: true });
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			const delays = times.slice(1).map((t, i) => t - times[i]);
+			expect(delays.slice(0, 4)).toEqual([500, 1000, 2000, 4000]);
+			// Capped, and still retrying — a reload can take a while, and giving up
+			// would leave the panel frozen exactly like #334.
+			expect(Math.max(...delays)).toBeLessThanOrEqual(30_000);
+			expect(delays.length).toBeGreaterThan(4);
+		});
+
+		it("resets the reopen-attempt counter on a fresh subscribeTargets, so a later grid-targets-only failure still latches the banner", async () => {
+			// Simulate a leaked, nonzero reopen-attempt counter left behind by an
+			// abandoned `closed` backoff (e.g. a device switch happened before
+			// the scheduled re-open fired). Without resetting it in
+			// unsubscribeTargets, a later GENUINE first-time subscribe failure
+			// would be mistaken for "still reopening after a manager teardown"
+			// and back off silently forever instead of ever latching
+			// connectionFailed — leaving the panel frozen with no banner,
+			// exactly the bug this protocol exists to prevent.
+			(ctrl as any)._reopenAttempts["eppgrid/subscribe_grid_targets"] = 3;
+
+			// raw-targets always succeeds — isolates the assertion to the
+			// grid-targets stream's own retry/backoff behavior, so this test
+			// can't pass merely because some OTHER stream latched the banner.
+			const subscribeMessage = vi.fn((_cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					return Promise.reject(new Error("boom"));
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = { callWS: vi.fn(), connection: { subscribeMessage } };
+
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			// Drive well past 5 * SUBSCRIBE_RETRY_DELAY_MS (2s each).
+			for (let i = 0; i < 8; i++) {
+				await vi.advanceTimersByTimeAsync(2000);
+			}
+
+			expect(ctrl.connectionFailed).toBe(true);
+		});
+
+		it("ignores a closed message queued on a superseded subscription after a device switch", async () => {
+			// The HA websocket client only drops a subscription's local handler
+			// once its unsubscribe round-trips, so the OLD device's handler can
+			// still fire after a device switch. Acting on a `closed` there would
+			// bump the generation out from under the NEW device's live stream,
+			// unsub its healthy subscription, and re-open the WRONG mac.
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			ctrl.subscribeTargets("bb");
+			await vi.advanceTimersByTimeAsync(0);
+			expect(h.opens()).toBe(2);
+			const bbUnsub = h.unsubs[1];
+			expect(bbUnsub).not.toHaveBeenCalled();
+
+			// A `closed` queued for "aa" before its unsubscribe round-tripped,
+			// delivered on the stale (index 0) handler.
+			h.emit({ closed: true }, 0);
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			// Must NOT touch "bb"'s healthy subscription, and must NOT
+			// re-subscribe the superseded "aa" mac.
+			expect(bbUnsub).not.toHaveBeenCalled();
+			expect(h.opens()).toBe(2);
+		});
+
+		it("ignores a closed message queued on a subscription after hostDisconnected", async () => {
+			// hostDisconnected (HA's 5-minute hidden-suspend) tears down the
+			// controller; a `closed` that was already queued on the wire can
+			// still land afterward. Acting on it would re-subscribe on a
+			// disposed controller, leaking a manager stream and an ESP32
+			// session slot until the browser websocket itself closes.
+			const h = makeReopenableHass();
+			ctrl.hass = h.hass;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			expect(h.opens()).toBe(1);
+
+			ctrl.hostDisconnected();
+			h.emit({ closed: true }, 0);
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			expect(h.opens()).toBe(1);
+		});
+	});
+
+	describe("availability aggregation across streams (partial re-arm, #336)", () => {
+		// The manager arms the panel's streams ONE AT A TIME (`_ensure_streams`
+		// in device_manager/__init__.py), so a single re-arm pass can report
+		// grid `available:true` and then raw `available:false` moments later.
+		// Reporting either edge in isolation would flip the panel's offline
+		// banner AND run its stream-offline clear (which resets the
+		// zone-engine replica) while the OTHER stream is still live and
+		// delivering frames — desyncing the frontend's zone-engine replica
+		// from the firmware's. `onAvailability` must fire only on a genuine
+		// edge of "is ANY of the streams up".
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+		afterEach(() => {
+			vi.useRealTimers();
+			vi.restoreAllMocks();
+		});
+
+		/** Tracks grid-, raw-, and heatmap-target callbacks separately so each can be driven independently. */
+		function makeMultiStreamHass() {
+			const gridCbs: ((msg: any) => void)[] = [];
+			const rawCbs: ((msg: any) => void)[] = [];
+			const heatmapCbs: ((msg: any) => void)[] = [];
+			const subscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				if (msg.type === "eppgrid/subscribe_raw_targets") {
+					rawCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				if (msg.type === "eppgrid/subscribe_heatmap") {
+					heatmapCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			return {
+				hass: { callWS: vi.fn(), connection: { subscribeMessage } },
+				emitGrid: (msg: any, n = gridCbs.length - 1) => gridCbs[n]?.(msg),
+				emitRaw: (msg: any, n = rawCbs.length - 1) => rawCbs[n]?.(msg),
+				emitHeatmap: (msg: any, n = heatmapCbs.length - 1) =>
+					heatmapCbs[n]?.(msg),
+			};
+		}
+
+		it("does not report the device offline when one stream is up and a sibling reports false", async () => {
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			ctrl.onAvailability = onAvailability;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emitGrid({ available: true });
+			onAvailability.mockClear();
+
+			// A partial re-arm pass: grid came up, raw hasn't (yet). Grid is
+			// still live and delivering frames — must NOT tell the host the
+			// device went offline (which would clear live data and reset the
+			// zone engine).
+			h.emitRaw({ available: false });
+
+			expect(onAvailability).not.toHaveBeenCalledWith("aa", false);
+		});
+
+		it("reports offline exactly once when every stream reports false", async () => {
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			ctrl.onAvailability = onAvailability;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emitGrid({ available: true });
+			h.emitRaw({ available: true });
+			onAvailability.mockClear();
+
+			h.emitGrid({ available: false });
+			h.emitRaw({ available: false });
+
+			const offlineCalls = onAvailability.mock.calls.filter(
+				(args) => args[1] === false,
+			);
+			expect(offlineCalls).toHaveLength(1);
+		});
+
+		it("reports available again as soon as any stream recovers", async () => {
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			ctrl.onAvailability = onAvailability;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emitGrid({ available: false });
+			h.emitRaw({ available: false });
+			onAvailability.mockClear();
+
+			h.emitGrid({ available: true });
+
+			expect(onAvailability).toHaveBeenCalledWith("aa", true);
+		});
+
+		it("resets the per-stream map on a device switch so the old device's state can't leak", async () => {
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			ctrl.onAvailability = onAvailability;
+
+			// Device "aa": both streams come up.
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			h.emitGrid({ available: true });
+			h.emitRaw({ available: true });
+
+			// Switch to device "bb" — a fresh subscribeTargets call.
+			ctrl.subscribeTargets("bb");
+			await vi.advanceTimersByTimeAsync(0);
+			onAvailability.mockClear();
+
+			// Only "bb"'s grid stream has reported in so far; if "aa"'s
+			// leftover `true` entries leaked into the map, this would read as
+			// "still available" instead of the genuine first signal for "bb".
+			h.emitRaw({ available: false });
+
+			expect(onAvailability).toHaveBeenCalledWith("bb", false);
+		});
+
+		it("does not let a stranded heatmap entry mask a real device outage after the overlay is disabled (#336 regression)", async () => {
+			// Nothing ever removed a stream's entry from `_streamAvailability`
+			// once torn down. Enabling then disabling the heatmap overlay left
+			// `heatmap: true` stranded in the map forever, so `.some(v => v)`
+			// stayed true even after grid AND raw both went false — the
+			// offline banner (and the zone-engine reset that goes with it)
+			// never fired.
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			ctrl.onAvailability = onAvailability;
+			ctrl.selectedMac = "aa";
+
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			ctrl.setHeatmapEnabled(true);
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emitGrid({ available: true });
+			h.emitRaw({ available: true });
+			h.emitHeatmap({ available: true });
+
+			// User toggles the overlay off — the heatmap stream is torn down,
+			// but its last-known `true` must not keep voting.
+			ctrl.setHeatmapEnabled(false);
+			onAvailability.mockClear();
+
+			// The device genuinely goes offline: both remaining streams
+			// report false.
+			h.emitGrid({ available: false });
+			h.emitRaw({ available: false });
+
+			expect(onAvailability).toHaveBeenCalledWith("aa", false);
+		});
+
+		it("tearing down a stream does not itself flip host availability", async () => {
+			// Deleting a stream's stale entry on teardown must be silent
+			// bookkeeping, not a liveness signal in its own right — otherwise
+			// disabling the heatmap overlay (or any stream teardown) would
+			// spuriously fire onAvailability on its own.
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			ctrl.onAvailability = onAvailability;
+			ctrl.selectedMac = "aa";
+
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			ctrl.setHeatmapEnabled(true);
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emitGrid({ available: true });
+			h.emitRaw({ available: true });
+			h.emitHeatmap({ available: true });
+			onAvailability.mockClear();
+
+			ctrl.setHeatmapEnabled(false);
+			ctrl.unsubscribeDisplay();
+			ctrl.unsubscribeTargets();
+
+			expect(onAvailability).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("device-list resubscribe on stream closed (#336)", () => {
+		// A config-entry reload replaces the manager instance backend-side;
+		// the OLD manager's `_device_list_callbacks` list (and this
+		// subscription's registration on it) go with it, and nothing ever
+		// pushes to this connection's device-list subscription again — the
+		// durable streams recover via `closed`, but the device list does not,
+		// so `_isSelectedOffline` keeps reading a frozen `firmware_status`
+		// forever. A `closed` message is the only surviving signal that the
+		// manager is gone, so it must also re-establish the device-list sub.
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+		afterEach(() => {
+			vi.useRealTimers();
+			vi.restoreAllMocks();
+		});
+
+		/** Tracks grid/raw/heatmap callbacks and every subscribeMessage call by type. */
+		function makeMultiStreamHass() {
+			const gridCbs: ((msg: any) => void)[] = [];
+			const rawCbs: ((msg: any) => void)[] = [];
+			const heatmapCbs: ((msg: any) => void)[] = [];
+			const subscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				if (msg.type === "eppgrid/subscribe_raw_targets") {
+					rawCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				if (msg.type === "eppgrid/subscribe_heatmap") {
+					heatmapCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			return {
+				hass: { callWS: vi.fn(), connection: { subscribeMessage } },
+				subscribeMessage,
+				emitGrid: (msg: any, n = gridCbs.length - 1) => gridCbs[n]?.(msg),
+				emitRaw: (msg: any, n = rawCbs.length - 1) => rawCbs[n]?.(msg),
+				emitHeatmap: (msg: any, n = heatmapCbs.length - 1) =>
+					heatmapCbs[n]?.(msg),
+				deviceListCalls: () =>
+					subscribeMessage.mock.calls.filter(
+						(c: any[]) => c[1]?.type === "eppgrid/subscribe_device_list",
+					).length,
+			};
+		}
+
+		it("re-subscribes the device list once when the manager tears down multiple streams together", async () => {
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+
+			await ctrl.subscribeDeviceList();
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			const before = h.deviceListCalls();
+
+			// A config-entry reload tears both durable streams down together —
+			// both fire `closed` for the same underlying event. Must collapse
+			// into a single device-list resubscribe, not one per stream.
+			h.emitGrid({ closed: true });
+			h.emitRaw({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(h.deviceListCalls() - before).toBe(1);
+		});
+
+		it("collapses three concurrent `closed` events (grid, raw, heatmap) into a single device-list retry loop", async () => {
+			// All three panel streams share one manager, so a single reload
+			// fires `closed` on grid, raw, AND the heatmap overlay in quick
+			// succession. That must still collapse into ONE retry loop, not
+			// three concurrent ones stacking retries against each other.
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			ctrl.selectedMac = "aa";
+
+			await ctrl.subscribeDeviceList();
+			ctrl.subscribeTargets("aa");
+			ctrl.setHeatmapEnabled(true);
+			await vi.advanceTimersByTimeAsync(0);
+
+			const before = h.deviceListCalls();
+
+			h.emitGrid({ closed: true });
+			h.emitRaw({ closed: true });
+			h.emitHeatmap({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(h.deviceListCalls() - before).toBe(1);
+		});
+
+		it("keeps retrying the device-list resubscribe through a not_ready window and establishes it once the backend recovers", async () => {
+			// custom_components/eppgrid/__init__.py pops hass.data[DOMAIN]
+			// BEFORE manager.async_stop() fires `closed` — so `closed` is
+			// ALWAYS sent while the manager is already gone, and both
+			// eppgrid/subscribe_device_list and its eppgrid/list_devices
+			// fallback reply not_ready for the whole reload window. The old
+			// one-shot resubscribe gave up silently and never tried again;
+			// this must keep backing off (like `_reopenStream`) until the
+			// reload finishes and the backend accepts the subscribe.
+			let deviceListReady = false;
+			const deviceListUnsub = vi.fn();
+			let gridCb: ((msg: any) => void) | undefined;
+			const subscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_device_list") {
+					return deviceListReady
+						? Promise.resolve(deviceListUnsub)
+						: Promise.reject(new Error("not_ready"));
+				}
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCb = cb;
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockRejectedValue(new Error("not_ready")),
+				connection: { subscribeMessage },
+			};
+
+			// Establish the device-list subscription once while the backend
+			// is up.
+			deviceListReady = true;
+			await ctrl.subscribeDeviceList();
+			expect((ctrl as any)._unsubDeviceList).toBe(deviceListUnsub);
+
+			// The reload begins: the manager instance is gone, so a fresh
+			// subscribe_device_list rejects with not_ready until setup
+			// completes.
+			deviceListReady = false;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			expect(gridCb).toBeDefined();
+
+			// The manager tears the grid stream down — triggers the resubscribe.
+			gridCb!({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Still not_ready — must keep retrying rather than giving up
+			// after a single attempt.
+			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
+			await vi.advanceTimersByTimeAsync(500);
+			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
+			await vi.advanceTimersByTimeAsync(1000);
+			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
+
+			// The reload finishes — the next backed-off attempt succeeds.
+			deviceListReady = true;
+			await vi.advanceTimersByTimeAsync(2000);
+
+			expect((ctrl as any)._unsubDeviceList).toBe(deviceListUnsub);
+		});
+
+		it("cancels the device-list retry loop when hostDisconnected fires mid-backoff", async () => {
+			let attempts = 0;
+			let gridCb: ((msg: any) => void) | undefined;
+			const subscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_device_list") {
+					attempts += 1;
+					return Promise.reject(new Error("not_ready"));
+				}
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCb = cb;
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockRejectedValue(new Error("not_ready")),
+				connection: { subscribeMessage },
+			};
+
+			await ctrl.subscribeDeviceList(); // fails, but sets intent
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			gridCb!({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+			const attemptsBeforeDisconnect = attempts;
+			expect(attemptsBeforeDisconnect).toBeGreaterThan(0);
+
+			// No timers/subscriptions may resurrect a torn-down controller.
+			ctrl.hostDisconnected();
+
+			// Advance far past the backoff cap — no further attempts.
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			expect(attempts).toBe(attemptsBeforeDisconnect);
+		});
+
+		it("cancels the device-list retry loop on a connection swap mid-backoff — the swap's own resubscribe owns recovery instead", async () => {
+			// A connection swap must not leave the OLD loop's timer running
+			// alongside the swap's own immediate resubscribe (see the `hass`
+			// setter) — that would double-subscribe and leak a stale retry
+			// against a dead connection.
+			let attempts = 0;
+			let gridCb: ((msg: any) => void) | undefined;
+			const oldSubscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_device_list") {
+					attempts += 1;
+					return Promise.reject(new Error("not_ready"));
+				}
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCb = cb;
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockRejectedValue(new Error("not_ready")),
+				connection: { subscribeMessage: oldSubscribeMessage },
+			};
+
+			await ctrl.subscribeDeviceList(); // fails, but sets intent
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			gridCb!({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+			expect((ctrl as any)._deviceListRetryTimer).toBeDefined();
+			const attemptsBeforeSwap = attempts;
+
+			// Connection swaps mid-backoff — the swap's own logic
+			// immediately resubscribes on the new connection.
+			const newUnsub = vi.fn();
+			const newSubscribe = vi.fn().mockResolvedValue(newUnsub);
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: { subscribeMessage: newSubscribe },
+			};
+			await Promise.resolve();
+			await Promise.resolve();
+
+			expect((ctrl as any)._unsubDeviceList).toBe(newUnsub);
+			const attemptsAtSwap = attempts;
+
+			// Advance far past the backoff cap — the OLD loop's timer must
+			// not still be ticking against the dead connection.
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			expect(attempts).toBe(attemptsAtSwap);
+			expect(attemptsAtSwap).toBe(attemptsBeforeSwap);
+		});
+
+		it("does not strand the device-list backoff counter across a connection swap — a later closed keeps the base retry delay", async () => {
+			// If a connection swap lands while the device-list backoff timer is
+			// pending, the counter must not survive the swap: a LATER, genuinely
+			// new `closed` (e.g. a fresh config-entry reload) must start its own
+			// retry loop back at the base delay, not resume escalated from
+			// wherever the OLD loop left off — otherwise the very recovery path
+			// this mechanism exists to deliver is itself delayed by up to 30s.
+			const DEVICE_LIST_TYPE = "eppgrid/subscribe_device_list";
+			let gridCb: ((msg: any) => void) | undefined;
+			const oldSubscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === DEVICE_LIST_TYPE) {
+					return Promise.reject(new Error("not_ready"));
+				}
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCb = cb;
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockRejectedValue(new Error("not_ready")),
+				connection: { subscribeMessage: oldSubscribeMessage },
+			};
+
+			await ctrl.subscribeDeviceList(); // fails, but sets intent
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			// First closed → one failed retry attempt → counter = 1, base-delay
+			// (500ms) timer pending. This is the "mid-backoff" precondition.
+			gridCb!({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+			expect((ctrl as any)._deviceListRetryTimer).toBeDefined();
+			expect((ctrl as any)._reopenAttempts[DEVICE_LIST_TYPE]).toBe(1);
+
+			// Connection swaps mid-backoff.
+			const newSubscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === DEVICE_LIST_TYPE) {
+					return Promise.reject(new Error("not_ready"));
+				}
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCb = cb;
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockRejectedValue(new Error("not_ready")),
+				connection: { subscribeMessage: newSubscribeMessage },
+			};
+			await vi.advanceTimersByTimeAsync(0);
+
+			// A later, genuinely new closed on the new connection (e.g. a fresh
+			// config-entry reload) re-triggers the resubscribe-on-closed path.
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			gridCb!({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+
+			const deviceListCallCount = () =>
+				newSubscribeMessage.mock.calls.filter(
+					(c: any[]) => c[1]?.type === DEVICE_LIST_TYPE,
+				).length;
+			const callsAfterSecondClosed = deviceListCallCount();
+
+			// The retry loop's first attempt on this fresh cycle just failed
+			// too. If the counter was reset by the swap, the next retry fires
+			// at the BASE delay (500ms) — not an escalated one carried over
+			// from the loop that was mid-backoff when the swap landed.
+			await vi.advanceTimersByTimeAsync(499);
+			expect(deviceListCallCount()).toBe(callsAfterSecondClosed);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(deviceListCallCount()).toBe(callsAfterSecondClosed + 1);
+		});
+
+		it("does not resubscribe the device list on closed when the panel never subscribed to it", async () => {
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emitGrid({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(h.deviceListCalls()).toBe(0);
+		});
+
+		it("recovers device-list pushes after a stream-closed resubscribe", async () => {
+			// Distinguishes a genuine fresh registration from merely re-invoking
+			// the OLD callback (which would "pass" this assertion even with no
+			// fix at all, since the old JS closure still works when called
+			// directly — the real bug is that nothing ever calls it again).
+			const gridCbs: ((msg: any) => void)[] = [];
+			const deviceListCbs: ((msg: any) => void)[] = [];
+			const subscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				if (msg.type === "eppgrid/subscribe_device_list") {
+					deviceListCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = { callWS: vi.fn(), connection: { subscribeMessage } };
+
+			await ctrl.subscribeDeviceList();
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			expect(deviceListCbs).toHaveLength(1);
+
+			// The reload's fresh manager tears the grid stream down...
+			gridCbs[0]({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+
+			// ...and a NEW device-list subscription is registered — the old
+			// one points at a manager instance that no longer exists and will
+			// never push again.
+			expect(deviceListCbs.length).toBeGreaterThan(1);
+
+			// The fresh subscription's push must reach the controller — the
+			// only surviving trigger for `_isSelectedOffline` to stop reading
+			// a frozen firmware_status after a reload.
+			deviceListCbs[deviceListCbs.length - 1]({
+				devices: [makeDevice("aa", true)],
+			});
+
+			expect(ctrl.devices.map((d) => d.mac)).toEqual(["aa"]);
 		});
 	});
 

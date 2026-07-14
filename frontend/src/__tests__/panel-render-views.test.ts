@@ -633,6 +633,128 @@ describe("render() handles offline device", () => {
 	});
 });
 
+describe("render() shows the calibration wizard an offline device (#336)", () => {
+	it("renders the offline banner while calibrating", () => {
+		const a = createPanel() as any;
+		a._view = "calibrate";
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: false,
+				configured: true,
+				firmware_status: "unavailable",
+			},
+		];
+
+		const str = JSON.stringify(a.render());
+
+		expect(str).toContain("connection.offline");
+	});
+
+	it("keeps the wizard mounted so captured corners survive the drop", () => {
+		// The wizard holds the user's captured corners in its own component state.
+		// Unmounting it (the full-page banner the other views use) would throw away
+		// their progress on a transient flap and restart calibration at step 1.
+		const a = createPanel() as any;
+		a._view = "calibrate";
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: false,
+				configured: true,
+				firmware_status: "unavailable",
+			},
+		];
+
+		const str = JSON.stringify(a.render());
+
+		expect(str).toContain("epp-wizard");
+	});
+
+	it("shows the banner when the stream drops but HA still thinks the device is fine", () => {
+		// The session-only socket drop (#334's class): HA's device list still says
+		// available, so only the stream knows.
+		const a = createPanel() as any;
+		a._view = "calibrate";
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: true,
+				configured: true,
+				firmware_status: "compatible",
+			},
+		];
+		a._streamOffline = true;
+
+		const str = JSON.stringify(a.render());
+
+		expect(str).toContain("connection.offline");
+		expect(str).toContain("epp-wizard");
+	});
+
+	it("wraps the banner and the wizard in .wizard-stage so the banner can't squeeze the wizard on mobile", () => {
+		// .panel becomes a flex column on mobile (max-width: 819px) — a bare
+		// block sibling with flex:1 (the banner) would absorb the free space
+		// and squeeze <epp-wizard> (which carries no flex), clipping it. The
+		// settings view solves the equivalent problem with an absolute-overlay
+		// stage (.settings-stage); .wizard-stage mirrors that here (#336).
+		const a = createPanel() as any;
+		a._view = "calibrate";
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: false,
+				configured: true,
+				firmware_status: "unavailable",
+			},
+		];
+
+		const str = JSON.stringify(a.render());
+
+		expect(str).toContain("wizard-stage");
+	});
+
+	it("shows the connection-failed banner (and keeps the wizard mounted) when the device is available but the session failed to open", () => {
+		// Session-open failure (e.g. the ESP32's API connection slots are
+		// exhausted) fails with connection_failed/not_found while HA's device
+		// list still reports the device as available/compatible — only
+		// `_deviceCtrl.connectionFailed` knows. Every other view gates the
+		// banner on `connectionFailed || isOffline`; the wizard branch must
+		// match or it strands the user mid-calibration with no explanation.
+		const a = createPanel() as any;
+		a._view = "calibrate";
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: true,
+				configured: true,
+				firmware_status: "compatible",
+			},
+		];
+		a._deviceCtrl._connectionFailed = true;
+
+		const str = JSON.stringify(a.render());
+
+		expect(str).toContain("connection.failed");
+		expect(str).toContain("epp-wizard");
+	});
+});
+
 describe("render() preserves settings view across transient device states", () => {
 	// HA debounces ESPHome config-entry reloads 30s after the last entity
 	// disabled_by change, so saving an entity toggle in eppgrid causes the

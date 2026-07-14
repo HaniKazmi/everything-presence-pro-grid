@@ -141,7 +141,7 @@ export class TargetController implements ReactiveController {
 			// from the live sensor reading. Propagating live updates mid-drag
 			// makes the displayed value bounce as the sensor fluctuates.
 			// Snapshot model: populate any field that's currently null
-			// (fresh load, post-reconnect onSessionClosed clear), then freeze.
+			// (fresh load, post-reconnect onAvailability clear), then freeze.
 			// Targets/zones are skipped entirely — they'd re-render the panel
 			// at the 5Hz target rate and fight slider drag handlers.
 			const cur = this.host._sensorState;

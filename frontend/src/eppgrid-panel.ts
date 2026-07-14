@@ -188,7 +188,7 @@ type SensorState = {
 
 // Factory — returns a fresh object each call so resets and the
 // settings-view snapshot merge (`{ ...createInitialSensorState(), ... }` in
-// onSessionClosed) never alias a shared object.
+// the onAvailability stream-offline clear) never alias a shared object.
 const createInitialSensorState = (): SensorState => ({
 	occupancy: false,
 	static_presence: false,
@@ -306,6 +306,32 @@ export const panelStyles = css`
     min-height: 0;
   }
   .settings-stage > .protocol-fullpage {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    border-radius: 0;
+    z-index: 5;
+  }
+
+  /* The calibrate/tutorial wizard is bounded the same way: the connection banner
+     overlays <epp-wizard> instead of stacking as its sibling. On desktop .panel is
+     a plain block, so this is inert there (as it always was) — but on mobile .panel
+     becomes a flex column (below), where a bare sibling's flex:1 would otherwise
+     absorb the free space and squeeze epp-wizard (which carries no flex of its
+     own), clipping it. Room calibration is typically done on a phone, walking the
+     room, so the wizard must stay fully visible (#336). */
+  .wizard-stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .wizard-stage > epp-wizard {
+    flex: 1;
+    min-height: 0;
+  }
+  .wizard-stage > .protocol-fullpage {
     position: absolute;
     inset: 0;
     margin: 0;
@@ -842,6 +868,10 @@ export class EPPGridPanel extends LitElement {
 	// `hass.connection.connected` so we can render a "reconnecting" UI
 	// while the backend is unreachable and re-initialise once it returns.
 	@state() private _haConnected = true;
+	// The selected device's live stream reports it dropped. Distinct from the
+	// device-list's `firmware_status`: our session socket can die while HA
+	// still believes the device is available (#336).
+	@state() private _streamOffline = false;
 	private _listeningConnection: any = null;
 	private _onHaReady = (): void => {
 		const wasDisconnected = !this._haConnected;
@@ -1264,11 +1294,43 @@ export class EPPGridPanel extends LitElement {
 					this._loadDeviceConfig(this._selectedMac).catch(() => {});
 				}
 			}
+			// Bootstraps a session+config for a device that had none — e.g. it
+			// was offline when the panel mounted, so _runInitialize's
+			// availability gate skipped _ensureSession and no streams were
+			// ever opened for it. The manager re-arms durable STREAMS on a
+			// flap (#336), but that only rescues a device that already has a
+			// stream subscribed; with no session there is no stream for
+			// `onAvailability` to arrive on, so this device-list push is the
+			// only surviving trigger. `!hasDeviceSession` makes this
+			// deliberately inert for any device that already has one — and
+			// since the frontend no longer tears its session down on a flap,
+			// that's every device the manager could be re-arming — so this
+			// can never race the manager's stream re-arm.
+			if (
+				this._selectedMac &&
+				this._isSelectedDeviceAvailable() &&
+				!this._deviceCtrl.hasDeviceSession &&
+				!this._deviceCtrl.reconnecting
+			) {
+				this._ensureSession(this._selectedMac);
+			}
 		};
-		this._deviceCtrl.onSelectedAvailable = (mac) => {
-			this._ensureSession(mac);
-		};
-		this._deviceCtrl.onSessionClosed = () => {
+		this._deviceCtrl.onAvailability = (mac, available) => {
+			if (mac !== this._selectedMac) return;
+			if (available) {
+				this._streamOffline = false;
+				return;
+			}
+			// All three live streams (grid + raw, plus heatmap when the
+			// overlay is enabled) opt into availability, so a single flap
+			// fires this handler 2-3x with `available: false`. Only the
+			// first needs to run the clear below — once `_streamOffline` is
+			// already true, repeating it would re-run the zone-engine reset
+			// for no benefit and risks dropping state that arrived between
+			// the calls (#336).
+			if (this._streamOffline) return;
+			this._streamOffline = true;
+
 			// Live-data has no meaning once the device is gone — clear it so
 			// the UI doesn't keep showing stale readings. Config-derived
 			// state (perspective, furniture, zones) is intentionally kept
@@ -1306,9 +1368,30 @@ export class EPPGridPanel extends LitElement {
 		this._selectedMac = this._deviceCtrl.selectedMac;
 	}
 
+	// Answers "can we open a session for the selected device?" — HA's own
+	// availability, independent of our durable stream's liveness (see
+	// `_isSelectedOffline` below, which answers "should we paint the offline
+	// banner?"). The session bootstrap is gated on `!hasDeviceSession`, so this
+	// only needs to know whether HA thinks the device is reachable.
 	private _isSelectedDeviceAvailable(): boolean {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		return !!dev?.available;
+	}
+
+	// Answers "should we paint the offline banner (and clear stale live data)?"
+	// Broader than `_isSelectedDeviceAvailable` above: missing-from-list, an
+	// `unavailable` firmware status, AND our own durable stream's liveness
+	// (`_streamOffline`) all count — our session socket can die while HA still
+	// lists the device as available, and only the stream knows (#336).
+	private get _isSelectedOffline(): boolean {
+		const dev = this._devices.find((d) => d.mac === this._selectedMac);
+		// Missing-from-list is treated as offline so a transient empty device
+		// list during HA reload shows the offline banner instead of falling
+		// through to a half-rendered grid without data.
+		return (
+			!!this._selectedMac &&
+			(!dev || dev.firmware_status === "unavailable" || this._streamOffline)
+		);
 	}
 
 	private async _loadDevices(): Promise<void> {
@@ -1556,6 +1639,10 @@ export class EPPGridPanel extends LitElement {
 		this._sensorState = createInitialSensorState();
 		this._zoneState = createInitialZoneState();
 		this._targetCtrl.resetZoneEngineState();
+		// Otherwise switching away from a device mid-flap leaves the flag
+		// latched `true` on the newly selected device until its own stream
+		// arms, showing a stale "offline" banner for a healthy device.
+		this._streamOffline = false;
 	}
 
 	// -- Grid cell painting --
@@ -2586,38 +2673,37 @@ export class EPPGridPanel extends LitElement {
 			</div>`;
 		}
 
+		const dev = this._devices.find((d) => d.mac === this._selectedMac);
+		const isOffline = this._isSelectedOffline;
+		const protocolOk = !dev || dev.firmware_status === "compatible";
+
 		if (this._view === "tutorial" || this._view === "calibrate") {
 			return html`<div class="tab-layout">
         ${this._renderTabBar()}
         <div class="panel">
           ${this._renderHeader()}
-          <epp-wizard
-            .rawTargets=${this._rawTargets}
-            .sensorState=${this._getWizardSensorState()}
-            .localize=${this._localize}
-            .initialRoomWidth=${this._roomWidth}
-            .initialRoomDepth=${this._roomDepth}
-            .initialStep=${this._view === "tutorial" ? "guide" : "corners"}
-            @dismiss-tutorial=${() => this._onDismissTutorial()}
-            @begin-corners=${() => {
-							this._view = "calibrate";
+          <div class="wizard-stage">
+            ${this._deviceCtrl.connectionFailed || isOffline ? this._renderConnectionBanner() : nothing}
+            <epp-wizard
+              .rawTargets=${this._rawTargets}
+              .sensorState=${this._getWizardSensorState()}
+              .localize=${this._localize}
+              .initialRoomWidth=${this._roomWidth}
+              .initialRoomDepth=${this._roomDepth}
+              .initialStep=${this._view === "tutorial" ? "guide" : "corners"}
+              @dismiss-tutorial=${() => this._onDismissTutorial()}
+              @begin-corners=${() => {
+								this._view = "calibrate";
+							}}
+              @wizard-save=${(e: CustomEvent) => this._onWizardSave(e)}
+            @wizard-cancel=${() => {
+							this._view = "live";
 						}}
-            @wizard-save=${(e: CustomEvent) => this._onWizardSave(e)}
-          @wizard-cancel=${() => {
-						this._view = "live";
-					}}
-          ></epp-wizard>
+            ></epp-wizard>
+          </div>
         </div>
       </div>`;
 		}
-
-		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		// Missing-from-list is treated as offline so a transient empty
-		// device list during HA reload shows the offline banner instead
-		// of falling through to a half-rendered grid without data.
-		const isOffline =
-			!!this._selectedMac && (!dev || dev.firmware_status === "unavailable");
-		const protocolOk = !dev || dev.firmware_status === "compatible";
 
 		// Compute the inline status banner for settings-view editing (see the
 		// `inSettingsEdit` comment above for why the full-page branches must
@@ -2935,8 +3021,7 @@ export class EPPGridPanel extends LitElement {
 
 	private _renderConnectionBanner() {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		const isOffline =
-			!!this._selectedMac && (!dev || dev.firmware_status === "unavailable");
+		const isOffline = this._isSelectedOffline;
 
 		if (!this._deviceCtrl.connectionFailed && !isOffline) return nothing;
 

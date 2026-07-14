@@ -8,6 +8,16 @@ import { getSensorRoomPosition } from "../lib/room-geometry.js";
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
+	// Force isConnected=true without appending — appendChild fires
+	// connectedCallback which auto-runs _initialize and races with the
+	// explicit calls each test makes. Without this, _loadDeviceConfig's
+	// post-await `!this.isConnected` guard (real for a genuinely detached/
+	// torn-down panel) fires on every call here and immediately closes the
+	// session it just opened. See panel-config.test.ts's createPanel().
+	Object.defineProperty(el, "isConnected", {
+		value: true,
+		configurable: true,
+	});
 	el.hass = {
 		callWS: vi.fn().mockResolvedValue({}),
 		connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
@@ -101,6 +111,12 @@ describe("_loadDeviceConfig sets up callbacks before subscribing", () => {
 				}),
 			},
 		};
+		// _loadDeviceConfig's post-await guard tears the just-opened session
+		// back down when `_selectedMac` doesn't match the mac it loaded (the
+		// normal selectDevice()/_applyDeviceList() flow sets this before
+		// loading config) — set it here so this direct call behaves like a
+		// real load instead of self-aborting.
+		a._selectedMac = "AA:BB";
 
 		await a._loadDeviceConfig("AA:BB");
 
@@ -257,8 +273,8 @@ describe("target data flow via DeviceController", () => {
 	});
 });
 
-describe("onSessionClosed (env sensor preservation)", () => {
-	it("preserves env sensor values across session close", async () => {
+describe("onAvailability(mac, false) (env sensor preservation)", () => {
+	it("preserves env sensor values across a stream-offline clear", async () => {
 		// Why: env-offset slider displays compute `raw + offset` from
 		// _sensorState.{illuminance,temperature,humidity,co2}. If those go
 		// to null during a transient device-offline window, Lit's render
@@ -270,6 +286,7 @@ describe("onSessionClosed (env sensor preservation)", () => {
 		const el = createPanel();
 		const a = el as any;
 		await a._subscribeDevices();
+		a._selectedMac = "aa";
 		a._sensorState = {
 			occupancy: true,
 			static_presence: true,
@@ -283,7 +300,7 @@ describe("onSessionClosed (env sensor preservation)", () => {
 		};
 		a._targets = [{ x: 1, y: 2, status: "active", signal: 5 }];
 
-		a._deviceCtrl.onSessionClosed();
+		a._deviceCtrl.onAvailability("aa", false);
 
 		// High-frequency state (targets, occupancy/presence flags) is cleared
 		// because stale flags are visibly misleading on the live grid.
@@ -304,9 +321,10 @@ describe("onSessionClosed (env sensor preservation)", () => {
 		const el = createPanel();
 		const a = el as any;
 		await a._subscribeDevices();
+		a._selectedMac = "aa";
 		a._dismissedTargets = new Map([[0, 42]]);
 
-		a._deviceCtrl.onSessionClosed();
+		a._deviceCtrl.onAvailability("aa", false);
 
 		expect(a._dismissedTargets.size).toBe(0);
 	});
@@ -342,6 +360,16 @@ describe("_closeDeviceSession", () => {
 		a._closeDeviceSession();
 
 		expect(spy).toHaveBeenCalled();
+	});
+
+	it("resets _streamOffline so switching away from an offline device doesn't latch a stale offline banner onto the next one", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._streamOffline = true;
+
+		a._closeDeviceSession();
+
+		expect(a._streamOffline).toBe(false);
 	});
 });
 

@@ -1537,9 +1537,11 @@ class DeviceManager:
         if mac in self._entity_update_macs and mac not in self._failed_pushes:
             _LOGGER.debug("Skipping redundant push for %s (entity update guard)", mac)
             # Must broadcast the false→true transition even when skipping the
-            # push, else the frontend's recovery hook (onSelectedAvailable)
-            # never runs and its WS state subs stay attached to the
-            # torn-down DeviceConnection.
+            # push: stream recovery is the manager's own job via
+            # _ensure_streams above, but this broadcast is what lets the
+            # panel bootstrap a session+config for a device that had none
+            # (e.g. it was offline when the panel mounted) — that path is
+            # only wired to the device-list push, not to stream state.
             self._fire_device_list_changed()
             return
         # Recovery path: if a debounced push failed (likely fired during the

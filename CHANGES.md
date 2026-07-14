@@ -15,6 +15,14 @@ firmware downloads, see the
     dashboard. The card now shows that the device is offline and resumes by
     itself once it is back. The same applies after the integration itself is
     reloaded or updated.
+- **The panel recovers on its own after a connection drop, too.** The live view,
+    zone editor, heatmap, and room calibration previously froze until you
+    switched device or reloaded the page if the sensor's connection dropped
+    while Home Assistant still considered it online. The panel now recovers the
+    same way the dashboard card does.
+- **Room calibration tells you when the sensor goes offline** instead of
+    silently failing to detect you, and keeps the corners you've already
+    captured so you can pick up right where you left off once it reconnects.
 
 ## v1.5.1 — 2026-07-04
 
