@@ -129,6 +129,16 @@ export class DeviceController implements ReactiveController {
 	// to re-open the heatmap sub, independent of whether one happens to be
 	// in flight or already stashed.
 	private _heatmapEnabled = false;
+	// True while a `closed`-triggered device-list resubscribe is in flight.
+	// A config-entry reload replaces the manager instance — its
+	// `_device_list_callbacks` list goes with it, so this subscription's
+	// registration on the OLD manager is orphaned forever; nothing else ever
+	// re-subscribes it (`_onHaReady` only fires on an HA *websocket*
+	// reconnect, which a config-entry reload does not cause). All three
+	// panel streams share one manager, so the same reload notifies `closed`
+	// on each of them in quick succession — this flag collapses that into
+	// ONE device-list resubscribe instead of one per stream (#336).
+	private _deviceListReopenPending = false;
 	private _reconnecting = false;
 	private _connectionFailed = false;
 	private _reopenInFlight?: { mac: string; promise: Promise<void> };
@@ -340,6 +350,32 @@ export class DeviceController implements ReactiveController {
 		this._deviceListGen++;
 		safeUnsub(this._unsubDeviceList);
 		this._unsubDeviceList = undefined;
+	}
+
+	/**
+	 * Re-establish the device-list subscription after a stream reports
+	 * `closed`. A config-entry reload replaces the manager instance
+	 * backend-side, taking this subscription's registration with it — the
+	 * durable streams recover on their own via `closed` (see
+	 * `_reopenStream`), but the device-list push has no such mechanism, so
+	 * without this it never arrives again and `_isSelectedOffline` is stuck
+	 * reading a frozen `firmware_status` forever (#336).
+	 *
+	 * Gated on `_wantDeviceListSub` (intent, not `_unsubDeviceList` — a
+	 * `closed` can race a subscribe already in flight) and deduped via
+	 * `_deviceListReopenPending`: all three panel streams share one manager,
+	 * so the same reload fires `closed` on each of them in quick succession,
+	 * and this must collapse into a single resubscribe rather than one per
+	 * stream.
+	 */
+	private _resubscribeDeviceListOnClosed(): void {
+		if (!this._wantDeviceListSub || this._deviceListReopenPending) return;
+		this._deviceListReopenPending = true;
+		void this.subscribeDeviceList()
+			.catch(() => {})
+			.finally(() => {
+				this._deviceListReopenPending = false;
+			});
 	}
 
 	private _applyDeviceList(devices: DeviceInfo[]): void {
@@ -725,6 +761,11 @@ export class DeviceController implements ReactiveController {
 				// will ever revive it — re-subscribe. Ordinary `available: false`
 				// must NOT do this: the manager re-arms a flapped stream itself.
 				this.onAvailability?.(mac, false);
+				// The manager INSTANCE is gone too (a config-entry reload builds a
+				// fresh one) — re-establish the device-list subscription, or it
+				// never receives another push and _isSelectedOffline is stuck
+				// reading a frozen firmware_status forever (#336).
+				this._resubscribeDeviceListOnClosed();
 				this._reopenStream(conn, mac, stream);
 				return;
 			}

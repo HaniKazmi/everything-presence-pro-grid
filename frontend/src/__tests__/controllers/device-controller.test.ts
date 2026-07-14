@@ -2069,6 +2069,127 @@ describe("DeviceController", () => {
 		});
 	});
 
+	describe("device-list resubscribe on stream closed (#336)", () => {
+		// A config-entry reload replaces the manager instance backend-side;
+		// the OLD manager's `_device_list_callbacks` list (and this
+		// subscription's registration on it) go with it, and nothing ever
+		// pushes to this connection's device-list subscription again — the
+		// durable streams recover via `closed`, but the device list does not,
+		// so `_isSelectedOffline` keeps reading a frozen `firmware_status`
+		// forever. A `closed` message is the only surviving signal that the
+		// manager is gone, so it must also re-establish the device-list sub.
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+		afterEach(() => {
+			vi.useRealTimers();
+			vi.restoreAllMocks();
+		});
+
+		/** Tracks grid/raw-target callbacks and every subscribeMessage call by type. */
+		function makeMultiStreamHass() {
+			const gridCbs: ((msg: any) => void)[] = [];
+			const rawCbs: ((msg: any) => void)[] = [];
+			const subscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				if (msg.type === "eppgrid/subscribe_raw_targets") {
+					rawCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			return {
+				hass: { callWS: vi.fn(), connection: { subscribeMessage } },
+				subscribeMessage,
+				emitGrid: (msg: any, n = gridCbs.length - 1) => gridCbs[n]?.(msg),
+				emitRaw: (msg: any, n = rawCbs.length - 1) => rawCbs[n]?.(msg),
+				deviceListCalls: () =>
+					subscribeMessage.mock.calls.filter(
+						(c: any[]) => c[1]?.type === "eppgrid/subscribe_device_list",
+					).length,
+			};
+		}
+
+		it("re-subscribes the device list once when the manager tears down multiple streams together", async () => {
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+
+			await ctrl.subscribeDeviceList();
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			const before = h.deviceListCalls();
+
+			// A config-entry reload tears both durable streams down together —
+			// both fire `closed` for the same underlying event. Must collapse
+			// into a single device-list resubscribe, not one per stream.
+			h.emitGrid({ closed: true });
+			h.emitRaw({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(h.deviceListCalls() - before).toBe(1);
+		});
+
+		it("does not resubscribe the device list on closed when the panel never subscribed to it", async () => {
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emitGrid({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(h.deviceListCalls()).toBe(0);
+		});
+
+		it("recovers device-list pushes after a stream-closed resubscribe", async () => {
+			// Distinguishes a genuine fresh registration from merely re-invoking
+			// the OLD callback (which would "pass" this assertion even with no
+			// fix at all, since the old JS closure still works when called
+			// directly — the real bug is that nothing ever calls it again).
+			const gridCbs: ((msg: any) => void)[] = [];
+			const deviceListCbs: ((msg: any) => void)[] = [];
+			const subscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				if (msg.type === "eppgrid/subscribe_device_list") {
+					deviceListCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = { callWS: vi.fn(), connection: { subscribeMessage } };
+
+			await ctrl.subscribeDeviceList();
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			expect(deviceListCbs).toHaveLength(1);
+
+			// The reload's fresh manager tears the grid stream down...
+			gridCbs[0]({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+
+			// ...and a NEW device-list subscription is registered — the old
+			// one points at a manager instance that no longer exists and will
+			// never push again.
+			expect(deviceListCbs.length).toBeGreaterThan(1);
+
+			// The fresh subscription's push must reach the controller — the
+			// only surviving trigger for `_isSelectedOffline` to stop reading
+			// a frozen firmware_status after a reload.
+			deviceListCbs[deviceListCbs.length - 1]({
+				devices: [makeDevice("aa", true)],
+			});
+
+			expect(ctrl.devices.map((d) => d.mac)).toEqual(["aa"]);
+		});
+	});
+
 	describe("device session generation token", () => {
 		// The ESP32 backend has only a handful of API connection slots and
 		// refcounts `subscribe_device` sessions — a leaked subscription holds
