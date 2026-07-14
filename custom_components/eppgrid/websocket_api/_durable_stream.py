@@ -10,10 +10,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
+from typing import Literal
 
 from homeassistant.components import websocket_api
 from homeassistant.core import callback
 
+from ..const import DOMAIN
 from . import _LOGGER
 from . import _connection_is_closed
 
@@ -27,9 +29,7 @@ async def start_durable_stream(
     counter_attr: str,
     make_on_state: Callable[[str, Any], Callable[[Any], None]],
     send_snapshot: bool,
-    send_availability: bool,
-    log_prefix: str,
-    send_protocol_events: bool = True,
+    protocol: Literal["frames_only", "closed_only", "full"],
 ) -> None:
     """Shared scaffolding for the non-admin overview subscribe commands.
 
@@ -40,26 +40,36 @@ async def start_durable_stream(
     callback is rebuilt per connection from `make_on_state`, since the device's
     entity keys are only knowable from the live connection.
 
-    Relaying that liveness to the client is opt-in per command — see
-    `_on_availability` for why the heatmap subscription must not carry it.
-
     A stream the manager tears down itself (unload, reload, device removed) is a
     different thing from an offline device, and the client cannot tell them apart:
     `_on_closed` puts that on the wire so the card can re-subscribe.
 
-    `send_protocol_events` gates every event this function sends that is NOT a state
-    frame: the ONE-SHOT `{"available": False}` fallback sent when registration itself
-    returns `None`, the same one-shot replayed when a session loss races the
-    registration window instead (`last_available is False` below), and the
-    `_on_closed` teardown signal. It exists because a browser holding a cached
-    pre-upgrade panel bundle reduces every message with `event.targets || []` and
-    `event.sensors ? ... : all-false` — so ANY non-frame message would blank its live
-    view and flip every sensor false. A client that hasn't opted in to protocol events
-    must therefore see frames and nothing else. It defaults to True — the card's
-    deployed bundles deliberately DO take all three (see the `_on_availability` /
-    `_on_closed` docstrings below), and the panel's opt-out path is the one that passes
-    False.
+    `protocol` picks one of exactly THREE wire contracts this function ever emits
+    — the two booleans this replaced (`send_availability` / `send_protocol_events`)
+    were not independent axes, they only ever appeared in these three combinations,
+    and the fourth (live `available` events with `closed` suppressed) contradicted
+    this docstring's own claims about what gates what:
+
+    - `"frames_only"`: state frames, nothing else. For a client that has not opted
+      in to protocol events at all (the panel's three commands, when a cached
+      pre-upgrade bundle doesn't set `availability: true`) — its reducer replaces
+      the whole message with `event.targets || []`, so ANY non-frame message would
+      blank its live view.
+    - `"closed_only"`: frames, plus `_on_closed`'s terminal signal — but NEVER a
+      live `available` event. Used by `overview/subscribe_heatmap`: see
+      `_on_availability` for why that wire must not carry liveness.
+    - `"full"`: frames, plus live `available` events, plus `_on_closed`'s signal
+      (which then also carries `available: false` alongside `closed: true`). Used
+      by `overview/subscribe`, and by the panel's three commands once a client
+      opts in via `availability: true`.
+
+    `protocol` is transitional alongside the `availability` opt-in flag it backs
+    for the panel's commands — see the note on that flag in data-catalog.md.
     """
+    # Derived from the message type rather than passed in: every caller's log_prefix
+    # was exactly `msg["type"]` minus the domain, so a separate parameter only
+    # invited it to drift from the actual command.
+    log_prefix = msg["type"].removeprefix(f"{DOMAIN}/")
     connection.send_result(msg["id"])
     if send_snapshot:
         config = manager.store.devices.get(mac)
@@ -75,10 +85,11 @@ async def start_durable_stream(
     def _on_availability(available: bool) -> None:
         """Relay the manager's liveness notifications, per the command's contract.
 
-        `overview/subscribe` (send_availability=True) takes every event, live: the card
+        `protocol == "full"` (`overview/subscribe`, and the panel's three commands
+        opted in via `availability: true`) takes every event, live: the client
         renders its offline banner from this stream's `available` field.
 
-        `overview/subscribe_heatmap` (send_availability=False) takes NONE of them
+        `protocol == "closed_only"` (`overview/subscribe_heatmap`) takes NONE of them
         directly. That subscription has never carried liveness, and already-deployed
         card bundles — which we cannot fix by rebuilding — reduce it with
         `(_state, m) => m.cells ?? []` (frontend/src/card/heatmap-store.ts), so ANY
@@ -97,10 +108,14 @@ async def start_durable_stream(
         connection) can notify False through the still-unarmed stream, and the arm can
         then succeed — a case where `main` sent nothing at all. So record the liveness
         and let the caller replay it once, below, only if registration settled offline.
+
+        `protocol == "frames_only"` (the panel's commands, opted out) takes nothing
+        here either — recorded for the replay below, which is itself gated off in
+        that case.
         """
         nonlocal last_available
         last_available = available
-        if not send_availability:
+        if protocol != "full":
             return
         connection.send_message(websocket_api.event_message(msg["id"], {"available": available}))
 
@@ -114,25 +129,25 @@ async def start_durable_stream(
         no backend event will ever revive it — the card would sit on its offline banner
         until the element remounted (#334, reached via a config-entry reload).
 
-        `available: false` rides along on `overview/subscribe` for BWC: an already-
-        deployed card bundle reduces that stream with
+        `available: false` rides along for `protocol == "full"` for BWC: an already-
+        deployed card bundle reduces `overview/subscribe` with
         `"available" in m && !("targets" in m)` and ignores the extra key, so it keeps
         showing the offline banner exactly as it does today.
 
-        `overview/subscribe_heatmap` gets `closed` alone — that wire has never carried
-        liveness. A deployed bundle reduces it with `m.cells ?? []` and so blanks its
-        overlay on this message; accepted, because by the time this fires that overlay
-        is already dead (its stream is gone, no frame is ever coming), so it blanks
-        something frozen rather than losing anything live.
+        `protocol == "closed_only"` (`overview/subscribe_heatmap`) gets `closed` alone
+        — that wire has never carried liveness. A deployed bundle reduces it with
+        `m.cells ?? []` and so blanks its overlay on this message; accepted, because by
+        the time this fires that overlay is already dead (its stream is gone, no frame
+        is ever coming), so it blanks something frozen rather than losing anything live.
 
-        A client that opted out of protocol events entirely (`send_protocol_events`
-        False — the panel's BWC path) must not see this one either: unlike the card's
-        two wires above, it has no tolerance for a bare `closed` message at all, since
-        its reducer blanks the live view on ANY message lacking `targets`.
+        `protocol == "frames_only"` (the panel's opted-out path) must not see this one
+        either: unlike the two wires above, it has no tolerance for a bare `closed`
+        message at all, since its reducer blanks the live view on ANY message lacking
+        `targets`.
         """
-        if not send_protocol_events:
+        if protocol == "frames_only":
             return
-        event: dict[str, Any] = {"available": False, "closed": True} if send_availability else {"closed": True}
+        event: dict[str, Any] = {"available": False, "closed": True} if protocol == "full" else {"closed": True}
         connection.send_message(websocket_api.event_message(msg["id"], event))
 
     try:
@@ -149,10 +164,18 @@ async def start_durable_stream(
     if unsub_stream is None:
         # Covers the recorded `last_available` too — nothing was registered, so this
         # single event is all the client gets either way.
-        if send_protocol_events:
+        if protocol != "frames_only":
             connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
         return
-    if not send_availability and send_protocol_events and last_available is False:
+    # Replays the one-shot `available: False` recorded above for a "closed_only"
+    # caller (only `overview/subscribe_heatmap` today) whose registration raced a
+    # session loss and settled offline. Equivalent to the prior triple condition
+    # `not send_availability and send_protocol_events and last_available is False`:
+    # of the three real (send_availability, send_protocol_events) pairs that ever
+    # reached this function — (True, True), (False, True), (False, False), mapped
+    # 1:1 to "full"/"closed_only"/"frames_only" — that expression is True only for
+    # (False, True), i.e. exactly `protocol == "closed_only"`.
+    if protocol == "closed_only" and last_available is False:
         connection.send_message(websocket_api.event_message(msg["id"], {"available": False}))
 
     released = False

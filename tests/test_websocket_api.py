@@ -4127,7 +4127,7 @@ class TestWebSocketSubscriptions:
         `..._opted_out_swallows_registration_race_availability` pin this same gate
         only for `subscribe_grid_targets`, even though all three panel streams
         (raw/grid/heatmap) share `_start_panel_stream`. A future per-stream slip
-        (e.g. hardcoding `send_availability=True` for one of them) would blank the
+        (e.g. hardcoding `protocol="full"` for one of them) would blank the
         calibration wizard's raw-target feed for every cached pre-upgrade bundle
         with the grid-targets pin alone staying green.
         """
@@ -4326,10 +4326,11 @@ class TestWebSocketSubscriptions:
         `async_add_state_stream` can invoke `on_availability(False)` synchronously
         during registration (a stale `on_stop` from a replaced connection) before the
         arm settles and it returns a live unsub — `start_durable_stream` then replays
-        that one-shot `available: False` for callers with `send_availability=False`
-        (see `overview/subscribe_heatmap`'s own regression test for this exact race).
-        For the panel's opted-out path that replay is just as much a non-frame message
-        as the other two, and must be swallowed the same way (#336).
+        that one-shot `available: False` for `protocol="closed_only"` callers (see
+        `overview/subscribe_heatmap`'s own regression test for this exact race). For
+        the panel's opted-out path (`protocol="frames_only"`) that would-be replay is
+        just as much a non-frame message as the other two, and must be swallowed the
+        same way (#336).
         """
         mock_dm = await setup_integration(hass, config_entry)
         register_managed_device(mock_dm)
@@ -4699,7 +4700,7 @@ class TestSubscribeHeatmap:
         Mirrors `TestWebSocketSubscriptions`'s grid-targets opted-out pins, extended to
         `subscribe_heatmap` — it shares `_start_panel_stream` with the other two panel
         streams, but had no dedicated regression test of its own. A future per-stream
-        slip (e.g. hardcoding `send_availability=True` for the heatmap path) would
+        slip (e.g. hardcoding `protocol="full"` for the heatmap path) would
         blank the calibration wizard's heatmap overlay for every cached pre-upgrade
         bundle with a fully green suite otherwise.
         """

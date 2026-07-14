@@ -390,6 +390,29 @@ itself re-opens the session as a side effect (`_ensure_streams` →
 `manager.get_session(mac)` already returns the replacement connection and the
 write succeeds without the panel doing anything to recover it.
 
+**The whole recovery model reduces to one rule:** the manager owns the liveness
+of a stream that exists; the client owns whether a stream exists at all. Every
+frontend behaviour above is a consequence of that split, not a special case of
+its own:
+
+- A device flap → the stream still exists → the manager re-arms it and the
+    client does nothing (the `available` event round-trips false → true on its
+    own).
+- `closed` → the stream ceased to exist → the client re-creates it (uncapped
+    backoff).
+- No session at all (device offline at mount, or re-added after removal) →
+    nothing exists for the manager to re-arm → the client creates one itself.
+- Device removed from the device list → the stream can never exist again → the
+    client destroys its own session.
+- A first-subscribe rejection → the client's own *create* didn't take, so there
+    was never a stream for the manager to own → hence the connection-failed
+    banner, and why that retry is capped (`SUBSCRIBE_RETRY_LIMIT`) while the
+    `closed` re-open backoff is not.
+
+See the `DeviceController` class docstring
+(`frontend/src/controllers/device-controller.ts`) for the same derivation
+alongside the code it explains.
+
 ### Storage (`storage.py`)
 
 Persists per-device config (calibration, room layout, zone slots, sensor

@@ -1368,9 +1368,30 @@ export class EPPGridPanel extends LitElement {
 		this._selectedMac = this._deviceCtrl.selectedMac;
 	}
 
+	// Answers "can we open a session for the selected device?" — HA's own
+	// availability, independent of our durable stream's liveness (see
+	// `_isSelectedOffline` below, which answers "should we paint the offline
+	// banner?"). The session bootstrap is gated on `!hasDeviceSession`, so this
+	// only needs to know whether HA thinks the device is reachable.
 	private _isSelectedDeviceAvailable(): boolean {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		return !!dev?.available;
+	}
+
+	// Answers "should we paint the offline banner (and clear stale live data)?"
+	// Broader than `_isSelectedDeviceAvailable` above: missing-from-list, an
+	// `unavailable` firmware status, AND our own durable stream's liveness
+	// (`_streamOffline`) all count — our session socket can die while HA still
+	// lists the device as available, and only the stream knows (#336).
+	private get _isSelectedOffline(): boolean {
+		const dev = this._devices.find((d) => d.mac === this._selectedMac);
+		// Missing-from-list is treated as offline so a transient empty device
+		// list during HA reload shows the offline banner instead of falling
+		// through to a half-rendered grid without data.
+		return (
+			!!this._selectedMac &&
+			(!dev || dev.firmware_status === "unavailable" || this._streamOffline)
+		);
 	}
 
 	private async _loadDevices(): Promise<void> {
@@ -2653,16 +2674,7 @@ export class EPPGridPanel extends LitElement {
 		}
 
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		// Missing-from-list is treated as offline so a transient empty
-		// device list during HA reload shows the offline banner instead
-		// of falling through to a half-rendered grid without data.
-		//
-		// `_streamOffline` is the durable stream's own liveness (#336): our session
-		// socket can die while HA still lists the device as available, and only the
-		// stream knows.
-		const isOffline =
-			!!this._selectedMac &&
-			(!dev || dev.firmware_status === "unavailable" || this._streamOffline);
+		const isOffline = this._isSelectedOffline;
 		const protocolOk = !dev || dev.firmware_status === "compatible";
 
 		if (this._view === "tutorial" || this._view === "calibrate") {
@@ -3009,9 +3021,7 @@ export class EPPGridPanel extends LitElement {
 
 	private _renderConnectionBanner() {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		const isOffline =
-			!!this._selectedMac &&
-			(!dev || dev.firmware_status === "unavailable" || this._streamOffline);
+		const isOffline = this._isSelectedOffline;
 
 		if (!this._deviceCtrl.connectionFailed && !isOffline) return nothing;
 

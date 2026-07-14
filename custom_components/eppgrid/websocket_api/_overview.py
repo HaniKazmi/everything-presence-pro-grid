@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
+from typing import Literal
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
@@ -30,8 +31,7 @@ async def _start_overview_stream(
     counter_attr: str,
     make_on_state: Callable[[str, Any], Callable[[Any], None]],
     send_snapshot: bool,
-    send_availability: bool,
-    log_prefix: str,
+    protocol: Literal["frames_only", "closed_only", "full"],
 ) -> None:
     """Resolve the card's `device_id` to a mac, then start a durable stream."""
     mac = manager.mac_for_device_id(msg["device_id"])
@@ -52,8 +52,7 @@ async def _start_overview_stream(
         counter_attr=counter_attr,
         make_on_state=make_on_state,
         send_snapshot=send_snapshot,
-        send_availability=send_availability,
-        log_prefix=log_prefix,
+        protocol=protocol,
     )
 
 
@@ -112,8 +111,7 @@ async def websocket_overview_subscribe(
         counter_attr="grid_target_subs",
         make_on_state=lambda mac, dc: _make_grid_target_on_state(connection, msg["id"], mac, dc),
         send_snapshot=True,
-        send_availability=True,
-        log_prefix="overview/subscribe",
+        protocol="full",
     )
 
 
@@ -146,6 +144,5 @@ async def websocket_overview_subscribe_heatmap(
         counter_attr="heatmap_subs",
         make_on_state=lambda mac, dc: _make_heatmap_on_state(connection, msg["id"], mac, dc),
         send_snapshot=False,
-        send_availability=False,
-        log_prefix="overview/subscribe_heatmap",
+        protocol="closed_only",
     )

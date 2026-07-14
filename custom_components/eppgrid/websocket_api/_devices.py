@@ -714,7 +714,6 @@ async def _start_panel_stream(
     *,
     counter_attr: Literal["raw_target_subs", "grid_target_subs", "heatmap_subs"],
     make_on_state: Callable[[str, Any], Callable[[Any], None]],
-    log_prefix: str,
 ) -> None:
     """Shared scaffolding for the panel's three live streams.
 
@@ -725,9 +724,10 @@ async def _start_panel_stream(
     would double-count and silence the device's pipeline on unsub.
 
     Liveness (`available`) and the manager-teardown signal (`closed`) go on the wire
-    only for clients that opt in via `availability: true`. A cached pre-upgrade panel
-    bundle does not, and reduces every message with `event.targets || []` — so it must
-    keep seeing frames and nothing else.
+    only for clients that opt in via `availability: true` — `protocol="full"` below.
+    A cached pre-upgrade panel bundle does not opt in, and reduces every message with
+    `event.targets || []` — so it must keep seeing frames and nothing else
+    (`protocol="frames_only"`).
     """
     opted_in = bool(msg.get("availability"))
     await start_durable_stream(
@@ -738,9 +738,7 @@ async def _start_panel_stream(
         counter_attr=counter_attr,
         make_on_state=make_on_state,
         send_snapshot=False,
-        send_availability=opted_in,
-        log_prefix=log_prefix,
-        send_protocol_events=opted_in,
+        protocol="full" if opted_in else "frames_only",
     )
 
 
@@ -812,7 +810,6 @@ async def websocket_subscribe_raw_targets(
         manager,
         counter_attr="raw_target_subs",
         make_on_state=lambda mac, device_conn: _make_raw_target_on_state(connection, msg["id"], mac, device_conn),
-        log_prefix="subscribe_raw_targets",
     )
 
 
@@ -987,7 +984,6 @@ async def websocket_subscribe_grid_targets(
         manager,
         counter_attr="grid_target_subs",
         make_on_state=lambda mac, device_conn: _make_grid_target_on_state(connection, msg["id"], mac, device_conn),
-        log_prefix="subscribe_grid_targets",
     )
 
 
@@ -1061,7 +1057,6 @@ async def websocket_subscribe_heatmap(
         manager,
         counter_attr="heatmap_subs",
         make_on_state=lambda mac, device_conn: _make_heatmap_on_state(connection, msg["id"], mac, device_conn),
-        log_prefix="subscribe_heatmap",
     )
 
 

@@ -62,6 +62,26 @@ export interface TargetData {
  *
  * It implements Lit's ReactiveController interface so the host element
  * re-renders when the controller's observable state changes.
+ *
+ * Recovery model (#334/#336): the manager owns the liveness of a stream that
+ * exists; the client owns whether a stream exists at all. Every recovery
+ * behaviour below is a consequence of that one split, not a special case of
+ * its own:
+ *  - A device flap: the stream still exists, so the manager re-arms it and the
+ *    client does nothing — the `available` event round-trips false → true on
+ *    its own.
+ *  - `closed`: the manager tore the stream down, so it ceased to exist — the
+ *    client re-creates it (uncapped backoff; see `REOPEN_BASE_MS`/`REOPEN_CAP_MS`
+ *    above).
+ *  - No session at all (device offline at mount, or re-added after removal):
+ *    nothing exists for the manager to re-arm, so the client has to create one
+ *    itself.
+ *  - Device removed from the device list: the stream can never exist again, so
+ *    the client destroys its own session/subscriptions instead of waiting on it.
+ *  - A first-subscribe rejection: the client's own *create* didn't take, so
+ *    there was never a stream for the manager to own — hence the
+ *    connection-failed banner, and why that retry is capped
+ *    (`SUBSCRIBE_RETRY_LIMIT` above) while the `closed` re-open backoff is not.
  */
 export class DeviceController implements ReactiveController {
 	// --- Observable state ---

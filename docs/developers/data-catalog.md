@@ -152,6 +152,16 @@ nothing else; the current panel bundle always sets it `true`.
 `subscribe_grid_targets` and `subscribe_heatmap` (below) share the identical
 opt-in field and the identical two events.
 
+This flag is **transitional**. The primary BWC mechanism going forward is the
+content-hash self-reload in `frontend/src/lib/version-check.ts`: an open panel
+compares its own bundle hash against the server's and reloads itself whenever
+they differ, a check that's (re-)armed on every WebSocket reconnect — so a panel
+bundle old enough to matter here reloads itself into the current one before it
+can matter for long. `availability` only guards the narrow reconnect-vs-reload
+race (the window between an upgrade taking effect and the next reconnect
+triggering the self-reload check), and can be removed once the self-reload has
+shipped for a release or two.
+
 **Protocol events** (only sent when `availability` is `true`; repeating for the
 life of the subscription):
 

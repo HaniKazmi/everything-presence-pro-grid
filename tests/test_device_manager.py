@@ -11276,8 +11276,7 @@ class TestOverviewStreamRecovery:
             counter_attr="grid_target_subs",
             make_on_state=lambda m, dc: _make_grid_target_on_state(connection, msg["id"], m, dc),
             send_snapshot=True,
-            send_availability=True,
-            log_prefix="test",
+            protocol="full",
         )
 
         assert len(opened) == 1
@@ -11354,8 +11353,7 @@ class TestOverviewStreamRecovery:
                 counter_attr="grid_target_subs",
                 make_on_state=lambda m, dc: _make_grid_target_on_state(connection, 1, m, dc),
                 send_snapshot=True,
-                send_availability=True,
-                log_prefix="test",
+                protocol="full",
             )
             await _start_overview_stream(
                 connection,
@@ -11364,8 +11362,7 @@ class TestOverviewStreamRecovery:
                 counter_attr="heatmap_subs",
                 make_on_state=lambda m, dc: _make_heatmap_on_state(connection, 2, m, dc),
                 send_snapshot=False,
-                send_availability=False,
-                log_prefix="test",
+                protocol="closed_only",
             )
             await hass.async_block_till_done()
 
@@ -11436,7 +11433,6 @@ class TestPanelStreamRecovery:
             manager,
             counter_attr="grid_target_subs",
             make_on_state=lambda m, dc: _make_grid_target_on_state(connection, msg["id"], m, dc),
-            log_prefix="test",
         )
 
         assert len(opened) == 1
