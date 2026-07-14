@@ -189,14 +189,14 @@ layout.
     way to scroll to it (#338). There is no reserve constant to hand-sum any
     more. The grid's own `ResizeObserver` on its host is what makes this
     correct: it watches the box the grid was actually given, so a caller's
-    layout change below the grid — the log expanding — shrinks that box and
-    the observer fires, with no caller involvement required. A caller can
-    additionally call the grid's `remeasure()` from its own `updated()`; that
-    is a synchronous, same-frame nudge, not a correctness requirement — it
-    lands the re-fit in the same paint as the layout change instead of one
-    observer tick later. A caller that forgets it still gets a correctly
-    sized map, just a tick later, never a broken one. The grid also
-    recomputes on add/remove rows/columns, not only on save.
+    layout change below the grid — the log expanding — shrinks that box and the
+    observer fires, with no caller involvement required. A caller can
+    additionally call the grid's `remeasure()` from its own `updated()`; that is
+    a synchronous, same-frame nudge, not a correctness requirement — it lands
+    the re-fit in the same paint as the layout change instead of one observer
+    tick later. A caller that forgets it still gets a correctly sized map, just
+    a tick later, never a broken one. The grid also recomputes on add/remove
+    rows/columns, not only on save.
 - **Known follow-up:** a transient re-measure flicker on the live↔editor view
     swap (the grid briefly grows then settles). Cosmetic; deferred — see the PR
     / handoff. Reverted experiments (hide-until-measured) did not fix it.
