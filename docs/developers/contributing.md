@@ -100,13 +100,16 @@ pytest tests/ -x -q --cov=custom_components/eppgrid --cov-fail-under=90
 
 ```bash
 cd frontend
-npx vitest run --coverage
+npm run test:coverage
 ```
 
 - Covers components, controllers, and `lib/` modules.
 - **Per-file coverage thresholds** (from `frontend/vitest.config.ts`): lines
     90%, branches 85%, functions 90%, statements 90%. Vitest fails the run if
     any file falls below these, which fails the push and CI.
+- Layout/geometry assertions (measured sizes, real CSS) need a real browser —
+    happy-dom does no layout — so those run separately in headless Chromium via
+    `npm run test:browser`.
 
 ### C++ libraries
 

@@ -38,6 +38,14 @@ firmware downloads, see the
 - **Room calibration tells you when the sensor goes offline** instead of
     silently failing to detect you, and keeps the corners you've already
     captured so you can pick up right where you left off once it reconnects.
+- **Expanding Detection events no longer pushes it off the bottom of the
+    screen.** The live map now sizes itself to the space actually available in
+    the panel, so opening the log resizes the map instead of shoving the log
+    below the visible area with no way to scroll down to it.
+- **Detection events is now a fixed six lines tall** instead of growing taller
+    with every new event.
+- **The target menu now opens on the target you clicked** instead of sometimes
+    appearing well away from it.
 
 ## v1.5.1 — 2026-07-04
 

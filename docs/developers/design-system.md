@@ -173,10 +173,24 @@ layout.
     there — no card).
 - **Desktop grid sizing** (`epp-grid.ts`, gated on `!capHeightToHalfViewport`):
     cell cap 48px (vs 32 mobile), grid cap 960px (vs `maxGridPx`), and the grid
-    is height-bounded to `innerHeight − top − DESKTOP_HEIGHT_RESERVE_PX` (130px,
-    reserved for the dimensions caption
-    - log toggle). The grid recomputes on add/remove rows/columns, not only on
-        save.
+    is height-bounded by **container measurement**, not the viewport:
+    `<epp-grid>` reads the box its container actually gives it
+    (`this.clientHeight`, less the dimensions caption rendered inside it), never
+    `window.innerHeight`. The panel makes that box definite —
+    `.editor-shell .grid-container` is `flex: 1; min-height: 0` of the
+    height-bounded grid column, and `.grid-container > epp-grid` gets
+    `height: 100%` — so the card is the column's flex _remainder_: whatever the
+    heatmap toggle and the detection log below it don't use. A sibling below the
+    grid growing (e.g. expanding the log) simply takes its space out of that
+    remainder and the map shrinks to fit, instead of the old model —
+    `innerHeight − top − DESKTOP_HEIGHT_RESERVE_PX`, a hand-tuned 130px reserve
+    — which claimed every pixel to the bottom of the window and knew nothing
+    about what rendered below it, so the log could be pushed off-screen with no
+    way to scroll to it (#338). There is no reserve constant to hand-sum any
+    more. Callers whose layout changes below the grid without changing any of
+    the grid's own properties must call the grid's `remeasure()` directly — Lit
+    won't otherwise re-render it. The grid also recomputes on add/remove
+    rows/columns, not only on save.
 - **Known follow-up:** a transient re-measure flicker on the live↔editor view
     swap (the grid briefly grows then settles). Cosmetic; deferred — see the PR
     / handoff. Reverted experiments (hide-until-measured) did not fix it.
