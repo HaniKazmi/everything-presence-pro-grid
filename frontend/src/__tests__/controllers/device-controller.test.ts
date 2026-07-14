@@ -2351,10 +2351,11 @@ describe("DeviceController", () => {
 			vi.restoreAllMocks();
 		});
 
-		/** Tracks grid/raw-target callbacks and every subscribeMessage call by type. */
+		/** Tracks grid/raw/heatmap callbacks and every subscribeMessage call by type. */
 		function makeMultiStreamHass() {
 			const gridCbs: ((msg: any) => void)[] = [];
 			const rawCbs: ((msg: any) => void)[] = [];
+			const heatmapCbs: ((msg: any) => void)[] = [];
 			const subscribeMessage = vi.fn((cb: any, msg: any) => {
 				if (msg.type === "eppgrid/subscribe_grid_targets") {
 					gridCbs.push(cb);
@@ -2364,6 +2365,10 @@ describe("DeviceController", () => {
 					rawCbs.push(cb);
 					return Promise.resolve(vi.fn());
 				}
+				if (msg.type === "eppgrid/subscribe_heatmap") {
+					heatmapCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
 				return Promise.resolve(vi.fn());
 			});
 			return {
@@ -2371,6 +2376,8 @@ describe("DeviceController", () => {
 				subscribeMessage,
 				emitGrid: (msg: any, n = gridCbs.length - 1) => gridCbs[n]?.(msg),
 				emitRaw: (msg: any, n = rawCbs.length - 1) => rawCbs[n]?.(msg),
+				emitHeatmap: (msg: any, n = heatmapCbs.length - 1) =>
+					heatmapCbs[n]?.(msg),
 				deviceListCalls: () =>
 					subscribeMessage.mock.calls.filter(
 						(c: any[]) => c[1]?.type === "eppgrid/subscribe_device_list",
@@ -2396,6 +2403,183 @@ describe("DeviceController", () => {
 			await vi.advanceTimersByTimeAsync(0);
 
 			expect(h.deviceListCalls() - before).toBe(1);
+		});
+
+		it("collapses three concurrent `closed` events (grid, raw, heatmap) into a single device-list retry loop", async () => {
+			// All three panel streams share one manager, so a single reload
+			// fires `closed` on grid, raw, AND the heatmap overlay in quick
+			// succession. That must still collapse into ONE retry loop, not
+			// three concurrent ones stacking retries against each other.
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			ctrl.selectedMac = "aa";
+
+			await ctrl.subscribeDeviceList();
+			ctrl.subscribeTargets("aa");
+			ctrl.setHeatmapEnabled(true);
+			await vi.advanceTimersByTimeAsync(0);
+
+			const before = h.deviceListCalls();
+
+			h.emitGrid({ closed: true });
+			h.emitRaw({ closed: true });
+			h.emitHeatmap({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(h.deviceListCalls() - before).toBe(1);
+		});
+
+		it("keeps retrying the device-list resubscribe through a not_ready window and establishes it once the backend recovers", async () => {
+			// custom_components/eppgrid/__init__.py pops hass.data[DOMAIN]
+			// BEFORE manager.async_stop() fires `closed` — so `closed` is
+			// ALWAYS sent while the manager is already gone, and both
+			// eppgrid/subscribe_device_list and its eppgrid/list_devices
+			// fallback reply not_ready for the whole reload window. The old
+			// one-shot resubscribe gave up silently and never tried again;
+			// this must keep backing off (like `_reopenStream`) until the
+			// reload finishes and the backend accepts the subscribe.
+			let deviceListReady = false;
+			const deviceListUnsub = vi.fn();
+			let gridCb: ((msg: any) => void) | undefined;
+			const subscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_device_list") {
+					return deviceListReady
+						? Promise.resolve(deviceListUnsub)
+						: Promise.reject(new Error("not_ready"));
+				}
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCb = cb;
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockRejectedValue(new Error("not_ready")),
+				connection: { subscribeMessage },
+			};
+
+			// Establish the device-list subscription once while the backend
+			// is up.
+			deviceListReady = true;
+			await ctrl.subscribeDeviceList();
+			expect((ctrl as any)._unsubDeviceList).toBe(deviceListUnsub);
+
+			// The reload begins: the manager instance is gone, so a fresh
+			// subscribe_device_list rejects with not_ready until setup
+			// completes.
+			deviceListReady = false;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			expect(gridCb).toBeDefined();
+
+			// The manager tears the grid stream down — triggers the resubscribe.
+			gridCb!({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Still not_ready — must keep retrying rather than giving up
+			// after a single attempt.
+			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
+			await vi.advanceTimersByTimeAsync(500);
+			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
+			await vi.advanceTimersByTimeAsync(1000);
+			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
+
+			// The reload finishes — the next backed-off attempt succeeds.
+			deviceListReady = true;
+			await vi.advanceTimersByTimeAsync(2000);
+
+			expect((ctrl as any)._unsubDeviceList).toBe(deviceListUnsub);
+		});
+
+		it("cancels the device-list retry loop when hostDisconnected fires mid-backoff", async () => {
+			let attempts = 0;
+			let gridCb: ((msg: any) => void) | undefined;
+			const subscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_device_list") {
+					attempts += 1;
+					return Promise.reject(new Error("not_ready"));
+				}
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCb = cb;
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockRejectedValue(new Error("not_ready")),
+				connection: { subscribeMessage },
+			};
+
+			await ctrl.subscribeDeviceList(); // fails, but sets intent
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			gridCb!({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+			const attemptsBeforeDisconnect = attempts;
+			expect(attemptsBeforeDisconnect).toBeGreaterThan(0);
+
+			// No timers/subscriptions may resurrect a torn-down controller.
+			ctrl.hostDisconnected();
+
+			// Advance far past the backoff cap — no further attempts.
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			expect(attempts).toBe(attemptsBeforeDisconnect);
+		});
+
+		it("cancels the device-list retry loop on a connection swap mid-backoff — the swap's own resubscribe owns recovery instead", async () => {
+			// A connection swap must not leave the OLD loop's timer running
+			// alongside the swap's own immediate resubscribe (see the `hass`
+			// setter) — that would double-subscribe and leak a stale retry
+			// against a dead connection.
+			let attempts = 0;
+			let gridCb: ((msg: any) => void) | undefined;
+			const oldSubscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_device_list") {
+					attempts += 1;
+					return Promise.reject(new Error("not_ready"));
+				}
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCb = cb;
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockRejectedValue(new Error("not_ready")),
+				connection: { subscribeMessage: oldSubscribeMessage },
+			};
+
+			await ctrl.subscribeDeviceList(); // fails, but sets intent
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			gridCb!({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+			expect((ctrl as any)._deviceListRetryTimer).toBeDefined();
+			const attemptsBeforeSwap = attempts;
+
+			// Connection swaps mid-backoff — the swap's own logic
+			// immediately resubscribes on the new connection.
+			const newUnsub = vi.fn();
+			const newSubscribe = vi.fn().mockResolvedValue(newUnsub);
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: { subscribeMessage: newSubscribe },
+			};
+			await Promise.resolve();
+			await Promise.resolve();
+
+			expect((ctrl as any)._unsubDeviceList).toBe(newUnsub);
+			const attemptsAtSwap = attempts;
+
+			// Advance far past the backoff cap — the OLD loop's timer must
+			// not still be ticking against the dead connection.
+			await vi.advanceTimersByTimeAsync(120_000);
+
+			expect(attempts).toBe(attemptsAtSwap);
+			expect(attemptsAtSwap).toBe(attemptsBeforeSwap);
 		});
 
 		it("does not resubscribe the device list on closed when the panel never subscribed to it", async () => {

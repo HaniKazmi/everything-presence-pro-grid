@@ -29,6 +29,13 @@ const SUBSCRIBE_RETRY_DELAY_MS = 2000;
 const REOPEN_BASE_MS = 500;
 const REOPEN_CAP_MS = 30_000;
 
+// Synthetic key for the device-list resubscribe's entry in `_reopenAttempts`
+// (see `_retryDeviceListSubscribe`). Not a real `subscribeMessage` type —
+// the device list has no `available`/`closed` envelope of its own — but
+// sharing the same counter map keeps the never-give-up backoff bookkeeping
+// in one place rather than a second, parallel counter.
+const DEVICE_LIST_RETRY_KEY = "eppgrid/subscribe_device_list";
+
 /**
  * Structured target/sensor/zone data delivered by the grid-targets subscription.
  */
@@ -114,6 +121,12 @@ export class DeviceController implements ReactiveController {
 	private _targetRetryTimer?: ReturnType<typeof setTimeout>;
 	private _displayRetryTimer?: ReturnType<typeof setTimeout>;
 	private _heatmapRetryTimer?: ReturnType<typeof setTimeout>;
+	// Backoff timer for `_retryDeviceListSubscribe` (see below). Separate from
+	// the three stream retry timers above since the device-list resubscribe
+	// isn't one of `_subscribeStream`'s streams — it reuses the same
+	// REOPEN_BASE_MS/REOPEN_CAP_MS constants and never-give-up shape, not the
+	// mechanism itself.
+	private _deviceListRetryTimer?: ReturnType<typeof setTimeout>;
 	// Per-stream re-open attempt count, keyed by stream.type. Zero/absent means
 	// "not re-opening" — the `_subscribeStream` catch uses that to tell a
 	// rejected re-open (keep backing off, never give up) from a rejected
@@ -271,6 +284,14 @@ export class DeviceController implements ReactiveController {
 				clearTimeout(this._heatmapRetryTimer);
 				this._heatmapRetryTimer = undefined;
 			}
+			if (this._deviceListRetryTimer) {
+				clearTimeout(this._deviceListRetryTimer);
+				this._deviceListRetryTimer = undefined;
+			}
+			// A `closed`-triggered device-list retry loop belongs to the OLD
+			// connection — the immediate resubscribe below (gated on
+			// `wantsDeviceListSub`) is what owns recovery on the new one now.
+			this._deviceListReopenPending = false;
 			// Bump generation tokens so any in-flight subscribeMessage
 			// promises against the old connection drop their unsub when
 			// they finally resolve.
@@ -376,6 +397,12 @@ export class DeviceController implements ReactiveController {
 	unsubscribeDeviceList(): void {
 		this._wantDeviceListSub = false;
 		this._deviceListGen++;
+		if (this._deviceListRetryTimer) {
+			clearTimeout(this._deviceListRetryTimer);
+			this._deviceListRetryTimer = undefined;
+		}
+		this._deviceListReopenPending = false;
+		this._reopenAttempts[DEVICE_LIST_RETRY_KEY] = 0;
 		safeUnsub(this._unsubDeviceList);
 		this._unsubDeviceList = undefined;
 	}
@@ -395,15 +422,70 @@ export class DeviceController implements ReactiveController {
 	 * so the same reload fires `closed` on each of them in quick succession,
 	 * and this must collapse into a single resubscribe rather than one per
 	 * stream.
+	 *
+	 * `_deviceListReopenPending` now spans the WHOLE retry loop (see
+	 * `_retryDeviceListSubscribe`), not just one attempt: `__init__.py` pops
+	 * `hass.data[DOMAIN]` before `manager.async_stop()` fires `closed`, so the
+	 * very first resubscribe attempt is guaranteed to race a `not_ready`
+	 * backend (both `subscribe_device_list` and its `list_devices` fallback
+	 * are `@_require_manager`). A single attempt used to give up silently and
+	 * never try again, freezing the panel on a stale offline banner exactly
+	 * like the bug this mechanism exists to fix — so this backs off the same
+	 * never-give-up way `_reopenStream` does for the durable streams.
 	 */
 	private _resubscribeDeviceListOnClosed(): void {
 		if (!this._wantDeviceListSub || this._deviceListReopenPending) return;
 		this._deviceListReopenPending = true;
-		void this.subscribeDeviceList()
-			.catch(() => {})
-			.finally(() => {
+		this._retryDeviceListSubscribe();
+	}
+
+	/**
+	 * Backoff loop for the device-list resubscribe, reusing `_reopenStream`'s
+	 * constants (`REOPEN_BASE_MS`/`REOPEN_CAP_MS`) and never-give-up shape —
+	 * a config-entry reload can take many seconds, and giving up would leave
+	 * the panel frozen (#336). Not built on `_subscribeStream`/`_reopenStream`
+	 * directly: those speak the durable-stream `available`/`closed` protocol,
+	 * while the device list is a plain push with no such envelope.
+	 *
+	 * Cancellation: `unsubscribeDeviceList()` (called by `hostDisconnected()`
+	 * and directly) clears `_deviceListRetryTimer` and resets
+	 * `_deviceListReopenPending`/`_reopenAttempts`, and this method itself
+	 * bails the moment `_wantDeviceListSub` goes false or the connection
+	 * changes out from under it — so no queued timer can ever resurrect a
+	 * torn-down controller or fight a connection swap's own immediate
+	 * resubscribe (see the `hass` setter).
+	 */
+	private _retryDeviceListSubscribe(): void {
+		const conn = this._hass?.connection;
+		void this.subscribeDeviceList().finally(() => {
+			if (this._unsubDeviceList) {
+				// Established — the retry loop is done.
 				this._deviceListReopenPending = false;
-			});
+				this._reopenAttempts[DEVICE_LIST_RETRY_KEY] = 0;
+				return;
+			}
+			if (!this._wantDeviceListSub || this._hass?.connection !== conn) {
+				// Cancelled, or the connection already swapped — the swap's
+				// own resubscribe (the `hass` setter) owns recovery now.
+				this._deviceListReopenPending = false;
+				return;
+			}
+			const attempt = (this._reopenAttempts[DEVICE_LIST_RETRY_KEY] ?? 0) + 1;
+			this._reopenAttempts[DEVICE_LIST_RETRY_KEY] = attempt;
+			const delay = Math.min(
+				REOPEN_BASE_MS * 2 ** (attempt - 1),
+				REOPEN_CAP_MS,
+			);
+			if (this._deviceListRetryTimer) clearTimeout(this._deviceListRetryTimer);
+			this._deviceListRetryTimer = setTimeout(() => {
+				this._deviceListRetryTimer = undefined;
+				if (this._hass?.connection !== conn) {
+					this._deviceListReopenPending = false;
+					return;
+				}
+				this._retryDeviceListSubscribe();
+			}, delay);
+		});
 	}
 
 	private _applyDeviceList(devices: DeviceInfo[]): void {
