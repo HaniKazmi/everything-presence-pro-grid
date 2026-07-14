@@ -2109,19 +2109,116 @@ describe("epp-grid height budget (container measurement)", () => {
 		document.body.removeChild(el);
 	});
 
-	it("resolves a non-positive box to 0 instead of latching the stale budget", async () => {
+	it("resolves a MEASURED-but-degenerate box to 1px, not to 0 and not to the stale budget", async () => {
 		const el = createGrid() as any;
 		stubBox(el, 400, 26);
 		document.body.appendChild(el);
 		await el.updateComplete;
 		expect(el._availHeightPx).toBe(374);
 
-		// The box collapses (e.g. the column is momentarily unbounded mid-swap).
-		// Keeping 374 would height-fit the map to space that no longer exists.
+		// The box collapses below the height of the caption rendered inside it (a
+		// real, measured 10px box; the panel's card really is that short). Two wrong
+		// answers here, and 0 is BOTH of them at once:
+		//  - latching 374 height-fits the map to space that no longer exists;
+		//  - 0 is fitCellPx's "unmeasured" sentinel — it drops the height term
+		//    entirely and falls back to WIDTH-fit, so a smaller box produces a
+		//    BIGGER map (#339's inversion, at a lower threshold).
+		// A measured box is never "unmeasured": it floors at 1px so the map keeps
+		// shrinking.
 		stubBox(el, 10, 26);
+		el.remeasure();
+		expect(el._availHeightPx).toBe(1);
+		document.body.removeChild(el);
+	});
+
+	it("resolves a genuinely UNMEASURED box (no layout at all) to 0 → width-fit", async () => {
+		const el = createGrid() as any;
+		stubBox(el, 400, 26);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el._availHeightPx).toBe(374);
+
+		// The other side of the sentinel: an element with no layout at all (both
+		// clientWidth and clientHeight 0 — detached, display:none, or a server-side
+		// first render) has not been measured, so there is no height budget to
+		// honour and fitCellPx must fall back to width-fit. It must still not latch
+		// the stale 374.
+		stubBox(el, 0, 26);
 		el.remeasure();
 		expect(el._availHeightPx).toBe(0);
 		document.body.removeChild(el);
+	});
+
+	it("a degenerate box still SHRINKS the map — it never snaps back to width-fit", async () => {
+		const el = createGrid() as any;
+		el._availPx = 900;
+		stubBox(el, 600, 26);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		// See the two-await note on the "shrinks the map as the box shrinks" test
+		// below: _measureAvail() runs from inside the update cycle, so the first
+		// render still sees the unmeasured budget.
+		await el.updateComplete;
+		const roomy = cellPx(el);
+		expect(roomy).toBeGreaterThan(0);
+
+		// Live repro at 1500px wide with the log expanded, walking the viewport down:
+		// at 400px the card's remainder was 19px, the caption inside it 27px, and the
+		// budget latched to 0 → width-fit → the map went 33px to 738px, overflowing a
+		// 53px card and hanging 125px below the fold. The map must only ever get
+		// smaller as the box does.
+		stubBox(el, 19, 27);
+		el.remeasure();
+		await el.updateComplete;
+		expect(el._availHeightPx).toBe(1);
+		expect(cellPx(el)).toBeLessThanOrEqual(roomy);
+		document.body.removeChild(el);
+	});
+
+	it("re-measures when its OWN ResizeObserver fires (the primary #338 trigger)", async () => {
+		// The observer is the correctness guarantee — the only trigger that needs no
+		// caller to remember anything. A sibling BELOW the grid (the detection log)
+		// expanding shrinks our box while changing NONE of the grid's properties, so
+		// Lit's updated() never runs and remeasure() is only called by callers who
+		// know to. If the observer isn't wired to _measureAvail, #338 is back for
+		// every layout change nobody thought to nudge us about.
+		//
+		// happy-dom ships a ResizeObserver that never invokes its callback (no layout
+		// engine), so swap in one we can fire by hand. Restored in `finally` — a
+		// leaked global would silently disarm the observer for every later test.
+		const callbacks: Array<() => void> = [];
+		const observed: Element[] = [];
+		const RealRO = globalThis.ResizeObserver;
+		globalThis.ResizeObserver = class {
+			constructor(cb: () => void) {
+				callbacks.push(cb);
+			}
+			observe(target: Element) {
+				observed.push(target);
+			}
+			unobserve() {}
+			disconnect() {}
+		} as unknown as typeof ResizeObserver;
+
+		try {
+			const el = createGrid() as any;
+			stubBox(el, 500, 20);
+			document.body.appendChild(el);
+			await el.updateComplete;
+
+			// It observes ITSELF: our own box is the height budget.
+			expect(observed).toContain(el);
+			expect(el._availHeightPx).toBe(480);
+
+			// The log expands below us; the box shrinks; nothing else happens.
+			stubBox(el, 300, 20);
+			for (const cb of callbacks) cb();
+			expect(el._availHeightPx).toBe(280);
+
+			document.body.removeChild(el);
+		} finally {
+			globalThis.ResizeObserver = RealRO;
+		}
 	});
 
 	it("re-measures on remeasure() when a sibling below it changes height", async () => {

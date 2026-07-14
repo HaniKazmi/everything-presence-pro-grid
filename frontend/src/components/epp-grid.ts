@@ -109,8 +109,14 @@ export class EppGrid extends LitElement {
 	 */
 	@property({ type: Boolean }) fadeUncovered = false;
 	/**
-	 * Mobile-only: cap the grid height to half the viewport so the controls
-	 * panel below it always has room. Desktop leaves this false → no height cap.
+	 * Mobile-only: cap the grid height to a fraction of the VIEWPORT (45%, see
+	 * render()) so the controls panel below it always has room. Mobile's column is
+	 * content-sized, so measuring our own box there would be circular.
+	 *
+	 * Desktop leaves this false — which does NOT mean "no height cap": it means the
+	 * cap is CONTAINER-measured instead (our own clientHeight, see _measureAvail).
+	 * This flag therefore selects WHICH height cap applies, never whether there is
+	 * one. It also gates _measureAvail: when true, no box is measured at all.
 	 */
 	@property({ type: Boolean }) capHeightToHalfViewport = false;
 	/** Map of target index → dismissed cell index (ephemeral, not persisted) */
@@ -143,18 +149,26 @@ export class EppGrid extends LitElement {
 	/** Pending post-layout re-measure scheduled in firstUpdated (see below). */
 	private _settleRaf?: number;
 
-	// The ResizeObserver (registered in connectedCallback) is the primary
-	// re-measure trigger and now covers both width and height, since our own
-	// box is the height budget. It isn't the only trigger we need, though: in
-	// the HA companion webview the observer doesn't deliver a usable callback
-	// at all (see firstUpdated below), leaving both measurements stuck at
-	// their last value. A window 'resize' hook is kept as a fallback that
-	// doesn't depend on the observer firing; it's detached on disconnect.
+	// This is NOT a backstop for the ResizeObserver — on desktop it is strictly
+	// redundant with it (any viewport change that alters our box makes the observer
+	// fire, and one that doesn't alter our box doesn't affect the desktop budget
+	// either, which is measured from the box and never from the window).
+	//
+	// It earns its keep on MOBILE, where the height cap is `window.innerHeight *
+	// 0.45`, read straight out of render(). Nothing else in the component re-reads
+	// window.innerHeight, and the mobile column is content-sized so our own box
+	// need not change when the viewport does — without this hook a rotation would
+	// leave the map fitted to the old viewport. (_measureAvail only re-renders when
+	// a measurement actually moves; on a rotation the width does, which is what
+	// carries the fresh innerHeight into render(). A pure-height viewport change —
+	// a mobile URL bar collapsing — therefore doesn't re-fit until something else
+	// re-renders. That's a stale cap of a few px, not a layout break.)
+	//
+	// Detached on disconnect.
 	private _onResize = (): void => {
 		this._measureAvail();
 	};
 
-	/* v8 ignore start -- happy-dom has no real layout/ResizeObserver callback */
 	connectedCallback(): void {
 		super.connectedCallback();
 		if (typeof ResizeObserver !== "undefined") {
@@ -180,9 +194,7 @@ export class EppGrid extends LitElement {
 			this._settleRaf = undefined;
 		}
 	}
-	/* v8 ignore stop */
 
-	/* v8 ignore start -- happy-dom has no layout (clientWidth 0); measured visually */
 	// Deterministic, synchronous width measurement that doesn't depend on the
 	// ResizeObserver. In the HA companion webview the observer doesn't deliver a
 	// usable callback, leaving _availPx at 0 → fitCellPx snaps to the ceiling cell
@@ -256,7 +268,6 @@ export class EppGrid extends LitElement {
 		if (overlay) overlay.furnitureTones = this._furnitureTones;
 	}
 
-	/* v8 ignore start -- getComputedStyle needs real layout; happy-dom returns "" */
 	private _readCellRgb(idx: number): [number, number, number] | null {
 		// Only cells inside the visible/in-range window are rendered, so a cell
 		// outside it legitimately has no element — null then means "keep the
@@ -265,7 +276,6 @@ export class EppGrid extends LitElement {
 		if (!cell) return null;
 		return parseRgb(getComputedStyle(cell).backgroundColor);
 	}
-	/* v8 ignore stop */
 
 	private _measureAvail(): void {
 		const w = this.clientWidth;
@@ -284,20 +294,34 @@ export class EppGrid extends LitElement {
 		// and — unlike a viewport-relative getBoundingClientRect().top — it does not
 		// change when an ancestor scrolls. That makes the scroll-driven re-render
 		// loop that fed PR #339 structurally impossible now, not merely avoided.
-		// The width-fit inversion (budget bottoms out at 0 → falls back to
-		// width-fit → bigger map) is still reachable, but only for a degenerate
-		// box: one shorter than the caption rendered inside it. That's by design —
-		// below caption height there's no room left for a map, so falling back to
-		// width-fit is the correct behaviour, not a regression. The floor simply
-		// moved from an arbitrary 200px constant down to the caption's real height.
 		// The dimensions caption renders INSIDE this box, below the map, so its
 		// measured height comes off the top of the budget.
 		const h = Math.floor(this.clientHeight - this._captionBlockPx());
-		// A non-positive or unmeasurable box resolves to 0 — fitCellPx reads that as
-		// "no height cap" and falls back to width-fit. It must NOT keep the previous,
-		// larger value: a latched budget height-fits the map to space that no longer
-		// exists.
-		const avail = h > 0 ? h : 0;
+		// 0 is fitCellPx's "never measured" sentinel: it drops the height term and
+		// falls back to WIDTH-fit. So 0 must mean exactly that, and nothing else.
+		//
+		// A MEASURED box that is merely tiny — even one shorter than the caption
+		// inside it, so `h` goes negative — is not unmeasured. It is a real box that
+		// really is that small, and the map must keep shrinking to fit it. Resolving
+		// it to 0 instead inverts the invariant: the map snaps to the width-fit
+		// ceiling and gets BIGGER as its box gets smaller. That is #339's failure
+		// mode, and it was still reachable here — at a ~400px viewport (in HA, whose
+		// app header eats ~64px above the panel, ~465-485px: a window snapped to the
+		// top half of a 1080p screen) the card's remainder fell to 19px against a
+		// 27px caption and the map went 33px -> 738px, overflowing a 53px card and
+		// hanging below the fold.
+		//
+		// So a laid-out host floors at 1px (fitCellPx already floors its result at
+		// 1px, so this is the smallest map, not an arbitrary reserve — the 200px
+		// floor that CAUSED #339 is not coming back in another costume). Only a host
+		// with no layout at all — detached, display:none, or happy-dom, where every
+		// box is 0 — resolves to 0. Either way we never keep the previous, larger
+		// value: a latched budget height-fits the map to space that no longer exists.
+		//
+		// This mirrors the width axis (see the clamp in render()), which has always
+		// drawn exactly this distinction.
+		const laidOut = this.clientWidth > 0 || this.clientHeight > 0;
+		const avail = h > 0 ? h : laidOut ? 1 : 0;
 		if (Math.abs(avail - this._availHeightPx) >= 1) this._availHeightPx = avail;
 	}
 
@@ -310,14 +334,22 @@ export class EppGrid extends LitElement {
 			(Number.parseFloat(getComputedStyle(cap).marginTop) || 0)
 		);
 	}
-	/* v8 ignore stop */
 
 	/**
-	 * Re-read our box. The internal ResizeObserver is the primary trigger, but it
-	 * is documented not to deliver a usable callback in the HA companion webview
-	 * (see connectedCallback) — so a caller whose layout changes BELOW the grid
-	 * (the panel's detection log) nudges us explicitly too. A no-change measure is
-	 * a no-op: the >=1px guards above skip the assignment, so no re-render.
+	 * Re-read our box, synchronously.
+	 *
+	 * The ResizeObserver already covers this case correctly — a caller expanding a
+	 * sibling BELOW the grid (the panel's detection log) shrinks our box, and the
+	 * observer fires. What it does not cover is LATENCY: observer callbacks are
+	 * delivered after layout, on a later tick, so the map would visibly re-fit one
+	 * frame after the log opened. The panel calls this from its own updated(),
+	 * which runs after the DOM is written but within the same frame, so the map
+	 * resizes in the SAME paint as the thing that displaced it.
+	 *
+	 * The observer remains the correctness guarantee (it needs no caller to
+	 * remember); this is the smoothness one. Cheap to over-call: a no-change
+	 * measure is a no-op, because the >=1px guards in _measureAvail skip the
+	 * assignment and nothing re-renders.
 	 */
 	remeasure(): void {
 		this._measureAvail();
@@ -330,10 +362,11 @@ export class EppGrid extends LitElement {
 			   column, so the box we're given is usually TALLER than the map — the
 			   card is the "expansion area" that shows the space the map can use, and
 			   the map floats in the middle of it. align-items does the horizontal
-			   centring the old \`text-align: center\` used to do (the inline-block
-			   .grid-targets-wrapper would otherwise hug the left edge whenever the
-			   map is narrower than the column). The absolutely-positioned overlays
-			   are relative to the wrapper, so centring the wrapper moves the whole
+			   centring the old \`text-align: center\` used to do (.grid-targets-wrapper
+			   is a flex item now, so it no longer shrink-wraps its own line box; it
+			   would otherwise stretch, or hug the left edge, whenever the map is
+			   narrower than the column). The absolutely-positioned overlays are
+			   relative to the wrapper, so centring the wrapper moves the whole
 			   positioning context together — overlay maths is unaffected. */
 			display: flex;
 			flex-direction: column;
@@ -352,8 +385,6 @@ export class EppGrid extends LitElement {
 
 		.grid-targets-wrapper {
 			position: relative;
-			display: inline-block;
-			vertical-align: top;
 			/* Defensive reset, not a fix for our own CSS: the host no longer sets
 			   text-align itself (it centres via align-items on the flex column —
 			   see :host above), so there's nothing of ours to reset here. But
@@ -552,7 +583,9 @@ export class EppGrid extends LitElement {
 		//    really is that small — so the map simply fits it. There is deliberately
 		//    no minimum: a floor that dropped the budget to 0 below its threshold is
 		//    what made #339 invert (smaller box → width-fit → 3x BIGGER map).
-		/* v8 ignore next -- window.innerHeight read has no layout effect under happy-dom */
+		//    _measureAvail() guarantees 0 here means "never measured" and NOTHING
+		//    else, so the width-fit fallback below can only fire on an unmeasured
+		//    host — never on a small one.
 		const availHeightPx = this.fill
 			? 0
 			: this.capHeightToHalfViewport
