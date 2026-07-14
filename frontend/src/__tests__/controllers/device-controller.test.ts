@@ -2069,6 +2069,130 @@ describe("DeviceController", () => {
 		});
 	});
 
+	describe("availability aggregation across streams (partial re-arm, #336)", () => {
+		// The manager arms the panel's streams ONE AT A TIME (`_ensure_streams`
+		// in device_manager/__init__.py), so a single re-arm pass can report
+		// grid `available:true` and then raw `available:false` moments later.
+		// Reporting either edge in isolation would flip the panel's offline
+		// banner AND run its stream-offline clear (which resets the
+		// zone-engine replica) while the OTHER stream is still live and
+		// delivering frames — desyncing the frontend's zone-engine replica
+		// from the firmware's. `onAvailability` must fire only on a genuine
+		// edge of "is ANY of the streams up".
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+		afterEach(() => {
+			vi.useRealTimers();
+			vi.restoreAllMocks();
+		});
+
+		/** Tracks grid- and raw-target callbacks separately so each can be driven independently. */
+		function makeMultiStreamHass() {
+			const gridCbs: ((msg: any) => void)[] = [];
+			const rawCbs: ((msg: any) => void)[] = [];
+			const subscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				if (msg.type === "eppgrid/subscribe_raw_targets") {
+					rawCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			return {
+				hass: { callWS: vi.fn(), connection: { subscribeMessage } },
+				emitGrid: (msg: any, n = gridCbs.length - 1) => gridCbs[n]?.(msg),
+				emitRaw: (msg: any, n = rawCbs.length - 1) => rawCbs[n]?.(msg),
+			};
+		}
+
+		it("does not report the device offline when one stream is up and a sibling reports false", async () => {
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			ctrl.onAvailability = onAvailability;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emitGrid({ available: true });
+			onAvailability.mockClear();
+
+			// A partial re-arm pass: grid came up, raw hasn't (yet). Grid is
+			// still live and delivering frames — must NOT tell the host the
+			// device went offline (which would clear live data and reset the
+			// zone engine).
+			h.emitRaw({ available: false });
+
+			expect(onAvailability).not.toHaveBeenCalledWith("aa", false);
+		});
+
+		it("reports offline exactly once when every stream reports false", async () => {
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			ctrl.onAvailability = onAvailability;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emitGrid({ available: true });
+			h.emitRaw({ available: true });
+			onAvailability.mockClear();
+
+			h.emitGrid({ available: false });
+			h.emitRaw({ available: false });
+
+			const offlineCalls = onAvailability.mock.calls.filter(
+				(args) => args[1] === false,
+			);
+			expect(offlineCalls).toHaveLength(1);
+		});
+
+		it("reports available again as soon as any stream recovers", async () => {
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			ctrl.onAvailability = onAvailability;
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emitGrid({ available: false });
+			h.emitRaw({ available: false });
+			onAvailability.mockClear();
+
+			h.emitGrid({ available: true });
+
+			expect(onAvailability).toHaveBeenCalledWith("aa", true);
+		});
+
+		it("resets the per-stream map on a device switch so the old device's state can't leak", async () => {
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			ctrl.onAvailability = onAvailability;
+
+			// Device "aa": both streams come up.
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			h.emitGrid({ available: true });
+			h.emitRaw({ available: true });
+
+			// Switch to device "bb" — a fresh subscribeTargets call.
+			ctrl.subscribeTargets("bb");
+			await vi.advanceTimersByTimeAsync(0);
+			onAvailability.mockClear();
+
+			// Only "bb"'s grid stream has reported in so far; if "aa"'s
+			// leftover `true` entries leaked into the map, this would read as
+			// "still available" instead of the genuine first signal for "bb".
+			h.emitRaw({ available: false });
+
+			expect(onAvailability).toHaveBeenCalledWith("bb", false);
+		});
+	});
+
 	describe("device-list resubscribe on stream closed (#336)", () => {
 		// A config-entry reload replaces the manager instance backend-side;
 		// the OLD manager's `_device_list_callbacks` list (and this

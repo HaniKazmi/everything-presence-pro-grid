@@ -129,6 +129,26 @@ export class DeviceController implements ReactiveController {
 	// to re-open the heatmap sub, independent of whether one happens to be
 	// in flight or already stashed.
 	private _heatmapEnabled = false;
+	// Per-stream liveness for the currently-selected device, keyed by
+	// stream.type (one of the three subscribe_* commands). The manager arms
+	// these streams ONE AT A TIME (`_ensure_streams` in
+	// device_manager/__init__.py), so a single re-arm pass can report grid
+	// `available:true` and then raw `available:false` moments later.
+	// Aggregated in `_reportStreamAvailability` below, which is the ONLY
+	// thing allowed to call `onAvailability` — reporting a lone stream's edge
+	// directly (as the code used to) would flip the panel's offline banner
+	// AND run its stream-offline clear (which resets the zone-engine
+	// replica) while a sibling stream is still live and delivering frames,
+	// desyncing the frontend's zone-engine replica from the firmware's
+	// (#336). Reset on every `subscribeTargets` so a previous device's
+	// entries can never leak into this one's aggregate.
+	private _streamAvailability: Partial<Record<string, boolean>> = {};
+	// The last aggregate ("is any stream up") reported to the host, so a
+	// same-valued update doesn't re-fire onAvailability. `undefined` (reset
+	// alongside `_streamAvailability`) ensures the first genuine report for a
+	// freshly (re)subscribed device is never suppressed by a stale value left
+	// over from the device it replaced.
+	private _lastReportedAvailable: boolean | undefined;
 	// True while a `closed`-triggered device-list resubscribe is in flight.
 	// A config-entry reload replaces the manager instance — its
 	// `_device_list_callbacks` list goes with it, so this subscription's
@@ -613,6 +633,12 @@ export class DeviceController implements ReactiveController {
 		// unsubscribe path. A stale unsub against a dead connection throws,
 		// and would otherwise abort the whole resubscribe pipeline.
 		this.unsubscribeTargets();
+		// Forget the previous device's per-stream liveness — see
+		// `_streamAvailability` above. Silent (no onAvailability call here):
+		// this is bookkeeping for a fresh round of subscriptions about to
+		// start, not a liveness signal of its own.
+		this._streamAvailability = {};
+		this._lastReportedAvailable = undefined;
 		if (!this._hass || !mac) return;
 
 		const conn = this._hass.connection;
@@ -714,6 +740,30 @@ export class DeviceController implements ReactiveController {
 	}
 
 	/**
+	 * Aggregate liveness across the panel's streams (#336) and report the
+	 * host only on a genuine edge of "is ANY of them up". See
+	 * `_streamAvailability` for why: the manager arms these streams one at a
+	 * time, so treating a single stream's edge as the device's own status
+	 * would spuriously flip the offline banner (and the zone-engine reset
+	 * that goes with it) while a sibling stream is still live.
+	 *
+	 * `onAvailability`'s host-facing signature is unchanged — `(mac,
+	 * available)` — so the panel's handler stays as simple as it was before
+	 * this aggregation existed.
+	 */
+	private _reportStreamAvailability(
+		streamType: string,
+		mac: string,
+		available: boolean,
+	): void {
+		this._streamAvailability[streamType] = available;
+		const anyAvailable = Object.values(this._streamAvailability).some((v) => v);
+		if (anyAvailable === this._lastReportedAvailable) return;
+		this._lastReportedAvailable = anyAvailable;
+		this.onAvailability?.(mac, anyAvailable);
+	}
+
+	/**
 	 * Shared subscribe/retry scaffolding for the live data streams (grid
 	 * targets, raw targets, heatmap). Each stream owns its own generation
 	 * token, retry timer and unsub slot — named via `stream` — so the
@@ -760,7 +810,7 @@ export class DeviceController implements ReactiveController {
 				// device removed). Our subscription is still open but nothing
 				// will ever revive it — re-subscribe. Ordinary `available: false`
 				// must NOT do this: the manager re-arms a flapped stream itself.
-				this.onAvailability?.(mac, false);
+				this._reportStreamAvailability(stream.type, mac, false);
 				// The manager INSTANCE is gone too (a config-entry reload builds a
 				// fresh one) — re-establish the device-list subscription, or it
 				// never receives another push and _isSelectedOffline is stuck
@@ -770,7 +820,7 @@ export class DeviceController implements ReactiveController {
 				return;
 			}
 			if (msg && "available" in msg) {
-				this.onAvailability?.(mac, !!msg.available);
+				this._reportStreamAvailability(stream.type, mac, !!msg.available);
 				return;
 			}
 			stream.onEvent(msg);
