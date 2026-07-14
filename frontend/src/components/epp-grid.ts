@@ -970,14 +970,23 @@ export class EppGrid extends LitElement {
 				@click=${(e: Event) => {
 					if (this.editable) return;
 					e.stopPropagation();
+					// The detail is the target (targetIndex + its room coordinates x/y, in
+					// mm) and where the dot IS: its centre in CLIENT coordinates. It does
+					// NOT carry xPct/yPct — those are percentages of the MAP, and the map
+					// is not the box a listener draws in (the panel's card is bigger, with
+					// the map centred inside it — #338), so a percentage of it is not a
+					// position anyone else can use; passing one is how the target menu
+					// ended up ~300px from its dot. The dot is `translate(-50%, -50%)`, so
+					// its rect centre IS the point it marks.
+					const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
 					this.dispatchEvent(
 						new CustomEvent("target-click", {
 							detail: {
 								targetIndex: i,
 								x: t.x,
 								y: t.y,
-								pctX: xPct,
-								pctY: yPct,
+								clientX: r.left + r.width / 2,
+								clientY: r.top + r.height / 2,
 							},
 							bubbles: true,
 							composed: true,

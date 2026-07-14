@@ -312,7 +312,7 @@ class it extends ot{}it.directiveName="unsafeSVG",it.resultType=2;const nt=Je(it
 			touch-action: none;
 			z-index: 3;
 		}
-	`,e([pe({attribute:!1})],Tr.prototype,"furniture",void 0),e([pe({attribute:!1})],Tr.prototype,"selectedFurnitureId",void 0),e([pe({type:Number})],Tr.prototype,"roomWidth",void 0),e([pe({type:Number})],Tr.prototype,"cellPx",void 0),e([pe({type:Number})],Tr.prototype,"gapPx",void 0),e([pe({type:Number})],Tr.prototype,"minCol",void 0),e([pe({type:Number})],Tr.prototype,"minRow",void 0),e([pe({type:Number})],Tr.prototype,"visCols",void 0),e([pe({type:Number})],Tr.prototype,"visRows",void 0),e([pe({attribute:!1})],Tr.prototype,"sidebarTab",void 0),e([pe({attribute:!1})],Tr.prototype,"localize",void 0),e([pe({attribute:!1})],Tr.prototype,"furnitureTones",void 0),e([me()],Tr.prototype,"_isNarrow",void 0),customElements.get("epp-furniture-overlay")||customElements.define("epp-furniture-overlay",Tr);const Hr={[fe]:`background-image: ${We(1,6)};`,[_e]:`background-image: ${We(2,5)};`,[ge]:`background-image: ${We(3,5)};`};class Pr extends ce{constructor(){super(...arguments),this.grid=new Uint8Array(0),this.zoneConfigs=[],this.targets=[],this.roomWidth=0,this.roomDepth=0,this.perspective=null,this.furniture=[],this.selectedFurnitureId=null,this.sidebarTab="zones",this.editable=!1,this.activeZone=null,this.occupancy={},this.targetPrevXY=[],this.localize=Er,this.maxRangeMm=xe,this.maxGridPx=480,this.showOverlays=!0,this.showDimensions=!0,this.plain=!1,this.fill=!1,this.fadeUncovered=!1,this.capHeightToHalfViewport=!1,this.dismissedTargets=new Map,this.frozenBounds=null,this.heatmapCells=[],this.showHeatmap=!1,this.trails=[],this._availPx=0,this._availHeightPx=0,this._onResize=()=>{this._measureAvail()},this._fovCache=null,this._fovPerspective=Pr._FOV_UNCACHED,this._scanCache=null,this._lastEnterIdx=-1,this._onStrokeEnd=()=>{this._lastEnterIdx=-1,this.dispatchEvent(new CustomEvent("cell-paint",{detail:{action:"up"},bubbles:!0,composed:!0}))}}connectedCallback(){super.connectedCallback(),"undefined"!=typeof ResizeObserver&&(this._ro=new ResizeObserver(e=>{const t=e[0]?.contentRect.width??0;t&&Math.abs(t-this._availPx)>=1&&(this._availPx=Math.floor(t))}),this._ro.observe(this)),window.addEventListener("resize",this._onResize)}disconnectedCallback(){super.disconnectedCallback(),this._ro?.disconnect(),window.removeEventListener("resize",this._onResize),void 0!==this._settleRaf&&(cancelAnimationFrame(this._settleRaf),this._settleRaf=void 0)}firstUpdated(){this._measureAvail(),"undefined"!=typeof requestAnimationFrame&&(this._settleRaf=requestAnimationFrame(()=>{this._settleRaf=void 0,this.isConnected&&this._measureAvail()}))}updated(e){this._measureAvail(),this._updateFurnitureTones(e)}_updateFurnitureTones(e){if(!this.furniture.length)return void(this._furnitureTones=void 0);if(!(e.has("furniture")||e.has("grid")||e.has("zoneConfigs")||e.has("roomColor")||e.has("roomWidth")||e.has("roomDepth")||e.has("plain")||e.has("perspective")||e.has("maxRangeMm")||e.has("frozenBounds"))&&void 0!==this._furnitureTones)return;this._furnitureTones=function(e,t,r,o){const i=new Map;for(const n of e){const e=$e(n.x+n.width/2,n.y+n.height/2,t,r);if(!e)continue;const s=Me(e);if(null===s)continue;const a=o(s);if(!a)continue;const{color:l,halo:c}=Oe(a);i.set(n.id,{color:l,halo:c})}return i}(this.furniture,this.roomWidth,this.roomDepth,e=>this._readCellRgb(e));const t=this.shadowRoot?.querySelector("epp-furniture-overlay");t&&(t.furnitureTones=this._furnitureTones)}_readCellRgb(e){const t=this.shadowRoot?.querySelector(`.cell[data-idx="${e}"]`);return t?function(e){const t=/^rgba?\(\s*([0-9.]+)[\s,]+([0-9.]+)[\s,]+([0-9.]+)/i.exec(e);if(!t)return null;const r=[Number(t[1]),Number(t[2]),Number(t[3])];return Ne(r)?r:null}(getComputedStyle(t).backgroundColor):null}_measureAvail(){const e=this.clientWidth;if(e&&Math.abs(e-this._availPx)>=1&&(this._availPx=e),!this.capHeightToHalfViewport){const e=this.getBoundingClientRect().top,t=Math.floor(window.innerHeight-e-130);t>0&&Math.abs(t-this._availHeightPx)>=1&&(this._availHeightPx=t)}}willUpdate(e){if((e.has("targets")||e.has("dismissedTargets")||e.has("roomWidth")||e.has("roomDepth"))&&0!==this.dismissedTargets.size)for(const[e,t]of this.dismissedTargets){const r=this.targets[e];if(!r||"inactive"===r.status||null==r.x||null==r.y)continue;const o=$e(r.x,r.y,this.roomWidth,this.roomDepth);if(!o)continue;Me(o)!==t&&this.dispatchEvent(new CustomEvent("target-undismissed",{detail:{targetIndex:e},bubbles:!0,composed:!0}))}}render(){const e=this._getScan(),t=this.frozenBounds??e.bounds,r=t.minCol>t.maxCol,o=r?0:t.minCol,i=r?19:t.maxCol,n=r?0:t.minRow,s=r?19:t.maxRow,a=i-o+1,l=s-n+1,c=this.plain?0:1,d=this._availPx>0?4+(a-1)*c:0,h=!this.capHeightToHalfViewport,u=this.fill&&this._availPx>0,p=u?Number.POSITIVE_INFINITY:h?960:this.maxGridPx,m=u?Number.POSITIVE_INFINITY:h?48:32,f=this.fill?0:this.capHeightToHalfViewport?.45*window.innerHeight:this._availHeightPx>=200?this._availHeightPx:0,_=f>0?4+(l-1)*c:0,g=function(e,t,r,o,i,n=32){const s=Math.min(Math.floor(e/o),Math.floor(e/i),n),a=t>0?Math.min(s,Math.floor(t/o)):s,l=r>0?Math.floor(r/i):Number.POSITIVE_INFINITY;return Math.max(1,Math.min(a,l,n))}(p,this._availPx>0?Math.max(1,this._availPx-d):this._availPx,f>0?Math.max(1,f-_):0,a,l,m);return W`
+	`,e([pe({attribute:!1})],Tr.prototype,"furniture",void 0),e([pe({attribute:!1})],Tr.prototype,"selectedFurnitureId",void 0),e([pe({type:Number})],Tr.prototype,"roomWidth",void 0),e([pe({type:Number})],Tr.prototype,"cellPx",void 0),e([pe({type:Number})],Tr.prototype,"gapPx",void 0),e([pe({type:Number})],Tr.prototype,"minCol",void 0),e([pe({type:Number})],Tr.prototype,"minRow",void 0),e([pe({type:Number})],Tr.prototype,"visCols",void 0),e([pe({type:Number})],Tr.prototype,"visRows",void 0),e([pe({attribute:!1})],Tr.prototype,"sidebarTab",void 0),e([pe({attribute:!1})],Tr.prototype,"localize",void 0),e([pe({attribute:!1})],Tr.prototype,"furnitureTones",void 0),e([me()],Tr.prototype,"_isNarrow",void 0),customElements.get("epp-furniture-overlay")||customElements.define("epp-furniture-overlay",Tr);const Hr={[fe]:`background-image: ${We(1,6)};`,[_e]:`background-image: ${We(2,5)};`,[ge]:`background-image: ${We(3,5)};`};class Pr extends ce{constructor(){super(...arguments),this.grid=new Uint8Array(0),this.zoneConfigs=[],this.targets=[],this.roomWidth=0,this.roomDepth=0,this.perspective=null,this.furniture=[],this.selectedFurnitureId=null,this.sidebarTab="zones",this.editable=!1,this.activeZone=null,this.occupancy={},this.targetPrevXY=[],this.localize=Er,this.maxRangeMm=xe,this.maxGridPx=480,this.showOverlays=!0,this.showDimensions=!0,this.plain=!1,this.fill=!1,this.fadeUncovered=!1,this.capHeightToHalfViewport=!1,this.dismissedTargets=new Map,this.frozenBounds=null,this.heatmapCells=[],this.showHeatmap=!1,this.trails=[],this._availPx=0,this._availHeightPx=0,this._onResize=()=>{this._measureAvail()},this._fovCache=null,this._fovPerspective=Pr._FOV_UNCACHED,this._scanCache=null,this._lastEnterIdx=-1,this._onStrokeEnd=()=>{this._lastEnterIdx=-1,this.dispatchEvent(new CustomEvent("cell-paint",{detail:{action:"up"},bubbles:!0,composed:!0}))}}connectedCallback(){super.connectedCallback(),"undefined"!=typeof ResizeObserver&&(this._ro=new ResizeObserver(()=>{this._measureAvail()}),this._ro.observe(this)),window.addEventListener("resize",this._onResize)}disconnectedCallback(){super.disconnectedCallback(),this._ro?.disconnect(),window.removeEventListener("resize",this._onResize),void 0!==this._settleRaf&&(cancelAnimationFrame(this._settleRaf),this._settleRaf=void 0)}firstUpdated(){this._measureAvail(),"undefined"!=typeof requestAnimationFrame&&(this._settleRaf=requestAnimationFrame(()=>{this._settleRaf=void 0,this.isConnected&&this._measureAvail()}))}updated(e){this._measureAvail(),this._updateFurnitureTones(e)}_updateFurnitureTones(e){if(!this.furniture.length)return void(this._furnitureTones=void 0);if(!(e.has("furniture")||e.has("grid")||e.has("zoneConfigs")||e.has("roomColor")||e.has("roomWidth")||e.has("roomDepth")||e.has("plain")||e.has("perspective")||e.has("maxRangeMm")||e.has("frozenBounds"))&&void 0!==this._furnitureTones)return;this._furnitureTones=function(e,t,r,o){const i=new Map;for(const n of e){const e=$e(n.x+n.width/2,n.y+n.height/2,t,r);if(!e)continue;const s=Me(e);if(null===s)continue;const a=o(s);if(!a)continue;const{color:l,halo:c}=Oe(a);i.set(n.id,{color:l,halo:c})}return i}(this.furniture,this.roomWidth,this.roomDepth,e=>this._readCellRgb(e));const t=this.shadowRoot?.querySelector("epp-furniture-overlay");t&&(t.furnitureTones=this._furnitureTones)}_readCellRgb(e){const t=this.shadowRoot?.querySelector(`.cell[data-idx="${e}"]`);return t?function(e){const t=/^rgba?\(\s*([0-9.]+)[\s,]+([0-9.]+)[\s,]+([0-9.]+)/i.exec(e);if(!t)return null;const r=[Number(t[1]),Number(t[2]),Number(t[3])];return Ne(r)?r:null}(getComputedStyle(t).backgroundColor):null}_measureAvail(){const e=this.clientWidth;if(e&&Math.abs(e-this._availPx)>=1&&(this._availPx=e),this.fill||this.capHeightToHalfViewport)return void(this._availHeightPx=0);const t=Math.floor(this.clientHeight-this._captionBlockPx()),r=t>0?t:0;Math.abs(r-this._availHeightPx)>=1&&(this._availHeightPx=r)}_captionBlockPx(){const e=this.shadowRoot?.querySelector(".grid-dimensions");return e?e.offsetHeight+(Number.parseFloat(getComputedStyle(e).marginTop)||0):0}remeasure(){this._measureAvail()}willUpdate(e){if((e.has("targets")||e.has("dismissedTargets")||e.has("roomWidth")||e.has("roomDepth"))&&0!==this.dismissedTargets.size)for(const[e,t]of this.dismissedTargets){const r=this.targets[e];if(!r||"inactive"===r.status||null==r.x||null==r.y)continue;const o=$e(r.x,r.y,this.roomWidth,this.roomDepth);if(!o)continue;Me(o)!==t&&this.dispatchEvent(new CustomEvent("target-undismissed",{detail:{targetIndex:e},bubbles:!0,composed:!0}))}}render(){const e=this._getScan(),t=this.frozenBounds??e.bounds,r=t.minCol>t.maxCol,o=r?0:t.minCol,i=r?19:t.maxCol,n=r?0:t.minRow,s=r?19:t.maxRow,a=i-o+1,l=s-n+1,c=this.plain?0:1,d=this._availPx>0?4+(a-1)*c:0,h=!this.capHeightToHalfViewport,u=this.fill&&this._availPx>0,p=u?Number.POSITIVE_INFINITY:h?960:this.maxGridPx,m=u?Number.POSITIVE_INFINITY:h?48:32,f=this.fill?0:this.capHeightToHalfViewport?.45*window.innerHeight:this._availHeightPx,_=f>0?4+(l-1)*c:0,g=function(e,t,r,o,i,n=32){const s=Math.min(Math.floor(e/o),Math.floor(e/i),n),a=t>0?Math.min(s,Math.floor(t/o)):s,l=r>0?Math.floor(r/i):Number.POSITIVE_INFINITY;return Math.max(1,Math.min(a,l,n))}(p,this._availPx>0?Math.max(1,this._availPx-d):this._availPx,f>0?Math.max(1,f-_):0,a,l,m);return W`
 			<div class="grid-targets-wrapper">
 				<div
 					class="grid"
@@ -341,7 +341,7 @@ class it extends ot{}it.directiveName="unsafeSVG",it.resultType=2;const nt=Je(it
 			<div
 				class="target-dot ${this.editable?"":"clickable"}"
 				style="left: ${d}%; top: ${h}%; background: ${Pe[t]}; opacity: ${p}; transition: opacity 0.5s ease;"
-				@click=${r=>{this.editable||(r.stopPropagation(),this.dispatchEvent(new CustomEvent("target-click",{detail:{targetIndex:t,x:e.x,y:e.y,pctX:d,pctY:h},bubbles:!0,composed:!0})))}}
+				@click=${r=>{if(this.editable)return;r.stopPropagation();const o=r.currentTarget.getBoundingClientRect();this.dispatchEvent(new CustomEvent("target-click",{detail:{targetIndex:t,x:e.x,y:e.y,clientX:o.left+o.width/2,clientY:o.top+o.height/2},bubbles:!0,composed:!0}))}}
 			></div>
 			${"active"===e.status&&e.signal>0?W`
 						<div style="position: absolute; left: ${d}%; top: ${h}%; transform: translate(-50%, -280%); background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; font-weight: bold; padding: 0 4px; border-radius: 6px; pointer-events: none;">
@@ -379,24 +379,43 @@ class it extends ot{}it.directiveName="unsafeSVG",it.resultType=2;const nt=Je(it
 			></epp-furniture-overlay>
 		`:V}}Pr.styles=s`
 		:host {
-			display: block;
-			/* Centre the inline-block .grid-targets-wrapper horizontally within
-			   the host. The host fills its container width (display:block), so
-			   without this the inline-block grid hugs the LEFT edge whenever the
-			   grid is narrower than its region (tall/narrow rooms, or any room
-			   narrower than the column). The furniture/target overlays are
-			   absolutely positioned relative to .grid-targets-wrapper (which is
-			   position:relative), so centring the wrapper moves the whole
-			   positioning context together — overlay math is unaffected. */
-			text-align: center;
+			/* A centred flex column holding the map and its dimensions caption. The
+			   panel makes our container (.grid-container) flex:1 of a height-bounded
+			   column, so the box we're given is usually TALLER than the map — the
+			   card is the "expansion area" that shows the space the map can use, and
+			   the map floats in the middle of it. align-items does the horizontal
+			   centring the old \`text-align: center\` used to do (the inline-block
+			   .grid-targets-wrapper would otherwise hug the left edge whenever the
+			   map is narrower than the column). The absolutely-positioned overlays
+			   are relative to the wrapper, so centring the wrapper moves the whole
+			   positioning context together — overlay maths is unaffected. */
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			align-items: center;
+		}
+
+		/* Never let flex SHRINK these: a transient over-tall map (measured budget
+		   one frame stale) would otherwise be squashed into the wrapper's
+		   overflow:hidden and clipped, instead of simply overhanging for a frame
+		   and self-correcting on the next measure. */
+		.grid-targets-wrapper,
+		.grid-dimensions {
+			flex: 0 0 auto;
 		}
 
 		.grid-targets-wrapper {
 			position: relative;
 			display: inline-block;
 			vertical-align: top;
-			/* Reset text-align inside the wrapper so the centred host doesn't
-			   leak into the grid-dimensions caption / cell content. */
+			/* Defensive reset, not a fix for our own CSS: the host no longer sets
+			   text-align itself (it centres via align-items on the flex column —
+			   see :host above), so there's nothing of ours to reset here. But
+			   text-align is inherited, and the host's own used value still
+			   depends on whatever its light-DOM ancestor sets — a centred or
+			   right-aligned ancestor outside our shadow boundary could otherwise
+			   leak through into the grid-dimensions caption / cell content. Pin
+			   it here regardless. */
 			text-align: left;
 			/* Own the overlay z-indexes. The targets (z-index 20), furniture (15)
 			   and heatmap (15) overlays are absolutely positioned with positive

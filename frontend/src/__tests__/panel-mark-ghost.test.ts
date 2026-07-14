@@ -137,13 +137,33 @@ function insideCellCoords(
 	};
 }
 
-/** Build a valid targetMenu detail for a given position. */
+/**
+ * Build a valid _targetMenu STATE for a given room position. x/y are the room
+ * coordinates the cell-index lookups run off; menuX/menuY are where the menu is
+ * drawn (px relative to `.grid-container`).
+ */
 function makeMenuDetail(
 	x: number,
 	y: number,
 	targetIndex = 0,
-): { targetIndex: number; x: number; y: number; pctX: number; pctY: number } {
-	return { targetIndex, x, y, pctX: 50, pctY: 50 };
+): { targetIndex: number; x: number; y: number; menuX: number; menuY: number } {
+	return { targetIndex, x, y, menuX: 40, menuY: 60 };
+}
+
+/** Build a `target-click` EVENT detail as <epp-grid> dispatches it. */
+function makeClickDetail(
+	x: number,
+	y: number,
+	clientX: number,
+	clientY: number,
+): {
+	targetIndex: number;
+	x: number;
+	y: number;
+	clientX: number;
+	clientY: number;
+} {
+	return { targetIndex: 0, x, y, clientX, clientY };
 }
 
 describe("_targetCellIndex", () => {
@@ -167,11 +187,78 @@ describe("_targetCellIndex", () => {
 });
 
 describe("_showTargetMenu", () => {
-	it("sets _targetMenu to the provided detail", () => {
+	it("keeps the target's room coordinates for the cell-index lookups", () => {
 		const a = createPanel() as any;
-		const detail = makeMenuDetail(1500, 2000, 0);
-		a._showTargetMenu(detail);
-		expect(a._targetMenu).toEqual(detail);
+		a._showTargetMenu(makeClickDetail(1500, 2000, 800, 400));
+		expect(a._targetMenu.targetIndex).toBe(0);
+		expect(a._targetMenu.x).toBe(1500);
+		expect(a._targetMenu.y).toBe(2000);
+	});
+
+	it("anchors the menu to the DOT, in px relative to the card", async () => {
+		// The menu renders inside `.grid-container` (position: relative), but the map
+		// is centred inside that card and is smaller than it in BOTH axes — so the
+		// event's percentages-of-the-map put the menu hundreds of px from its dot
+		// (#338). The panel converts the dot's client-space centre into the card's
+		// coordinate space instead.
+		const el = createPanel();
+		document.body.appendChild(el);
+		await el.updateComplete;
+		await new Promise((r) => setTimeout(r, 0));
+		const a = el as any;
+		// connectedCallback -> _initialize() copies the (empty) controller device list
+		// back over the seed, so re-seed AFTER mounting (and after that async pass) to
+		// get the live view — and therefore the card — rendered.
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test Sensor",
+				host: null,
+				available: true,
+				configured: true,
+				firmware_status: "compatible",
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._loading = false;
+		await el.updateComplete;
+
+		const card = el.shadowRoot!.querySelector(".grid-container");
+		expect(card).not.toBeNull();
+		// happy-dom has no layout, so hand the card a box to be offset by.
+		(card as HTMLElement).getBoundingClientRect = () =>
+			({ left: 100, top: 40 }) as DOMRect;
+
+		a._showTargetMenu(makeClickDetail(1500, 2000, 800, 400));
+		expect(a._targetMenu.menuX).toBe(700);
+		expect(a._targetMenu.menuY).toBe(360);
+
+		el.remove();
+	});
+
+	it("falls back to client coordinates when the card is not rendered yet", () => {
+		// Unmounted panel: no shadow root, so no card to be relative to.
+		const a = createPanel() as any;
+		a._showTargetMenu(makeClickDetail(1500, 2000, 800, 400));
+		expect(a._targetMenu.menuX).toBe(800);
+		expect(a._targetMenu.menuY).toBe(400);
+	});
+});
+
+describe("_renderTargetMenu positioning", () => {
+	it("positions the menu in px, not in percentages of the wrong box", () => {
+		const a = createPanel() as any;
+		a._targetMenu = {
+			targetIndex: 0,
+			x: 1500,
+			y: 2000,
+			menuX: 231,
+			menuY: 117,
+		};
+		const c = document.createElement("div");
+		render(a._renderTargetMenu(), c);
+		const menu = c.querySelector(".target-menu") as HTMLElement;
+		expect(menu.getAttribute("style")).toBe("left: 231px; top: 117px;");
 	});
 });
 

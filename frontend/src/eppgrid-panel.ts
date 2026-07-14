@@ -489,10 +489,9 @@ export const layoutStyles = css`
      "viewport bottom minus a reserve constant", so anything a caller renders below
      the grid simply takes its space and the map shrinks to fit (#338). No constant
      to hand-sum, and no new scroll container anywhere — that's the tell the model
-     is right. min-height:0 lets it shrink below its content.
-     (flex/min-height live on THIS rule rather than in a second rule with the same
-     selector, so the cssText regression guards — which read the FIRST
-     .editor-shell .grid-container rule they find — see one card rule, not two.)
+     is right (overflow stays visible: the target menu hangs over the card's edge,
+     and overflow-y:auto would silently force overflow-x:auto and clip it).
+     min-height:0 lets it shrink below its content.
      Mobile resets this (see the @media block): there the column is content-sized,
      so a flex-basis:0 card would collapse to nothing. */
   .editor-shell .grid-container {
@@ -502,6 +501,17 @@ export const layoutStyles = css`
     padding: var(--epp-space-4, 16px);
     flex: 1;
     min-height: 0;
+  }
+
+  /* …but the remainder is for the MAP. The uncalibrated live overview renders an
+     <epp-wizard> in this same card, and the wizard neither wants nor uses a
+     bounded box: stretched to the column's remainder it framed a 314px wizard in
+     an 836px card, and on a short viewport the card (min-height:0) shrank below
+     the wizard, which then spilled past its bottom border. The panel adds this
+     class whenever it renders the wizard instead of the grid — same specificity as
+     the rule above, declared after it, so it wins. */
+  .editor-shell .grid-container--wizard {
+    flex: 0 0 auto;
   }
 
   /* Hand the box down to the element (:host is display:flex, so it centres the map
@@ -804,12 +814,16 @@ export class EPPGridPanel extends LitElement {
 		this._targetCtrl.zoneEngineState = value;
 	}
 	@state() _overlayMode: OverlayMode = null;
+	// x/y are the target's ROOM coordinates (mm) — the cell-index lookups behind
+	// dismiss/overlay run off those. menuX/menuY are where to draw the menu: the
+	// clicked dot's centre, in px relative to `.grid-container` (the positioned
+	// ancestor the menu renders into).
 	@state() private _targetMenu: {
 		x: number;
 		y: number;
 		targetIndex: number;
-		pctX: number;
-		pctY: number;
+		menuX: number;
+		menuY: number;
 	} | null = null;
 	@state() private _dismissedTargets: Map<number, number> = new Map();
 	@state() _isPainting = false;
@@ -2225,14 +2239,14 @@ export class EPPGridPanel extends LitElement {
 
     .debug-log-container {
       margin-top: 4px;
-      /* A FIXED height, not a growth cap: under a ceiling the log grew line by
-         line as events streamed in, and under container measurement every growth
-         step would resize the map. 6 lines × 16.5px (11px monospace × 1.5
+      /* A FIXED height, not a max-height: under a max-height the log GROWS line by
+         line as events stream in, and under container measurement every growth step
+         resizes the map underneath it. A fixed height keeps the map still and lets
+         the log scroll internally. 6 lines × 16.5px (11px monospace × 1.5
          line-height) = 99px; the box is content-box, so its 6px padding sits
          OUTSIDE this. Six lines is what we want: the old 200px box fit ~12, which
          is dead space when the room is quiet — and every pixel of it comes out of
-         the map. (The regression guard greps this rule for the growth-cap
-         property, so don't name it here.) */
+         the map. */
       height: 99px;
       overflow-y: auto;
       overflow-x: hidden;
@@ -3214,10 +3228,24 @@ export class EPPGridPanel extends LitElement {
 		targetIndex: number;
 		x: number;
 		y: number;
-		pctX: number;
-		pctY: number;
+		clientX: number;
+		clientY: number;
 	}): void {
-		this._targetMenu = detail;
+		// The menu is positioned inside `.grid-container` (the card), but the map is
+		// centred INSIDE that card and is smaller than it in both axes (#338), so the
+		// event's percentages-of-the-map are meaningless here — they put the menu up
+		// to ~300px away from the dot. Anchor to the dot instead: convert its centre
+		// from client space into the card's coordinate space, once, at open time (the
+		// menu is transient; it doesn't need to track later reflows).
+		const card = this.shadowRoot?.querySelector(".grid-container");
+		const box = card?.getBoundingClientRect();
+		this._targetMenu = {
+			targetIndex: detail.targetIndex,
+			x: detail.x,
+			y: detail.y,
+			menuX: detail.clientX - (box?.left ?? 0),
+			menuY: detail.clientY - (box?.top ?? 0),
+		};
 	}
 
 	private _closeTargetMenu(): void {
@@ -3310,10 +3338,10 @@ export class EPPGridPanel extends LitElement {
 
 	private _renderTargetMenu() {
 		if (!this._targetMenu) return nothing;
-		const { pctX, pctY } = this._targetMenu;
+		const { menuX, menuY } = this._targetMenu;
 		return html`
 			<div class="target-menu-backdrop" @click=${() => this._closeTargetMenu()}></div>
-			<div class="target-menu" style="left: ${pctX}%; top: ${pctY}%;">
+			<div class="target-menu" style="left: ${menuX}px; top: ${menuY}px;">
 				<button class="target-menu-item" @click=${() => this._dismissTarget()}>
 					${this._localize("live.delete_target")}
 				</button>
@@ -3349,6 +3377,13 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _renderLiveOverview() {
+		// The card's flex:1 exists to give the MAP a bounded box to measure. The
+		// uncalibrated view puts an <epp-wizard> in that same card, which neither
+		// wants nor uses the remainder: stretched, it frames a 314px wizard in an
+		// 836px card — and on a short viewport the card shrinks BELOW the wizard
+		// (min-height:0) and the wizard spills past its bottom border. Content-size
+		// the card in that case (#338).
+		const wizardCard = !this._perspective;
 		const gridContent = this._perspective
 			? this._renderLiveGrid()
 			: html`<epp-wizard
@@ -3369,7 +3404,7 @@ export class EPPGridPanel extends LitElement {
         ${this._renderHeader()}
         <div class="editor-shell">
           <div class="grid-column">
-            <div class="grid-container" style="position: relative;">
+            <div class="grid-container ${wizardCard ? "grid-container--wizard" : ""}" style="position: relative;">
               ${gridContent}
               ${this._targetMenu ? this._renderTargetMenu() : nothing}
             </div>

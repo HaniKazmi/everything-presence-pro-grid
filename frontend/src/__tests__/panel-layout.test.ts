@@ -352,12 +352,38 @@ describe("layout styles", () => {
 		// clientHeight). flex:1 hands it whatever the heatmap toggle and the
 		// detection log below it don't use; min-height:0 lets it shrink below its
 		// content instead of pushing the log off the bottom of the viewport (#338).
-		const match = layoutCss.match(
-			/\.editor-shell \.grid-container\s*\{([^}]*)\}/,
-		);
-		expect(match).not.toBeNull();
-		expect(match![1]).toMatch(/flex:\s*1/);
-		expect(match![1]).toMatch(/min-height:\s*0/);
+		//
+		// Search EVERY desktop rule with this selector, not just the first one the
+		// regex finds: a first-match guard silently asserts "these declarations live
+		// in the first rule", which is a structural constraint on how the stylesheet
+		// may be organised, not on what it computes. (Mobile resets flex on the same
+		// selector inside the @media block, so stop at the media query.)
+		const mediaIdx = layoutCss.indexOf("@media (max-width: 819px)");
+		expect(mediaIdx).toBeGreaterThan(-1);
+		const desktop = layoutCss.slice(0, mediaIdx);
+		const decls = [
+			...desktop.matchAll(/\.editor-shell \.grid-container\s*\{([^}]*)\}/g),
+		]
+			.map((m) => m[1])
+			.join("\n");
+		expect(decls).not.toBe("");
+		expect(decls).toMatch(/flex:\s*1/);
+		expect(decls).toMatch(/min-height:\s*0/);
+	});
+
+	it("content-sizes the card when it holds the wizard, not the map", () => {
+		// The flex:1 remainder exists for the MAP (epp-grid measures the box). The
+		// uncalibrated overview renders <epp-wizard> in the same card: stretched, the
+		// card framed a 314px wizard in an 836px box, and on a short viewport it
+		// shrank below the wizard and the wizard overflowed its bottom border (#338).
+		// The override must come AFTER the base rule — same specificity, so order is
+		// the only thing that makes it win.
+		const baseIdx = layoutCss.indexOf(".editor-shell .grid-container {");
+		const wizIdx = layoutCss.indexOf(".editor-shell .grid-container--wizard {");
+		expect(baseIdx).toBeGreaterThan(-1);
+		expect(wizIdx).toBeGreaterThan(baseIdx);
+		const rule = layoutCss.slice(wizIdx, layoutCss.indexOf("}", wizIdx));
+		expect(rule).toMatch(/flex:\s*0 0 auto/);
 	});
 
 	it("hands the measured box down to <epp-grid>", () => {
@@ -396,11 +422,17 @@ describe("layout styles", () => {
 				styles: { cssText: string }[];
 			}
 		).styles;
-		const css = styles.map((s) => s.cssText).join("\n");
+		// Strip comments first: the rule's own comment explains why max-height is
+		// wrong, and a guard that greps the comment prose is a guard on the prose —
+		// it dictated how the CSS could be documented, not what it declares.
+		const css = styles
+			.map((s) => s.cssText)
+			.join("\n")
+			.replace(/\/\*[\s\S]*?\*\//g, "");
 		const idx = css.indexOf(".debug-log-container {");
 		const rule = css.slice(idx, css.indexOf("}", idx));
 		expect(rule).toMatch(/height:\s*99px/);
-		expect(rule).not.toMatch(/max-height/);
+		expect(rule).not.toMatch(/max-height:/);
 	});
 
 	it("sizes the mobile sidebar sub-tabs to the panel's touch-target control height", () => {

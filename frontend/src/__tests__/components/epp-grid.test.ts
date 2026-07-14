@@ -1357,6 +1357,39 @@ describe("epp-grid target-click event", () => {
 
 		document.body.removeChild(el);
 	});
+
+	it("reports the dot's own centre in client coordinates", async () => {
+		// The listener draws a menu next to the dot, in a box that is NOT the map
+		// (the panel's card is bigger, with the map centred in it — #338), so a
+		// percentage of the map is not a position it can use. The dot's rect centre
+		// is; the dot is translate(-50%, -50%), so its centre is the point it marks.
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("target-click", (e) => events.push(e as CustomEvent));
+
+		const dot = el.shadowRoot!.querySelector(".target-dot") as HTMLElement;
+		// happy-dom reports a zero rect; give the dot a real box to be measured from.
+		dot.getBoundingClientRect = () =>
+			({ left: 200, top: 90, width: 14, height: 14 }) as DOMRect;
+		dot.click();
+
+		expect(events.length).toBe(1);
+		expect(events[0].detail.clientX).toBe(207);
+		expect(events[0].detail.clientY).toBe(97);
+		// And it carries no percentages: they were only ever meaningful inside the
+		// map, the listener draws in a different box, and a field that reads like a
+		// position but isn't one is what mispositioned the menu in the first place.
+		expect(events[0].detail.pctX).toBeUndefined();
+		expect(events[0].detail.pctY).toBeUndefined();
+
+		document.body.removeChild(el);
+	});
 });
 
 describe("epp-grid target dot cursor guard", () => {

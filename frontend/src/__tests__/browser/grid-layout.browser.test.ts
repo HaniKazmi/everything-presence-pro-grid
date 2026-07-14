@@ -178,18 +178,21 @@ describe.each(VIEWPORTS)("detection log stays reachable at %ix%i", (w, h) => {
 		);
 	});
 
-	it("shrinks the map when the log expands — never grows it", async () => {
+	it("shrinks the map when the log expands", async () => {
 		await page.viewport(w, h);
 		const panel = await mountLivePanel();
 		const collapsed = mapRect(panel).height;
 		await expandLog(panel);
 		const expanded = mapRect(panel).height;
 
-		// The #339 inversion, in one assertion: reserving MORE space for the log
-		// pushed the budget under a floor, which dropped it to 0 and fell back to
-		// width-fit — so the map got 3x BIGGER and shoved the log 687px below the
-		// fold. Less room may only ever mean a smaller map.
-		expect(expanded).toBeLessThanOrEqual(collapsed);
+		// STRICTLY smaller, and that strictness is the point. Two bugs die here:
+		// #339, where reserving more space for the log pushed the budget under a
+		// floor, dropped it to 0 and fell back to width-fit — the map got 3x BIGGER
+		// and shoved the log 687px below the fold; and #338, where the map measured
+		// the WINDOW and so ignored the log entirely — it neither grew nor shrank,
+		// which a `<=` guard happily accepts. The log's 99px+chrome must come out of
+		// the map: measured 708->588 / 273->153 / 168->48 across these viewports.
+		expect(expanded).toBeLessThan(collapsed);
 	});
 
 	it("keeps the map inside its card", async () => {
@@ -306,6 +309,111 @@ describe("the caption inside the box is measured for real", () => {
 		)._captionBlockPx();
 		expect(captionPx).toBe(cap!.offsetHeight + 8);
 		expect(captionPx).toBeGreaterThan(0);
+	});
+});
+
+/** Put one target at a known room position and return its rendered dot. */
+async function showTargetAt(
+	p: EPPGridPanel,
+	x: number,
+	y: number,
+): Promise<HTMLElement> {
+	(p as unknown as Record<string, unknown>)._targets = [
+		{ x, y, status: "active", signal: 90 },
+	];
+	await settle(p);
+	const dot = gridEl(p).shadowRoot!.querySelector<HTMLElement>(".target-dot");
+	expect(dot).not.toBeNull();
+	return dot as HTMLElement;
+}
+
+// The card/map size gap is what breaks a percentage-positioned menu, so sample
+// where that gap is largest as well as at the everyday desktop size.
+const MENU_VIEWPORTS: Array<[number, number]> = [
+	[1600, 1000],
+	[1440, 560],
+];
+
+describe.each(
+	MENU_VIEWPORTS,
+)("target menu lands on its dot at %ix%i", (w, h) => {
+	// The menu is positioned inside .grid-container (the CARD), but the
+	// `target-click` event carried percentages OF THE MAP. The card was already
+	// wider than the map before #338 (~192px of horizontal error); container
+	// measurement made the card TALLER than the map too, with the map centred in
+	// it, so the vertical error grew as well (~200px off at 1600x1000). The menu
+	// has to anchor to the dot itself, in px.
+	it.each([
+		["right", 2900, 2000],
+		["bottom", 1500, 3900],
+	])("anchors to a dot near the map's %s edge", async (_edge, tx, ty) => {
+		await page.viewport(w, h);
+		const panel = await mountLivePanel();
+		const dot = await showTargetAt(panel, tx, ty);
+		const d = dot.getBoundingClientRect();
+
+		dot.click();
+		await settle(panel);
+
+		const menu = panel.shadowRoot!.querySelector<HTMLElement>(".target-menu");
+		expect(menu).not.toBeNull();
+		const m = (menu as HTMLElement).getBoundingClientRect();
+
+		// .target-menu is `transform: translate(-50%, 8px)` off its left/top, so a
+		// correctly anchored menu is centred on the dot and hangs 8px below it.
+		expect(
+			Math.abs(m.left + m.width / 2 - (d.left + d.width / 2)),
+		).toBeLessThan(3);
+		expect(Math.abs(m.top - (d.top + d.height / 2 + 8))).toBeLessThan(3);
+
+		// And it is actually on screen — a menu positioned off the card is a menu
+		// the user cannot click.
+		expect(m.left).toBeGreaterThanOrEqual(0);
+		expect(m.top).toBeGreaterThanOrEqual(0);
+		expect(m.right).toBeLessThanOrEqual(window.innerWidth);
+		expect(m.bottom).toBeLessThanOrEqual(window.innerHeight);
+	});
+
+	it("keeps the card unclipped (no scroll container to cut the menu off)", async () => {
+		await page.viewport(w, h);
+		const panel = await mountLivePanel();
+		// overflow-y:auto silently forces overflow-x:auto, which would clip a menu
+		// that (correctly) hangs over the card's edge.
+		const cs = getComputedStyle(
+			panel.shadowRoot!.querySelector(".grid-container")!,
+		);
+		expect(cs.overflowX).toBe("visible");
+		expect(cs.overflowY).toBe("visible");
+	});
+});
+
+describe.each(<Array<[number, number]>>[
+	[1600, 1000],
+	[1500, 460],
+])("the uncalibrated card hugs its wizard at %ix%i", (w, h) => {
+	it("does not stretch the card around <epp-wizard>, and does not overflow it", async () => {
+		await page.viewport(w, h);
+		const panel = await mountLivePanel();
+		(panel as unknown as Record<string, unknown>)._perspective = null;
+		await settle(panel);
+
+		const wizard = panel.shadowRoot!.querySelector<HTMLElement>(
+			".grid-container epp-wizard",
+		);
+		expect(wizard).not.toBeNull();
+		const card = panel
+			.shadowRoot!.querySelector(".grid-container")!
+			.getBoundingClientRect();
+		const wiz = (wizard as HTMLElement).getBoundingClientRect();
+		expect(wiz.height).toBeGreaterThan(0);
+
+		// The card's flex:1 exists to hand the MAP a bounded box. The wizard neither
+		// wants nor uses it: stretched, it framed a 314px wizard in an 836px card at
+		// 1600x1000 — and on a short viewport the card shrank BELOW the wizard, which
+		// then spilled ~35px past the card's bottom border. Content-sized, the card
+		// is the wizard plus its own 16px padding + 1px border.
+		expect(card.height - wiz.height).toBeLessThan(40);
+		expect(wiz.bottom).toBeLessThanOrEqual(card.bottom);
 	});
 });
 
