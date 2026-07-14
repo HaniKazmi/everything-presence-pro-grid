@@ -11191,10 +11191,12 @@ class TestOverviewStreamRecovery:
     """The card's stream must survive a device flap — issue #334.
 
     End-to-end across the two layers that broke: the REAL non-admin WS scaffolding
-    (`_start_durable_target_stream`) on a REAL `DeviceManager`. The panel recovers by
-    watching the device list and resubscribing, but the card is non-admin and has no
-    such hook, so recovery has to come from the manager — the callback is bound to a
-    disposable `DeviceConnection`, and nothing re-armed it when that connection died.
+    (`_start_overview_stream`) on a REAL `DeviceManager`. The card is non-admin and
+    has no device-list hook of its own, so recovery has to come from the manager —
+    the callback is bound to a disposable `DeviceConnection`, and nothing re-armed
+    it when that connection died. (The panel used to recover by watching the device
+    list and resubscribing instead; #336 retired that and moved the panel's own
+    three streams onto this same manager-owned recovery.)
     """
 
     class FakeDeviceConnection:

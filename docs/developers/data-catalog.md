@@ -131,11 +131,47 @@ releases against a force-closed connection are identity-checked no-ops.
 
 ### `subscribe_raw_targets` — calibration & FOV overlay
 
-Parses Raw Target text sensor updates into structured events.
+Parses Raw Target text sensor updates into structured events. Registers a
+**durable state stream** with the manager — the same machinery the dashboard
+card's `overview/subscribe` uses (see architecture.md → *Durable frontend state
+streams*) — rather than opening a session and subscribing on it directly: the
+manager owns the refcounted session and re-arms the stream on a fresh connection
+after the device flaps, instead of leaving the panel frozen. Because
+registration always succeeds, even against an offline device, this command
+(unlike `subscribe_ota_progress` or the write commands) never returns the
+`no_session` error — an offline device just reports `available: false` once the
+stream settles.
 
-**Request:** `{ "type": "eppgrid/subscribe_raw_targets", "mac": str }`
+**Request:**
+`{ "type": "eppgrid/subscribe_raw_targets", "mac": str, "availability"?: bool }`
 
-**Event payload:**
+`availability` (default `false`) opts in to the two protocol events below. It
+exists so a browser holding a cached pre-upgrade panel bundle — whose reducer
+replaces the whole message with `event.targets || []` — keeps seeing frames and
+nothing else; the current panel bundle always sets it `true`.
+`subscribe_grid_targets` and `subscribe_heatmap` (below) share the identical
+opt-in field and the identical two events.
+
+**Protocol events** (only sent when `availability` is `true`; repeating for the
+life of the subscription):
+
+1. `{ "available": bool }` — the stream's live/lost state: `true` once it
+    (re)arms — including the very first arm right after subscribing — and
+    `false` whenever it loses its connection (a device flap, a reconnect
+    attempt that fails). No further data frames arrive while `available` is
+    `false`; they resume once a following `true` arrives, with no action needed
+    from the client — the manager re-arms the stream itself.
+1. `{ "available": false, "closed": true }` — terminal, and the one case the
+    client MUST act on: the manager tore the stream down (eppgrid config-entry
+    unload/reload, device removed). The subscription is still open but points
+    at a stream that no longer exists, and no `available: true` will ever
+    follow — the client must re-subscribe if it still wants frames.
+
+A device flap alone (`available: false` without `closed`) is not something the
+client needs to do anything about — the manager recovers it on its own; only
+`closed` means the client must re-subscribe.
+
+**Event payload** (always sent, regardless of `availability`):
 
 ```json
 {
@@ -150,9 +186,12 @@ Parses Raw Target text sensor updates into structured events.
 ### `subscribe_grid_targets` — live overview & zone editor
 
 Parses Target Position, Zone State, and sensor entity updates into structured
-events.
+events. Registers a durable state stream exactly like `subscribe_raw_targets`
+above — same `availability` opt-in (default `false`), same two protocol events,
+no `no_session` error.
 
-**Request:** `{ "type": "eppgrid/subscribe_grid_targets", "mac": str }`
+**Request:**
+`{ "type": "eppgrid/subscribe_grid_targets", "mac": str, "availability"?: bool }`
 
 **Event payload:**
 
@@ -208,9 +247,16 @@ the firmware `Heatmap` text sensor (base64 of 400 normalized bytes, row-major,
 0-255) into a dense array; any malformed/wrong-length payload decodes to 400
 zeroes rather than erroring. Admin only (`@require_admin`), like the panel's
 other device-session streams (`subscribe_raw_targets` /
-`subscribe_grid_targets`).
+`subscribe_grid_targets`). Registers a durable state stream exactly like those
+two — same `availability` opt-in (default `false`), same two protocol events, no
+`no_session` error. Unlike the card's `overview/subscribe_heatmap`, the panel's
+heatmap stream carries live `available` events when opted in, the same as the
+panel's other two streams — there is no deployed-bundle wire-contract constraint
+holding it back, since the opt-in flag itself is what protects an old panel
+bundle.
 
-**Request:** `{ "type": "eppgrid/subscribe_heatmap", "mac": str }`
+**Request:**
+`{ "type": "eppgrid/subscribe_heatmap", "mac": str, "availability"?: bool }`
 
 **Event payload:**
 
