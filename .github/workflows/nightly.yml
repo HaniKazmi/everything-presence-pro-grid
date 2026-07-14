@@ -65,3 +65,10 @@ jobs:
         run: npm run build
       - name: Vitest
         run: npm test
+      # happy-dom has no layout engine, so the unit suite above cannot see a
+      # geometry regression at all (#338/#339 both passed it). Mirror tests.yml and
+      # run the real-browser suite too — it is the only thing that can.
+      - name: Install Chromium for browser-mode tests
+        run: npx playwright install --with-deps chromium
+      - name: Vitest browser mode (real layout)
+        run: npm run test:browser

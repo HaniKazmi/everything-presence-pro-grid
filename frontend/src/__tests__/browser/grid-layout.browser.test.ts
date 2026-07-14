@@ -1,14 +1,37 @@
-import { page } from "@vitest/browser/context";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { page } from "vitest/browser";
 import type { EppGrid } from "../../components/epp-grid.js";
 import type { EPPGridPanel } from "../../eppgrid-panel.js";
 import "../../eppgrid-panel.js";
 import { initGridFromRoom } from "../../lib/grid.js";
 import { createZoneEngineState } from "../../lib/zone-engine.js";
 
-// Real-layout regression tests for #338. happy-dom has no layout, so these
-// geometry assertions can only live in a real browser. See
-// docs/handoffs/2026-07-14-epp-grid-container-measurement.md.
+// Real-layout regression tests for #338 (and for #339, the first attempt to fix
+// it, which shipped a worse bug through a full review cycle).
+//
+// #338: <epp-grid> sized the map from the WINDOW — `window.innerHeight` minus
+// its own getBoundingClientRect().top minus a hand-tuned reserve constant. That
+// constant could not know what the panel rendered BELOW the map, so when the
+// detection log expanded the map kept claiming every pixel down to the window
+// bottom and pushed the log clean past the fold — with nothing able to scroll to
+// it (`.panel--grid` is deliberately overflow:hidden, and adding a scroll
+// container is not an option: see "introduces no scroll container" below).
+//
+// The fix inverts the measurement: the panel makes the map's card (.grid-container)
+// `flex: 1; min-height: 0` of a height-bounded column, and the grid measures the
+// BOX IT WAS GIVEN (its own clientHeight, less the caption rendered inside it).
+// Anything a caller renders below the grid simply takes its space first.
+//
+// The headline invariant, and what every test here defends: A SMALLER BOX MAY
+// ONLY EVER PRODUCE A SMALLER-OR-EQUAL MAP. #339 broke exactly that — a 200px
+// minimum-height floor meant that once the budget fell under it the budget
+// became 0, which fitCellPx reads as "unmeasured" and answers with width-fit:
+// the map TRIPLED as the box shrank.
+//
+// These tests must run in a real browser: happy-dom has no layout engine at all
+// (clientHeight is always 0, getBoundingClientRect() returns zeros), so every
+// geometry assertion below would pass vacuously there — on the bug as readily as
+// on the fix. `npm run test:browser` runs them in headless Chromium.
 
 const mounted: HTMLElement[] = [];
 
@@ -162,6 +185,66 @@ const VIEWPORTS: Array<[number, number]> = [
 	[1440, 560],
 	[1500, 460],
 ];
+
+describe("a smaller box only ever produces a smaller map (monotonicity)", () => {
+	// SAMPLING IS NOT A PROOF. VIEWPORTS above brackets the cliff without landing
+	// in it — which is the identical mistake that let #339 through, made twice.
+	// The second inversion lived at a viewport height of ~400px (in real HA, where
+	// the app header eats ~64px above the panel, ~465-485px — a browser window
+	// snapped to the top half of a 1080p screen): the card's remainder fell to 19px,
+	// the caption rendered inside the grid is 27px, the budget went negative, latched
+	// to 0, and fitCellPx read that 0 as "never measured" and fell back to width-fit.
+	// The map went 33px -> 738px, overflowed its 53px card, painted over the heatmap
+	// toggle and the log, and hung 125px below the fold.
+	//
+	// So don't sample the invariant — SWEEP it. Walk the viewport height all the way
+	// down and assert the map never grows and never escapes its card at ANY step. A
+	// cliff cannot hide between two of these; it has to survive all of them.
+	const HEIGHTS = [600, 560, 520, 480, 460, 440, 420, 400, 380, 340, 300];
+
+	it("never grows the map, and never overflows the card, as the viewport shrinks", async () => {
+		await page.viewport(1500, HEIGHTS[0]);
+		const panel = await mountLivePanel();
+		await expandLog(panel);
+
+		const seen: Array<{ h: number; map: number; slack: number }> = [];
+		for (const h of HEIGHTS) {
+			await resizeTo(panel, 1500, h);
+			const map = mapRect(panel);
+			const card = panel
+				.shadowRoot!.querySelector(".grid-container")!
+				.getBoundingClientRect();
+			seen.push({
+				h,
+				map: map.height,
+				// >0 means the map is spilling out of the box that is supposed to bound it.
+				slack: map.bottom - card.bottom,
+			});
+		}
+
+		const trace = seen
+			.map(
+				(s) => `${s.h}px: map=${s.map.toFixed(1)} spill=${s.slack.toFixed(1)}`,
+			)
+			.join("\n  ");
+
+		for (let i = 1; i < seen.length; i++) {
+			expect(
+				seen[i].map,
+				`map GREW when the viewport shrank (${seen[i - 1].h}px -> ${seen[i].h}px)\n  ${trace}`,
+			).toBeLessThanOrEqual(seen[i - 1].map);
+		}
+		for (const s of seen) {
+			expect(
+				s.slack,
+				`map overflowed its card at ${s.h}px\n  ${trace}`,
+			).toBeLessThanOrEqual(1);
+		}
+		// Sanity: the sweep must actually be exercising the shrink, not measuring a
+		// map that was already at its floor the whole way down.
+		expect(seen[0].map).toBeGreaterThan(seen[seen.length - 1].map);
+	});
+});
 
 describe.each(VIEWPORTS)("detection log stays reachable at %ix%i", (w, h) => {
 	it("keeps the expanded log inside the viewport", async () => {
@@ -396,6 +479,38 @@ describe.each(
 });
 
 describe("the target menu does not outlive the layout it was anchored to", () => {
+	it("closes when its CARD is resized with the window untouched (the HA sidebar)", async () => {
+		// Docking/undocking the HA sidebar is an IN-PAGE layout change: the panel's
+		// box narrows, the column and the card with it, and the map re-centres and
+		// re-fits — but `window.resize` NEVER FIRES (HA's own Lovelace layout uses a
+		// ResizeObserver for precisely this reason). A window-resize hook therefore
+		// cannot cover it, however confidently its comment claims to: the map moves
+		// out from under the menu and the menu stays pinned to a px snapshot of where
+		// the dot used to be. So observe the BOX the menu was anchored to, not the
+		// window.
+		await page.viewport(1600, 1000);
+		const panel = await mountLivePanel();
+		const dot = await showTargetAt(panel, 1500, 2000);
+
+		dot.click();
+		await settle(panel);
+		expect(panel.shadowRoot!.querySelector(".target-menu")).not.toBeNull();
+
+		const card = panel.shadowRoot!.querySelector(".grid-container")!;
+		const before = card.getBoundingClientRect().width;
+
+		// Narrow the panel host itself — exactly what the sidebar docking does — and
+		// touch nothing else. No page.viewport() call, so no window 'resize' event.
+		panel.style.width = "1000px";
+		await settle(panel);
+		await settle(panel);
+
+		// Guard the test: if the card didn't actually move, it proves nothing.
+		expect(card.getBoundingClientRect().width).toBeLessThan(before);
+		expect(panel.shadowRoot!.querySelector(".target-menu")).toBeNull();
+		panel.style.width = "";
+	});
+
 	it("closes on window resize", async () => {
 		// The px anchor is a SNAPSHOT of where the dot was when the menu opened. A
 		// layout change with no click behind it — window resize, the HA sidebar
