@@ -31,7 +31,9 @@ async def start_durable_stream(
     send_snapshot: bool,
     protocol: Literal["frames_only", "closed_only", "full"],
 ) -> None:
-    """Shared scaffolding for the non-admin overview subscribe commands.
+    """Shared scaffolding for the durable-stream subscribe commands — the
+    non-admin overview commands (`_overview.py`) and the panel's three
+    `@require_admin` live streams (`_devices.py`).
 
     The card sits on a dashboard for hours, so its stream must outlive the
     device's `DeviceConnection`: we hand a DURABLE stream to the manager, which

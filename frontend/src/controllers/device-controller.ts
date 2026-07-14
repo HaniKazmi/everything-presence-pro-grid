@@ -880,6 +880,17 @@ export class DeviceController implements ReactiveController {
 					// optional streams (heatmap): those can legitimately fail
 					// (e.g. no device session open yet) while the core streams
 					// are fine, so they must not trigger the banner.
+					//
+					// This branch is now near-unreachable for the panel's three
+					// streams (#336): `start_durable_stream` sends its ack
+					// before anything that can fail and swallows registration
+					// failure into an `available: false` event rather than a
+					// WS error, so a `subscribeMessage` promise for one of
+					// these only ever rejects on `require_admin`/
+					// `_require_manager` (not logged in / integration not
+					// loaded) — not on a bad device or a failed connect. The
+					// connection-failed banner is now driven by
+					// `openDeviceSession` instead; don't rely on this path.
 					if (!stream.optional) {
 						this._connectionFailed = true;
 						this._host.requestUpdate();
