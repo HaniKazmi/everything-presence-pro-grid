@@ -361,6 +361,16 @@ describe("_closeDeviceSession", () => {
 
 		expect(spy).toHaveBeenCalled();
 	});
+
+	it("resets _streamOffline so switching away from an offline device doesn't latch a stale offline banner onto the next one", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._streamOffline = true;
+
+		a._closeDeviceSession();
+
+		expect(a._streamOffline).toBe(false);
+	});
 });
 
 describe("mapTargetToPercent (lib/coordinates)", () => {

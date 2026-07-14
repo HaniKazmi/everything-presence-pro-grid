@@ -264,6 +264,30 @@ describe("panel state survives device offline→online", () => {
 		expect(resetSpy).toHaveBeenCalledTimes(2);
 	});
 
+	it("ignores an availability signal for a device other than the selected one", async () => {
+		// Guard: onAvailability's `mac !== this._selectedMac` check must
+		// actually gate. The retired device-controller-level mechanism had
+		// an equivalent invariant test ("does not fire onSelectedAvailable
+		// when a non-selected device flips availability"), but it was
+		// dropped rather than re-pointed at this handler when #336 replaced
+		// it — every other onAvailability test here uses the selected mac,
+		// so nothing else would catch a regression. Without the guard, a
+		// late `available: false` for a device the user has since switched
+		// away from would wipe the *currently selected* device's live state.
+		const { el, a } = await mountPanel([
+			makeDevice("aa", true),
+			makeDevice("bb", true),
+		]);
+		a._selectedMac = "aa";
+		a._targets = [{ x: 1, y: 2, status: "active", signal: 9 }];
+
+		a._deviceCtrl.onAvailability("bb", false);
+		await el.updateComplete;
+
+		expect(a._streamOffline).toBe(false);
+		expect(a._targets).toEqual([{ x: 1, y: 2, status: "active", signal: 9 }]);
+	});
+
 	// --- HA WebSocket disconnect/reconnect paths ---
 	//
 	// On HA restart / WS drop, `_onHaReady` fires after reconnect and
@@ -440,15 +464,13 @@ describe("panel state survives device offline→online", () => {
 
 	it("loads config (not just reopens session) when the device becomes available for the first time", async () => {
 		// Scenario: user opens the panel while their device is offline.
-		// Reconnection is no longer driven by the device-list edge (#336) —
-		// it's the `updated()` guard, which fires whenever `hass` changes.
-		// HA reassigns `hass` on every entity-state change in production
-		// (including the one that flipped this device available), so
-		// simulate that churn here rather than the retired edge.
+		// The controller's auto-reconnect used to always call
+		// reopenSession() on the transition, which doesn't fetch config.
 		// If the panel never successfully loaded config, we need a fetch
 		// here or the UI is stuck on stale/default state forever.
-		const { el, a, hass, pushDeviceList, getConfigCallCount } =
-			await mountPanel([makeDevice("aa", false)]);
+		const { el, a, pushDeviceList, getConfigCallCount } = await mountPanel([
+			makeDevice("aa", false),
+		]);
 		await el.updateComplete;
 		// No config yet — device was offline on mount, so
 		// `_isSelectedDeviceAvailable` gated out the fetch.
@@ -457,10 +479,6 @@ describe("panel state survives device offline→online", () => {
 
 		// Device flips to available via a device-list push.
 		pushDeviceList([makeDevice("aa", true)]);
-		await el.updateComplete;
-		// HA's routine hass-object churn — same connection, fresh reference —
-		// is what the `updated()` guard reacts to.
-		el.hass = { ...hass };
 		await el.updateComplete;
 		await new Promise((r) => setTimeout(r, 0));
 		await new Promise((r) => setTimeout(r, 0));

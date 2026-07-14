@@ -1268,6 +1268,26 @@ export class EPPGridPanel extends LitElement {
 					this._loadDeviceConfig(this._selectedMac).catch(() => {});
 				}
 			}
+			// Bootstraps a session+config for a device that had none — e.g. it
+			// was offline when the panel mounted, so _runInitialize's
+			// availability gate skipped _ensureSession and no streams were
+			// ever opened for it. The manager re-arms durable STREAMS on a
+			// flap (#336), but that only rescues a device that already has a
+			// stream subscribed; with no session there is no stream for
+			// `onAvailability` to arrive on, so this device-list push is the
+			// only surviving trigger. `!hasDeviceSession` makes this
+			// deliberately inert for any device that already has one — and
+			// since the frontend no longer tears its session down on a flap,
+			// that's every device the manager could be re-arming — so this
+			// can never race the manager's stream re-arm.
+			if (
+				this._selectedMac &&
+				this._isSelectedDeviceAvailable() &&
+				!this._deviceCtrl.hasDeviceSession &&
+				!this._deviceCtrl.reconnecting
+			) {
+				this._ensureSession(this._selectedMac);
+			}
 		};
 		this._deviceCtrl.onAvailability = (mac, available) => {
 			if (mac !== this._selectedMac) return;
@@ -1572,6 +1592,10 @@ export class EPPGridPanel extends LitElement {
 		this._sensorState = createInitialSensorState();
 		this._zoneState = createInitialZoneState();
 		this._targetCtrl.resetZoneEngineState();
+		// Otherwise switching away from a device mid-flap leaves the flag
+		// latched `true` on the newly selected device until its own stream
+		// arms, showing a stale "offline" banner for a healthy device.
+		this._streamOffline = false;
 	}
 
 	// -- Grid cell painting --
