@@ -1079,7 +1079,6 @@ export class EPPGridPanel extends LitElement {
 		// beforeunload / hashchange / history interception are owned by
 		// _navGuard (hostConnected ran in super.connectedCallback() above).
 		window.addEventListener("keydown", this._onKeyDown);
-		window.addEventListener("resize", this._onWindowResize);
 		// Mobile breakpoint: editor switches to the bottom-sheet layout below
 		// 820px. Seed the flag from the current match, then track changes.
 		this._mql = window.matchMedia("(max-width: 819px)");
@@ -1098,7 +1097,6 @@ export class EPPGridPanel extends LitElement {
 		// beforeunload / hashchange / history-interception teardown is owned
 		// by _navGuard (hostDisconnected ran in super.disconnectedCallback()).
 		window.removeEventListener("keydown", this._onKeyDown);
-		window.removeEventListener("resize", this._onWindowResize);
 		this._mql?.removeEventListener("change", this._onMql);
 		// Symmetric with the attach in updated() — HA destroys and recreates this
 		// panel on every rebuild and on the 5-minute hidden-suspend, so an observer
@@ -1110,44 +1108,32 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	/**
-	 * The target menu is anchored to a px SNAPSHOT of where its dot was when it
-	 * opened (see `_showTargetMenu`), so any layout change that moves the map out
-	 * from under it leaves it pointing at nothing — measured 216px/197px adrift and
-	 * entirely off-screen across a 1600x1000 -> 1440x560 resize. A transient popover
-	 * should not chase the layout around; it should go away.
+	 * Observes the target menu's anchor box (`.grid-container`), and closes the menu
+	 * when it moves.
 	 *
-	 * The menu is anchored to the CARD (`.grid-container` is its positioning
-	 * context), so the thing to watch is THE CARD'S BOX, not the window. That is
-	 * what `_cardRo` below does, and it is the general mechanism: it fires for every
-	 * layout change that actually moves the anchor, whatever the cause.
+	 * The menu is anchored to a px SNAPSHOT of where its dot was when it opened, and
+	 * `_showTargetMenu` converts that snapshot into the CARD'S coordinate space (the
+	 * card is the menu's positioning context). So the menu's position is invalidated
+	 * by exactly one thing — a change to the card's box — and that is precisely what
+	 * this observer watches. A transient popover should not chase the layout around;
+	 * it should go away.
 	 *
-	 * Coverage, precisely:
+	 * This is the SINGLE mechanism, and it is sufficient for every cause:
 	 *  - Changes that come FROM a click (the log and heatmap toggles): already
 	 *    handled by the click-outside handler in `_renderLiveOverview`, which closes
 	 *    the menu on the very click that toggles them.
 	 *  - IN-PAGE layout changes with no window resize behind them — docking or
 	 *    undocking the HA sidebar, an HA theme/density change, the panel's own
 	 *    column reflowing: these fire NO `window.resize` event at all (HA's own
-	 *    Lovelace layout uses a ResizeObserver for exactly this reason). `_cardRo`
-	 *    is the only thing that catches them.
-	 *  - Window resize and device rotation: `_cardRo` catches these too whenever the
-	 *    card's box actually changes, which is the case that matters. The
-	 *    `window.resize` hook below is kept as a belt-and-braces trigger for the
-	 *    residual case where the viewport changes but the card's box happens not to
-	 *    (e.g. a mobile URL bar collapsing over a content-sized column) — the menu is
-	 *    still anchored to a viewport-relative px snapshot there.
-	 *
-	 * Both paths land on `_closeTargetMenu`, which is idempotent and free when the
-	 * menu is already closed (`_targetMenu` is already null → Lit sees no change and
-	 * schedules no update), so the two triggers double-firing costs nothing.
-	 */
-	private _onWindowResize = (): void => {
-		this._closeTargetMenu();
-	};
-
-	/**
-	 * Observes the target menu's anchor box (`.grid-container`). See the comment on
-	 * `_onWindowResize` for why the window alone is not enough.
+	 *    Lovelace layout uses a ResizeObserver for exactly this reason), so an
+	 *    observer is the only thing that can catch them.
+	 *  - Window resize and device rotation: the card is `flex: 1` of a height-bounded
+	 *    column, so a viewport change resizes it and the observer fires. A viewport
+	 *    change that leaves the card's box untouched leaves the menu's card-relative
+	 *    anchor correct too — there is nothing to close it for. (A `window.resize`
+	 *    hook alongside this observer was therefore strictly redundant, and its
+	 *    "viewport-relative snapshot" rationale was simply wrong: the snapshot is
+	 *    card-relative.)
 	 *
 	 * Attached in `updated()` (the card only exists once a view that renders it has
 	 * rendered) and disconnected in `disconnectedCallback()`. The symmetry is
