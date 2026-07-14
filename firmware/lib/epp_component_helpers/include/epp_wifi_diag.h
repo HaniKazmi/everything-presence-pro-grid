@@ -15,6 +15,7 @@
 // firmware/variants/wifi-ble-co2.yaml is only glue: an ESP-IDF event handler that
 // calls record_disconnect(), and wifi triggers that call take_drop().
 
+#include <atomic>
 #include <cstdint>
 #include <string>
 
@@ -23,16 +24,25 @@ namespace epp {
 /// Everything known about WiFi drops since boot.
 ///
 /// Written from two tasks: `record_disconnect` from the ESP-IDF event task, and
-/// `take_drop` from the ESPHome loop. Plain scalars rather than atomics — the
-/// fields are aligned words no wider than the machine word, the two calls are
-/// separated by the length of an outage, and the flags are ordered so a torn read
-/// costs a missed report rather than a wrong one. Safe by inspection, not by type.
+/// `take_drop` from the ESPHome loop.
+///
+/// `pending` is the handshake between them, and it is an atomic for a reason. The
+/// writer fills in the payload and then *releases* `pending`; the reader *acquires*
+/// `pending` and only then reads the payload. Ordering the plain stores by hand
+/// would not be enough — nothing stops the compiler reordering unsynchronised
+/// stores, and a reader that saw `pending` before the payload landed would publish
+/// the previous drop's reason with full confidence. That is the precise failure
+/// this whole feature exists to avoid, so the flag is safe by type, not by
+/// inspection.
+///
+/// The remaining fields are aligned words no wider than the machine word, written
+/// only under `pending`'s protection or (in `drops`' case) only ever incremented.
 struct WifiDropState {
   /// Whether the link is currently established. Starts false: a device that has
   /// never associated cannot have "dropped".
   bool link_up = false;
-  /// A recorded drop that has not yet been published.
-  bool pending = false;
+  /// A recorded drop, fully written, awaiting publication.
+  std::atomic<bool> pending{false};
   /// Drops since boot. Counts outages, not disconnect events.
   uint32_t drops = 0;
   /// Reason code, RSSI and millis() — all as of the drop itself.
@@ -77,11 +87,13 @@ inline bool record_disconnect(WifiDropState &state, uint8_t reason, int8_t rssi,
     return false;
   }
   state.link_up = false;
-  state.pending = true;
+  // Payload first, flag last. `pending` is what publishes the record to the other
+  // task, so everything it describes must already be in place when it is set.
   state.drops++;
   state.reason = reason;
   state.rssi = rssi;
   state.at_ms = now_ms;
+  state.pending.store(true, std::memory_order_release);
   return true;
 }
 
@@ -100,12 +112,16 @@ inline bool record_disconnect(WifiDropState &state, uint8_t reason, int8_t rssi,
 inline DropReport take_drop(WifiDropState &state, uint32_t now_ms) {
   DropReport report;
   state.link_up = true;
-  if (state.pending) {
-    state.pending = false;
+  // Acquire pairs with the release in record_disconnect: if we see the flag, we
+  // see the payload it was set to describe. Copy that payload out BEFORE clearing
+  // the flag, so a writer that arrives mid-read cannot leave us reporting half of
+  // one drop and half of the next.
+  if (state.pending.load(std::memory_order_acquire)) {
     report.has_drop = true;
     report.reason = state.reason;
     report.rssi = state.rssi;
     report.downtime_ms = now_ms - state.at_ms;
+    state.pending.store(false, std::memory_order_release);
   }
   return report;
 }
