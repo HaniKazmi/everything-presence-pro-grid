@@ -291,7 +291,14 @@ export class DeviceController implements ReactiveController {
 			// A `closed`-triggered device-list retry loop belongs to the OLD
 			// connection — the immediate resubscribe below (gated on
 			// `wantsDeviceListSub`) is what owns recovery on the new one now.
+			// Reset its attempt counter too: `subscribeDeviceList()` never
+			// resets it on success (only `unsubscribeDeviceList()` and a
+			// completed retry-loop cycle do), so leaving it here would strand
+			// it at its last value — a LATER `closed` reusing this same key
+			// would then resume the backoff escalated instead of at the base
+			// delay (#336 follow-up).
 			this._deviceListReopenPending = false;
+			this._reopenAttempts[DEVICE_LIST_RETRY_KEY] = 0;
 			// Bump generation tokens so any in-flight subscribeMessage
 			// promises against the old connection drop their unsub when
 			// they finally resolve.

@@ -2582,6 +2582,81 @@ describe("DeviceController", () => {
 			expect(attemptsAtSwap).toBe(attemptsBeforeSwap);
 		});
 
+		it("does not strand the device-list backoff counter across a connection swap — a later closed keeps the base retry delay", async () => {
+			// If a connection swap lands while the device-list backoff timer is
+			// pending, the counter must not survive the swap: a LATER, genuinely
+			// new `closed` (e.g. a fresh config-entry reload) must start its own
+			// retry loop back at the base delay, not resume escalated from
+			// wherever the OLD loop left off — otherwise the very recovery path
+			// this mechanism exists to deliver is itself delayed by up to 30s.
+			const DEVICE_LIST_TYPE = "eppgrid/subscribe_device_list";
+			let gridCb: ((msg: any) => void) | undefined;
+			const oldSubscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === DEVICE_LIST_TYPE) {
+					return Promise.reject(new Error("not_ready"));
+				}
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCb = cb;
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockRejectedValue(new Error("not_ready")),
+				connection: { subscribeMessage: oldSubscribeMessage },
+			};
+
+			await ctrl.subscribeDeviceList(); // fails, but sets intent
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			// First closed → one failed retry attempt → counter = 1, base-delay
+			// (500ms) timer pending. This is the "mid-backoff" precondition.
+			gridCb!({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+			expect((ctrl as any)._deviceListRetryTimer).toBeDefined();
+			expect((ctrl as any)._reopenAttempts[DEVICE_LIST_TYPE]).toBe(1);
+
+			// Connection swaps mid-backoff.
+			const newSubscribeMessage = vi.fn((cb: any, msg: any) => {
+				if (msg.type === DEVICE_LIST_TYPE) {
+					return Promise.reject(new Error("not_ready"));
+				}
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					gridCb = cb;
+					return Promise.resolve(vi.fn());
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockRejectedValue(new Error("not_ready")),
+				connection: { subscribeMessage: newSubscribeMessage },
+			};
+			await vi.advanceTimersByTimeAsync(0);
+
+			// A later, genuinely new closed on the new connection (e.g. a fresh
+			// config-entry reload) re-triggers the resubscribe-on-closed path.
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			gridCb!({ closed: true });
+			await vi.advanceTimersByTimeAsync(0);
+
+			const deviceListCallCount = () =>
+				newSubscribeMessage.mock.calls.filter(
+					(c: any[]) => c[1]?.type === DEVICE_LIST_TYPE,
+				).length;
+			const callsAfterSecondClosed = deviceListCallCount();
+
+			// The retry loop's first attempt on this fresh cycle just failed
+			// too. If the counter was reset by the swap, the next retry fires
+			// at the BASE delay (500ms) — not an escalated one carried over
+			// from the loop that was mid-backoff when the swap landed.
+			await vi.advanceTimersByTimeAsync(499);
+			expect(deviceListCallCount()).toBe(callsAfterSecondClosed);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(deviceListCallCount()).toBe(callsAfterSecondClosed + 1);
+		});
+
 		it("does not resubscribe the device list on closed when the panel never subscribed to it", async () => {
 			const h = makeMultiStreamHass();
 			ctrl.hass = h.hass;
