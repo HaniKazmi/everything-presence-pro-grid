@@ -54,18 +54,6 @@ const OVERLAY_STRIPE_CSS: Record<number, string> = {
 	[CELL_OVERLAY_SUPPRESS]: `background-image: ${overlayStripeGradient(CELL_OVERLAY_SUPPRESS, 5)};`,
 };
 
-// Minimum measured height (px) to use the desktop height-fit path. If the
-// panel sits low on a short viewport, the computed available height can be a
-// small positive (e.g. 26px), which collapses fitCellPx toward 1px. Below this
-// floor we treat the height as unmeasured (0) so the grid falls back to
-// width-fit and the page can scroll instead of collapsing the cells.
-const DESKTOP_MIN_HEIGHT_PX = 200;
-
-// Space (px) reserved below the grid on desktop for the dimensions caption +
-// the detection-log toggle, so a height-bounded grid doesn't push them off the
-// bottom of the viewport.
-const DESKTOP_HEIGHT_RESERVE_PX = 130;
-
 export class EppGrid extends LitElement {
 	@property({ attribute: false }) grid: Uint8Array = new Uint8Array(0);
 	@property({ attribute: false }) zoneConfigs: (ZoneConfig | null)[] = [];
@@ -167,10 +155,13 @@ export class EppGrid extends LitElement {
 	connectedCallback(): void {
 		super.connectedCallback();
 		if (typeof ResizeObserver !== "undefined") {
-			this._ro = new ResizeObserver((entries) => {
-				const w = entries[0]?.contentRect.width ?? 0;
-				if (w && Math.abs(w - this._availPx) >= 1)
-					this._availPx = Math.floor(w);
+			// Our BOX is the height budget now (see _measureAvail), so the observer
+			// has to react to height as well as width. This is the primary
+			// re-measure trigger and the only caller-agnostic one: a sibling BELOW
+			// the grid (the panel's detection log) expanding shrinks our box without
+			// changing any of the grid's properties, so Lit's updated() never fires.
+			this._ro = new ResizeObserver(() => {
+				this._measureAvail();
 			});
 			this._ro.observe(this);
 		}
@@ -274,31 +265,79 @@ export class EppGrid extends LitElement {
 	private _measureAvail(): void {
 		const w = this.clientWidth;
 		if (w && Math.abs(w - this._availPx) >= 1) this._availPx = w;
-		// Desktop only: bound the grid by the space from its top to the viewport
-		// bottom so a tall room can't overflow. Mobile uses capHeightToHalfViewport.
-		if (!this.capHeightToHalfViewport) {
-			const top = this.getBoundingClientRect().top;
-			const avail = Math.floor(
-				window.innerHeight - top - DESKTOP_HEIGHT_RESERVE_PX,
-			);
-			if (avail > 0 && Math.abs(avail - this._availHeightPx) >= 1)
-				this._availHeightPx = avail;
+		// Fill mode (the overview card) fills the WIDTH and grows tall; mobile caps
+		// to a fraction of the viewport. Neither uses a measured height budget — so
+		// don't measure one, and zero it so a mode/breakpoint flip can never leave a
+		// stale desktop budget latched.
+		if (this.fill || this.capHeightToHalfViewport) {
+			this._availHeightPx = 0;
+			return;
 		}
+		// Measure THE BOX WE WERE GIVEN, never the window. The panel makes the grid
+		// card flex:1 of a height-bounded column, so this clientHeight is a pure
+		// function of the layout: it cannot feed back from the map's own content,
+		// and — unlike a viewport-relative getBoundingClientRect().top — it does not
+		// change when an ancestor scrolls. That makes the two failure modes that
+		// killed PR #339 (the width-fit inversion and the scroll-driven re-render
+		// loop) unrepresentable rather than merely avoided.
+		// The dimensions caption renders INSIDE this box, below the map, so its
+		// measured height comes off the top of the budget.
+		const h = Math.floor(this.clientHeight - this._captionBlockPx());
+		// A non-positive or unmeasurable box resolves to 0 — fitCellPx reads that as
+		// "no height cap" and falls back to width-fit. It must NOT keep the previous,
+		// larger value: a latched budget height-fits the map to space that no longer
+		// exists.
+		const avail = h > 0 ? h : 0;
+		if (Math.abs(avail - this._availHeightPx) >= 1) this._availHeightPx = avail;
+	}
+
+	/** Height (px) the dimensions caption occupies inside our box, margin included. */
+	private _captionBlockPx(): number {
+		const cap = this.shadowRoot?.querySelector<HTMLElement>(".grid-dimensions");
+		if (!cap) return 0;
+		return (
+			cap.offsetHeight +
+			(Number.parseFloat(getComputedStyle(cap).marginTop) || 0)
+		);
 	}
 	/* v8 ignore stop */
 
+	/**
+	 * Re-read our box. The internal ResizeObserver is the primary trigger, but it
+	 * is documented not to deliver a usable callback in the HA companion webview
+	 * (see connectedCallback) — so a caller whose layout changes BELOW the grid
+	 * (the panel's detection log) nudges us explicitly too. A no-change measure is
+	 * a no-op: the >=1px guards above skip the assignment, so no re-render.
+	 */
+	remeasure(): void {
+		this._measureAvail();
+	}
+
 	static styles = css`
 		:host {
-			display: block;
-			/* Centre the inline-block .grid-targets-wrapper horizontally within
-			   the host. The host fills its container width (display:block), so
-			   without this the inline-block grid hugs the LEFT edge whenever the
-			   grid is narrower than its region (tall/narrow rooms, or any room
-			   narrower than the column). The furniture/target overlays are
-			   absolutely positioned relative to .grid-targets-wrapper (which is
-			   position:relative), so centring the wrapper moves the whole
-			   positioning context together — overlay math is unaffected. */
-			text-align: center;
+			/* A centred flex column holding the map and its dimensions caption. The
+			   panel makes our container (.grid-container) flex:1 of a height-bounded
+			   column, so the box we're given is usually TALLER than the map — the
+			   card is the "expansion area" that shows the space the map can use, and
+			   the map floats in the middle of it. align-items does the horizontal
+			   centring the old \`text-align: center\` used to do (the inline-block
+			   .grid-targets-wrapper would otherwise hug the left edge whenever the
+			   map is narrower than the column). The absolutely-positioned overlays
+			   are relative to the wrapper, so centring the wrapper moves the whole
+			   positioning context together — overlay maths is unaffected. */
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			align-items: center;
+		}
+
+		/* Never let flex SHRINK these: a transient over-tall map (measured budget
+		   one frame stale) would otherwise be squashed into the wrapper's
+		   overflow:hidden and clipped, instead of simply overhanging for a frame
+		   and self-correcting on the next measure. */
+		.grid-targets-wrapper,
+		.grid-dimensions {
+			flex: 0 0 auto;
 		}
 
 		.grid-targets-wrapper {
@@ -489,23 +528,20 @@ export class EppGrid extends LitElement {
 				? 960
 				: this.maxGridPx;
 		const effMaxCellPx = uncap ? Number.POSITIVE_INFINITY : isDesktop ? 48 : 32;
-		// Mobile only: cap the grid to a fraction of the viewport height so the
-		// controls panel below it keeps a fair share. 0.45 (not 0.5) because the
-		// tab bar + device dropdown sit above the panel, so 50% of the viewport
-		// would be ~55-60% of the usable area below them. The width ResizeObserver
-		// re-renders on viewport resize, refreshing this budget. happy-dom has
-		// innerHeight defined but no layout, so reading it is safe; the cap is
-		// exercised only behind the capHeightToHalfViewport flag.
+		// The height budget, by mode:
+		//  - fill (card): none — it fills the width and the dashboard scrolls.
+		//  - mobile: 45% of the viewport (not 50%: the tab bar + device dropdown sit
+		//    above the panel, so half the viewport is ~55-60% of the usable area).
+		//  - desktop: the measured box. Any positive value IS the truth — the box
+		//    really is that small — so the map simply fits it. There is deliberately
+		//    no minimum: a floor that dropped the budget to 0 below its threshold is
+		//    what made #339 invert (smaller box → width-fit → 3x BIGGER map).
 		/* v8 ignore next -- window.innerHeight read has no layout effect under happy-dom */
 		const availHeightPx = this.fill
-			? // Fill mode fills the WIDTH; the card grows taller to match and the
-				// dashboard scrolls, so the viewport-height bound is dropped.
-				0
+			? 0
 			: this.capHeightToHalfViewport
 				? window.innerHeight * 0.45
-				: this._availHeightPx >= DESKTOP_MIN_HEIGHT_PX
-					? this._availHeightPx
-					: 0;
+				: this._availHeightPx;
 		// Vertical chrome mirrors the width chrome: 2px border (×2) + (visRows-1)
 		// ×gap. Subtract it so the cells fit the height budget exactly.
 		const gridChromeHpx = availHeightPx > 0 ? 4 + (visRows - 1) * gapPx : 0;

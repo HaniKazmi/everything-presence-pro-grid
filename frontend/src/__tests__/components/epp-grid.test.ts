@@ -64,6 +64,14 @@ function cellStyles(el: EppGrid): string[] {
 	).map((c) => (c.getAttribute("style") ?? "").toLowerCase());
 }
 
+// The cell's inline `width: Npx` is computed from cellPx in render(), so we can
+// drive the measured width/height directly (happy-dom has no layout) and read
+// it back.
+function cellPx(el: any): number {
+	const cell = el.shadowRoot!.querySelector(".cell") as HTMLElement | null;
+	return cell ? Number.parseInt(cell.style.width || "0", 10) : 0;
+}
+
 describe("epp-grid element", () => {
 	it("is registered as a custom element", () => {
 		expect(customElements.get("epp-grid")).toBeDefined();
@@ -747,13 +755,6 @@ describe("epp-grid rest-of-room colour", () => {
 });
 
 describe("epp-grid fill mode (card fills available width)", () => {
-	// The cell's inline `width: Npx` is computed from cellPx in render(), so we can
-	// drive the measured width directly (happy-dom has no layout) and read it back.
-	function cellPx(el: any): number {
-		const cell = el.shadowRoot!.querySelector(".cell") as HTMLElement | null;
-		return cell ? Number.parseInt(cell.style.width || "0", 10) : 0;
-	}
-
 	it("grows cells past the 48px desktop cap to fill the measured width when fill is set", async () => {
 		const el = createGrid({ fill: true }) as any;
 		el._availPx = 1500; // a wide measured container
@@ -2017,6 +2018,101 @@ describe("epp-grid furniture auto-contrast", () => {
 		el.targets = [];
 		await el.updateComplete;
 		expect(overlay.furnitureTones).toBe(firstMap); // same ref = not recomputed
+		document.body.removeChild(el);
+	});
+});
+
+describe("epp-grid height budget (container measurement)", () => {
+	/**
+	 * happy-dom has no layout: clientHeight is always 0 and the caption has no
+	 * offsetHeight. Stub both so the measurement logic itself is testable — the
+	 * real geometry is covered by the browser-mode suite.
+	 */
+	function stubBox(el: any, boxPx: number, captionPx = 0): void {
+		Object.defineProperty(el, "clientHeight", {
+			value: boxPx,
+			configurable: true,
+		});
+		el._captionBlockPx = () => captionPx;
+	}
+
+	it("takes the height budget from its own box, minus the caption inside it", async () => {
+		const el = createGrid() as any;
+		stubBox(el, 400, 26);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		// The box we were given (400), less the dimensions caption that renders
+		// inside it (26) — never `window.innerHeight - top - a reserve constant`.
+		expect(el._availHeightPx).toBe(374);
+		document.body.removeChild(el);
+	});
+
+	it("resolves a non-positive box to 0 instead of latching the stale budget", async () => {
+		const el = createGrid() as any;
+		stubBox(el, 400, 26);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el._availHeightPx).toBe(374);
+
+		// The box collapses (e.g. the column is momentarily unbounded mid-swap).
+		// Keeping 374 would height-fit the map to space that no longer exists.
+		stubBox(el, 10, 26);
+		el.remeasure();
+		expect(el._availHeightPx).toBe(0);
+		document.body.removeChild(el);
+	});
+
+	it("re-measures on remeasure() when a sibling below it changes height", async () => {
+		const el = createGrid() as any;
+		stubBox(el, 500, 20);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el._availHeightPx).toBe(480);
+
+		// The detection log expands below the grid: the column redistributes and
+		// our box shrinks. None of the grid's PROPERTIES changed, so Lit's
+		// updated() never fires — the panel nudges us instead.
+		stubBox(el, 380, 20);
+		el.remeasure();
+		expect(el._availHeightPx).toBe(360);
+		document.body.removeChild(el);
+	});
+
+	it("skips the height budget in fill mode (the card fills width and grows tall)", async () => {
+		const el = createGrid({ fill: true }) as any;
+		stubBox(el, 400, 0);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el._availHeightPx).toBe(0);
+		document.body.removeChild(el);
+	});
+
+	it("skips the height budget on mobile (capHeightToHalfViewport owns it)", async () => {
+		const el = createGrid({ capHeightToHalfViewport: true }) as any;
+		stubBox(el, 400, 0);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		// Mobile's column is content-sized, so measuring it would be circular; the
+		// 45%-of-viewport cap in render() owns the height there.
+		expect(el._availHeightPx).toBe(0);
+		document.body.removeChild(el);
+	});
+
+	it("shrinks the map as the box shrinks — never inverts to a bigger map", async () => {
+		const el = createGrid() as any;
+		el._availPx = 900;
+		stubBox(el, 600, 26);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const roomy = cellPx(el);
+
+		// The regression that killed #339: a SMALLER budget crossed a floor, the
+		// budget dropped to 0, and the map fell back to width-fit — TRIPLING in
+		// size. A smaller box may only ever produce a smaller-or-equal map.
+		stubBox(el, 150, 26);
+		el.remeasure();
+		await el.updateComplete;
+		expect(cellPx(el)).toBeLessThanOrEqual(roomy);
 		document.body.removeChild(el);
 	});
 });
