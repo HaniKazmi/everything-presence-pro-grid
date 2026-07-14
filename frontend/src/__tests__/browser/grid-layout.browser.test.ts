@@ -1,5 +1,14 @@
+// `@vitest/browser/context` is deprecated (it warns on every browser run, and
+// stops working in vitest's next major). The modern entry point is `vitest/browser`,
+// which exports the identical `page` API — but it is exposed ONLY through the
+// package's `exports` map, and this project's `moduleResolution: "node"` (node10)
+// cannot read `exports` maps, so `tsc` rejects it with TS2307. Making the switch
+// therefore means moving tsconfig to `moduleResolution: "bundler"`, which changes
+// how EVERY import in the project resolves its types — too large a blast radius to
+// smuggle into a bug-fix branch. Deliberately deferred to its own PR; until then the
+// deprecation warning is cosmetic and this import works.
+import { page } from "@vitest/browser/context";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { page } from "vitest/browser";
 import type { EppGrid } from "../../components/epp-grid.js";
 import type { EPPGridPanel } from "../../eppgrid-panel.js";
 import "../../eppgrid-panel.js";

@@ -2,7 +2,7 @@
 	"compilerOptions": {
 		"target": "ES2021",
 		"module": "ES2020",
-		"moduleResolution": "bundler",
+		"moduleResolution": "node",
 		"lib": ["ES2022", "DOM", "DOM.Iterable"],
 		"declaration": false,
 		"strict": true,
