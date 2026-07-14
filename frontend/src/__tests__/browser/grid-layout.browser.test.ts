@@ -8,12 +8,13 @@
 // smuggle into a bug-fix branch. Deliberately deferred to its own PR; until then the
 // deprecation warning is cosmetic and this import works.
 import { page } from "@vitest/browser/context";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { EppGrid } from "../../components/epp-grid.js";
 import type { EPPGridPanel } from "../../eppgrid-panel.js";
 import "../../eppgrid-panel.js";
 import { initGridFromRoom } from "../../lib/grid.js";
 import { createZoneEngineState } from "../../lib/zone-engine.js";
+import { registerPanelCleanup } from "../helpers/panel-cleanup.js";
 
 // Real-layout regression tests for #338 (and for #339, the first attempt to fix
 // it, which shipped a worse bug through a full review cycle).
@@ -43,10 +44,26 @@ import { createZoneEngineState } from "../../lib/zone-engine.js";
 // on the fix. `npm run test:browser` runs them in headless Chromium.
 
 const mounted: HTMLElement[] = [];
+registerPanelCleanup(mounted);
 
-afterEach(() => {
-	while (mounted.length) mounted.pop()!.remove();
-});
+/**
+ * The viewports that matter, once, by name.
+ *
+ * `band` sits inside the ~490-610px band where the deleted DESKTOP_MIN_HEIGHT_PX
+ * floor used to flip the map from height-fit to width-fit — #339 shipped through a
+ * full review cycle because every reviewer sampled above the band and below it, and
+ * nobody landed in it. `short` is below it (where the second inversion lived), and
+ * `mobile` is the other side of the 819px breakpoint: the viewport-cap path.
+ */
+const VIEWPORT: Record<
+	"desktop" | "band" | "short" | "mobile",
+	[number, number]
+> = {
+	desktop: [1600, 1000],
+	band: [1440, 560],
+	short: [1500, 460],
+	mobile: [420, 900],
+};
 
 /** Mount the real panel on the live-overview view, in a real full-height page. */
 async function mountLivePanel(): Promise<EPPGridPanel> {
@@ -132,6 +149,12 @@ async function mountLivePanel(): Promise<EPPGridPanel> {
 	return el;
 }
 
+/** Size the viewport, then mount the live-overview panel into it. */
+async function mountAt(w: number, h: number): Promise<EPPGridPanel> {
+	await page.viewport(w, h);
+	return mountLivePanel();
+}
+
 const gridEl = (p: EPPGridPanel): EppGrid =>
 	p.shadowRoot!.querySelector("epp-grid")!;
 
@@ -158,9 +181,8 @@ async function settle(p: EPPGridPanel): Promise<void> {
 }
 
 describe("live overview map fits its box", () => {
-	it("renders a map inside the viewport at 1600x1000", async () => {
-		await page.viewport(1600, 1000);
-		const panel = await mountLivePanel();
+	it("renders a map inside the viewport at the desktop size", async () => {
+		const panel = await mountAt(...VIEWPORT.desktop);
 		const map = mapRect(panel);
 		expect(map.height).toBeGreaterThan(0);
 		expect(map.bottom).toBeLessThanOrEqual(window.innerHeight);
@@ -185,18 +207,15 @@ async function resizeTo(p: EPPGridPanel, w: number, h: number): Promise<void> {
 	await settle(p);
 }
 
-// The three viewports that matter. 1440x560 sits inside the ~490-610px band
-// where the deleted DESKTOP_MIN_HEIGHT_PX floor used to flip the map from
-// height-fit to width-fit — #339 shipped through a full review cycle because
-// every reviewer sampled above the band and below it, and nobody landed in it.
-const VIEWPORTS: Array<[number, number]> = [
-	[1600, 1000],
-	[1440, 560],
-	[1500, 460],
+/** The desktop viewports the log/map invariants are checked at. */
+const LOG_VIEWPORTS: Array<[number, number]> = [
+	VIEWPORT.desktop,
+	VIEWPORT.band,
+	VIEWPORT.short,
 ];
 
 describe("a smaller box only ever produces a smaller map (monotonicity)", () => {
-	// SAMPLING IS NOT A PROOF. VIEWPORTS above brackets the cliff without landing
+	// SAMPLING IS NOT A PROOF. LOG_VIEWPORTS above brackets the cliff without landing
 	// in it — which is the identical mistake that let #339 through, made twice.
 	// The second inversion lived at a viewport height of ~400px (in real HA, where
 	// the app header eats ~64px above the panel, ~465-485px — a browser window
@@ -212,8 +231,7 @@ describe("a smaller box only ever produces a smaller map (monotonicity)", () => 
 	const HEIGHTS = [600, 560, 520, 480, 460, 440, 420, 400, 380, 340, 300];
 
 	it("never grows the map, and never overflows the card, as the viewport shrinks", async () => {
-		await page.viewport(1500, HEIGHTS[0]);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(1500, HEIGHTS[0]);
 		await expandLog(panel);
 
 		const seen: Array<{ h: number; map: number; slack: number }> = [];
@@ -255,10 +273,11 @@ describe("a smaller box only ever produces a smaller map (monotonicity)", () => 
 	});
 });
 
-describe.each(VIEWPORTS)("detection log stays reachable at %ix%i", (w, h) => {
+describe.each(
+	LOG_VIEWPORTS,
+)("detection log stays reachable at %ix%i", (w, h) => {
 	it("keeps the expanded log inside the viewport", async () => {
-		await page.viewport(w, h);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(w, h);
 		await expandLog(panel);
 
 		const log = logEl(panel);
@@ -271,8 +290,7 @@ describe.each(VIEWPORTS)("detection log stays reachable at %ix%i", (w, h) => {
 	});
 
 	it("shrinks the map when the log expands", async () => {
-		await page.viewport(w, h);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(w, h);
 		const collapsed = mapRect(panel).height;
 		await expandLog(panel);
 		const expanded = mapRect(panel).height;
@@ -288,8 +306,7 @@ describe.each(VIEWPORTS)("detection log stays reachable at %ix%i", (w, h) => {
 	});
 
 	it("keeps the map inside its card", async () => {
-		await page.viewport(w, h);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(w, h);
 		await expandLog(panel);
 		const card = panel
 			.shadowRoot!.querySelector(".grid-container")!
@@ -300,8 +317,7 @@ describe.each(VIEWPORTS)("detection log stays reachable at %ix%i", (w, h) => {
 	});
 
 	it("introduces no scroll container between the map and the panel", async () => {
-		await page.viewport(w, h);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(w, h);
 		await expandLog(panel);
 		// A correct container model needs NO new scroll container. One here would
 		// re-create both hazards: measuring a viewport-relative top inside a
@@ -317,8 +333,7 @@ describe.each(VIEWPORTS)("detection log stays reachable at %ix%i", (w, h) => {
 
 describe("no oscillation while targets move", () => {
 	it("holds the map at one height across a burst of target frames", async () => {
-		await page.viewport(1440, 560);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(...VIEWPORT.band);
 		await expandLog(panel);
 
 		const grid = gridEl(panel);
@@ -354,8 +369,7 @@ describe("the map grows back when its box does (no monotone ratchet)", () => {
 	// whether the CSS is really bounding the box or just appearing to.
 
 	it("returns to its original height after a viewport HEIGHT round-trip", async () => {
-		await page.viewport(1600, 1000);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(...VIEWPORT.desktop);
 		await expandLog(panel);
 		const before = mapRect(panel).height;
 		expect(before).toBeGreaterThan(0);
@@ -372,8 +386,7 @@ describe("the map grows back when its box does (no monotone ratchet)", () => {
 		// The everyday version of the ratchet: opening the editor sidebar narrows
 		// the grid column, so the map shrinks — it has to come back when the column
 		// widens again.
-		await page.viewport(1600, 1000);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(...VIEWPORT.desktop);
 		await expandLog(panel);
 		const before = mapRect(panel).height;
 		expect(before).toBeGreaterThan(0);
@@ -386,8 +399,7 @@ describe("the map grows back when its box does (no monotone ratchet)", () => {
 
 describe("the caption inside the box is measured for real", () => {
 	it("_captionBlockPx = the caption's offsetHeight + its 8px margin-top", async () => {
-		await page.viewport(1600, 1000);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(...VIEWPORT.desktop);
 		const grid = gridEl(panel);
 		const cap = grid.shadowRoot!.querySelector<HTMLElement>(".grid-dimensions");
 		expect(cap).not.toBeNull();
@@ -420,10 +432,10 @@ async function showTargetAt(
 }
 
 // The card/map size gap is what breaks a percentage-positioned menu, so sample
-// where that gap is largest as well as at the everyday desktop size.
+// where that gap is largest (the band) as well as at the everyday desktop size.
 const MENU_VIEWPORTS: Array<[number, number]> = [
-	[1600, 1000],
-	[1440, 560],
+	VIEWPORT.desktop,
+	VIEWPORT.band,
 ];
 
 describe.each(
@@ -439,8 +451,7 @@ describe.each(
 		["right", 2900, 2000],
 		["bottom", 1500, 3900],
 	])("anchors to a dot near the map's %s edge", async (_edge, tx, ty) => {
-		await page.viewport(w, h);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(w, h);
 		const dot = await showTargetAt(panel, tx, ty);
 		const d = dot.getBoundingClientRect();
 
@@ -475,8 +486,7 @@ describe.each(
 	});
 
 	it("keeps the card unclipped (no scroll container to cut the menu off)", async () => {
-		await page.viewport(w, h);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(w, h);
 		// overflow-y:auto silently forces overflow-x:auto, which would clip a menu
 		// that (correctly) hangs over the card's edge.
 		const cs = getComputedStyle(
@@ -497,8 +507,7 @@ describe("the target menu does not outlive the layout it was anchored to", () =>
 		// out from under the menu and the menu stays pinned to a px snapshot of where
 		// the dot used to be. So observe the BOX the menu was anchored to, not the
 		// window.
-		await page.viewport(1600, 1000);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(...VIEWPORT.desktop);
 		const dot = await showTargetAt(panel, 1500, 2000);
 
 		dot.click();
@@ -529,8 +538,7 @@ describe("the target menu does not outlive the layout it was anchored to", () =>
 		// log and heatmap toggles — are already covered: the click-outside handler
 		// closes the menu on the very click that toggles them.) A transient popover
 		// should not chase the layout; it should go away.
-		await page.viewport(1600, 1000);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(...VIEWPORT.desktop);
 		const dot = await showTargetAt(panel, 1500, 2000);
 
 		dot.click();
@@ -542,13 +550,18 @@ describe("the target menu does not outlive the layout it was anchored to", () =>
 	});
 });
 
-describe.each(<Array<[number, number]>>[
-	[1600, 1000],
-	[1500, 460],
-])("the uncalibrated card hugs its wizard at %ix%i", (w, h) => {
+// The wizard's card must hug it at a roomy desktop size AND on a short viewport,
+// where a stretched card would shrink BELOW the wizard and let it spill.
+const WIZARD_VIEWPORTS: Array<[number, number]> = [
+	VIEWPORT.desktop,
+	VIEWPORT.short,
+];
+
+describe.each(
+	WIZARD_VIEWPORTS,
+)("the uncalibrated card hugs its wizard at %ix%i", (w, h) => {
 	it("does not stretch the card around <epp-wizard>, and does not overflow it", async () => {
-		await page.viewport(w, h);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(w, h);
 		(panel as unknown as Record<string, unknown>)._perspective = null;
 		await settle(panel);
 
@@ -574,8 +587,7 @@ describe.each(<Array<[number, number]>>[
 
 describe("mobile keeps the viewport cap, not container measurement", () => {
 	it("caps the map to ~45% of the viewport and keeps the log reachable", async () => {
-		await page.viewport(420, 900);
-		const panel = await mountLivePanel();
+		const panel = await mountAt(...VIEWPORT.mobile);
 		await expandLog(panel);
 
 		const grid = gridEl(panel);
