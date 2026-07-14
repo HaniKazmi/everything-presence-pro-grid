@@ -222,7 +222,7 @@ else
 fi
 
 step "TypeScript tests + coverage"
-if (cd "$FRONTEND" && npx vitest run --coverage) 2>&1; then
+if (cd "$FRONTEND" && npm run test:coverage) 2>&1; then
     pass "TypeScript tests + coverage"
 else
     fail "TypeScript tests + coverage"

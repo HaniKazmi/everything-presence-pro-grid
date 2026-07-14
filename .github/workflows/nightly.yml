@@ -64,4 +64,4 @@ jobs:
       - name: Rollup build (fails on warnings)
         run: npm run build
       - name: Vitest
-        run: npx vitest run
+        run: npm test
