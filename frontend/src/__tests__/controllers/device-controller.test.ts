@@ -672,6 +672,77 @@ describe("DeviceController", () => {
 			ctrl.closeDeviceSession();
 			expect(ctrl.hasDeviceSession).toBe(false);
 		});
+
+		it("tears down the heatmap sub too, not just the target/display streams (#336)", async () => {
+			// Only hostDisconnected used to call _unsubscribeHeatmap as a
+			// separate line — a sole-device removal (closeDeviceSession via
+			// _applyDeviceList) left the heatmap sub (and its retry timer)
+			// dangling against a mac the manager no longer knows about.
+			ctrl.selectedMac = "aa";
+			ctrl.setHeatmapEnabled(true);
+			await new Promise((r) => setTimeout(r, 0));
+			const unsub = (ctrl as any)._unsubHeatmap;
+			expect(unsub).toBeDefined();
+
+			ctrl.closeDeviceSession();
+
+			expect(unsub).toHaveBeenCalled();
+			expect((ctrl as any)._unsubHeatmap).toBeUndefined();
+		});
+
+		it("cancels a pending heatmap reopen timer, so it can't fire an orphan resubscribe later", async () => {
+			vi.useFakeTimers();
+			try {
+				const subscribeMock = vi.fn((_cb: any, msg: any) => {
+					if (msg.type === "eppgrid/subscribe_heatmap") {
+						return Promise.reject(new Error("boom"));
+					}
+					return Promise.resolve(vi.fn());
+				});
+				ctrl.hass = {
+					callWS: vi.fn(),
+					connection: { subscribeMessage: subscribeMock },
+				};
+				ctrl.selectedMac = "aa";
+				ctrl.setHeatmapEnabled(true);
+				// First attempt rejects and schedules a backoff retry timer.
+				await vi.advanceTimersByTimeAsync(0);
+
+				ctrl.closeDeviceSession();
+
+				subscribeMock.mockClear();
+				// If the retry timer survived, it would fire in here and
+				// re-subscribe against a mac the manager may no longer know.
+				await vi.advanceTimersByTimeAsync(30_000);
+				const heatmapCalls = subscribeMock.mock.calls.filter(
+					(c: any[]) => c[1]?.type === "eppgrid/subscribe_heatmap",
+				);
+				expect(heatmapCalls).toHaveLength(0);
+			} finally {
+				vi.useRealTimers();
+			}
+		});
+
+		it("does not clear heatmap-enabled intent — a later subscribeTargets still re-opens the overlay", async () => {
+			// `_subscribeHeatmap` is gated on `_heatmapEnabled` intent, not on
+			// whether a sub currently exists — tearing down here must not
+			// clear that intent, or a reconnect for the SAME device would
+			// silently drop the overlay the user had enabled.
+			ctrl.selectedMac = "aa";
+			ctrl.setHeatmapEnabled(true);
+			await new Promise((r) => setTimeout(r, 0));
+
+			ctrl.closeDeviceSession();
+
+			hass.connection.subscribeMessage.mockClear();
+			ctrl.subscribeTargets("aa");
+			await new Promise((r) => setTimeout(r, 0));
+
+			const heatmapCalls = hass.connection.subscribeMessage.mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_heatmap",
+			);
+			expect(heatmapCalls.length).toBeGreaterThan(0);
+		});
 	});
 
 	// --- Target subscription ---

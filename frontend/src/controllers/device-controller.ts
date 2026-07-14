@@ -18,13 +18,14 @@ const SUBSCRIBE_RETRY_DELAY_MS = 2000;
 // card spreads re-opens across many dashboard cards sharing a connection; the panel
 // has at most 3 streams total, so jitter buys nothing) and no TERMINAL_REOPEN_CODES
 // (the card can't tell a removed device from a reload failure on its own; the panel's
-// device-list push cancels the retry timer via closeDeviceSession/unsubscribeTargets
-// only when the device disappears from the list entirely — see _applyDeviceList's
-// removal-scoped teardown. A device that merely goes unavailable while still LISTED
-// does NOT cancel it: that flap is the manager's own recovery to make, and the
-// backoff here is what keeps re-opening until the re-arm lands). Distinct from
-// SUBSCRIBE_RETRY_*, which covers a rejected *initial* subscribe and does latch a
-// banner after 5 tries.
+// device-list push cancels the retry timer for all three streams — including the
+// heatmap overlay — via closeDeviceSession (which now folds in _unsubscribeHeatmap
+// too, #336) / unsubscribeTargets, only when the device disappears from the list
+// entirely — see _applyDeviceList's removal-scoped teardown. A device that merely
+// goes unavailable while still LISTED does NOT cancel it: that flap is the manager's
+// own recovery to make, and the backoff here is what keeps re-opening until the
+// re-arm lands). Distinct from SUBSCRIBE_RETRY_*, which covers a rejected *initial*
+// subscribe and does latch a banner after 5 tries.
 const REOPEN_BASE_MS = 500;
 const REOPEN_CAP_MS = 30_000;
 
@@ -227,8 +228,9 @@ export class DeviceController implements ReactiveController {
 	hostDisconnected(): void {
 		this._disposed = true;
 		this.unsubscribeDeviceList();
+		// closeDeviceSession tears the heatmap sub down too (see its comment) —
+		// no separate _unsubscribeHeatmap call needed here anymore.
 		this.closeDeviceSession();
-		this._unsubscribeHeatmap();
 	}
 
 	// --- Hass reference ---
@@ -622,6 +624,15 @@ export class DeviceController implements ReactiveController {
 	closeDeviceSession(): void {
 		this._sessionGen++;
 		this.unsubscribeTargets();
+		// The heatmap sub (and its retry timer) is independent of the target/
+		// display streams `unsubscribeTargets` tears down above — without this
+		// a sole-device removal left it dangling, its pending reopen timer
+		// still armed to resubscribe against a mac the manager may no longer
+		// know about (#336). `_unsubscribeHeatmap` only tears down the
+		// SUBSCRIPTION, not the `_heatmapEnabled` *intent* — a later
+		// subscribeTargets for the same (or a re-added) device still re-opens
+		// the overlay.
+		this._unsubscribeHeatmap();
 		safeUnsub(this._unsubDevice);
 		this._unsubDevice = undefined;
 	}
