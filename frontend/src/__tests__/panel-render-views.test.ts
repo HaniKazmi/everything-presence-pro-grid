@@ -725,6 +725,34 @@ describe("render() shows the calibration wizard an offline device (#336)", () =>
 
 		expect(str).toContain("wizard-stage");
 	});
+
+	it("shows the connection-failed banner (and keeps the wizard mounted) when the device is available but the session failed to open", () => {
+		// Session-open failure (e.g. the ESP32's API connection slots are
+		// exhausted) fails with connection_failed/not_found while HA's device
+		// list still reports the device as available/compatible — only
+		// `_deviceCtrl.connectionFailed` knows. Every other view gates the
+		// banner on `connectionFailed || isOffline`; the wizard branch must
+		// match or it strands the user mid-calibration with no explanation.
+		const a = createPanel() as any;
+		a._view = "calibrate";
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: true,
+				configured: true,
+				firmware_status: "compatible",
+			},
+		];
+		a._deviceCtrl._connectionFailed = true;
+
+		const str = JSON.stringify(a.render());
+
+		expect(str).toContain("connection.failed");
+		expect(str).toContain("epp-wizard");
+	});
 });
 
 describe("render() preserves settings view across transient device states", () => {

@@ -2683,7 +2683,7 @@ export class EPPGridPanel extends LitElement {
         <div class="panel">
           ${this._renderHeader()}
           <div class="wizard-stage">
-            ${isOffline ? this._renderConnectionBanner() : nothing}
+            ${this._deviceCtrl.connectionFailed || isOffline ? this._renderConnectionBanner() : nothing}
             <epp-wizard
               .rawTargets=${this._rawTargets}
               .sensorState=${this._getWizardSensorState()}

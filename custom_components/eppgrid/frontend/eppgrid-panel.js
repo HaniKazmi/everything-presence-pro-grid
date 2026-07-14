@@ -5579,7 +5579,7 @@ const Ws={},Js=ii(class extends si{constructor(){super(...arguments),this.ot=Ws}
         <div class="panel">
           ${this._renderHeader()}
           <div class="wizard-stage">
-            ${r?this._renderConnectionBanner():W}
+            ${this._deviceCtrl.connectionFailed||r?this._renderConnectionBanner():W}
             <epp-wizard
               .rawTargets=${this._rawTargets}
               .sensorState=${this._getWizardSensorState()}
