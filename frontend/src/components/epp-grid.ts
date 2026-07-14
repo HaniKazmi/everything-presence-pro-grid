@@ -143,10 +143,13 @@ export class EppGrid extends LitElement {
 	/** Pending post-layout re-measure scheduled in firstUpdated (see below). */
 	private _settleRaf?: number;
 
-	// The ResizeObserver tracks the host's WIDTH only, so a height-only viewport
-	// change (desktop vertical window resize, mobile URL-bar collapse, devtools
-	// dock height) wouldn't re-measure the height cap. A window 'resize' hook
-	// closes that gap; it's detached on disconnect.
+	// The ResizeObserver (registered in connectedCallback) is the primary
+	// re-measure trigger and now covers both width and height, since our own
+	// box is the height budget. It isn't the only trigger we need, though: in
+	// the HA companion webview the observer doesn't deliver a usable callback
+	// at all (see firstUpdated below), leaving both measurements stuck at
+	// their last value. A window 'resize' hook is kept as a fallback that
+	// doesn't depend on the observer firing; it's detached on disconnect.
 	private _onResize = (): void => {
 		this._measureAvail();
 	};
@@ -184,18 +187,20 @@ export class EppGrid extends LitElement {
 	// ResizeObserver. In the HA companion webview the observer doesn't deliver a
 	// usable callback, leaving _availPx at 0 → fitCellPx snaps to the ceiling cell
 	// size and overflows. The host's own clientWidth tracks the constrained parent
-	// (`:host { display: block }`), so reading it here fits the grid to the viewport.
-	// Converges in 2 renders: clientWidth stays constant regardless of cell size, so
-	// the second pass sees |w - _availPx| < 1 and stops.
+	// (`:host { display: flex }` — still block-level in layout terms, so the
+	// clientWidth reasoning is unchanged), so reading it here fits the grid to
+	// the viewport. Converges in 2 renders: clientWidth stays constant regardless
+	// of cell size, so the second pass sees |w - _availPx| < 1 and stops.
 	firstUpdated(): void {
 		this._measureAvail();
 		// Defense in depth: re-measure once after the next frame. A freshly-mounted
-		// grid can read its viewport `top` before an async-rendering sibling above it
-		// (e.g. the header's ha-select, which is 0px until it upgrades) has laid out,
-		// latching a stale available-height that the width-only ResizeObserver never
-		// corrects. One post-layout re-measure self-corrects it, bounding any such
-		// transient to <=1 frame. (The .panel-header CSS reserve prevents the known
-		// case; this guards future late-laying-out chrome above the grid.)
+		// grid can measure its box (clientHeight) before an async-rendering sibling
+		// above it in the column — e.g. the header's ha-select, which is 0px until
+		// it upgrades — has laid out and claimed its space, so the box we read here
+		// can be transiently taller than its settled size, over-measuring the
+		// height budget. One post-layout re-measure self-corrects it, bounding any
+		// such transient to <=1 frame. (The .panel-header CSS reserve prevents the
+		// known case; this guards future late-laying-out chrome above the grid.)
 		if (typeof requestAnimationFrame !== "undefined") {
 			this._settleRaf = requestAnimationFrame(() => {
 				this._settleRaf = undefined;
@@ -277,9 +282,14 @@ export class EppGrid extends LitElement {
 		// card flex:1 of a height-bounded column, so this clientHeight is a pure
 		// function of the layout: it cannot feed back from the map's own content,
 		// and — unlike a viewport-relative getBoundingClientRect().top — it does not
-		// change when an ancestor scrolls. That makes the two failure modes that
-		// killed PR #339 (the width-fit inversion and the scroll-driven re-render
-		// loop) unrepresentable rather than merely avoided.
+		// change when an ancestor scrolls. That makes the scroll-driven re-render
+		// loop that fed PR #339 structurally impossible now, not merely avoided.
+		// The width-fit inversion (budget bottoms out at 0 → falls back to
+		// width-fit → bigger map) is still reachable, but only for a degenerate
+		// box: one shorter than the caption rendered inside it. That's by design —
+		// below caption height there's no room left for a map, so falling back to
+		// width-fit is the correct behaviour, not a regression. The floor simply
+		// moved from an arbitrary 200px constant down to the caption's real height.
 		// The dimensions caption renders INSIDE this box, below the map, so its
 		// measured height comes off the top of the budget.
 		const h = Math.floor(this.clientHeight - this._captionBlockPx());
@@ -344,8 +354,14 @@ export class EppGrid extends LitElement {
 			position: relative;
 			display: inline-block;
 			vertical-align: top;
-			/* Reset text-align inside the wrapper so the centred host doesn't
-			   leak into the grid-dimensions caption / cell content. */
+			/* Defensive reset, not a fix for our own CSS: the host no longer sets
+			   text-align itself (it centres via align-items on the flex column —
+			   see :host above), so there's nothing of ours to reset here. But
+			   text-align is inherited, and the host's own used value still
+			   depends on whatever its light-DOM ancestor sets — a centred or
+			   right-aligned ancestor outside our shadow boundary could otherwise
+			   leak through into the grid-dimensions caption / cell content. Pin
+			   it here regardless. */
 			text-align: left;
 			/* Own the overlay z-indexes. The targets (z-index 20), furniture (15)
 			   and heatmap (15) overlays are absolutely positioned with positive
