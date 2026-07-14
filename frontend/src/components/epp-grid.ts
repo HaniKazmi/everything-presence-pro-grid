@@ -142,6 +142,17 @@ export class EppGrid extends LitElement {
 	@state() private _availPx = 0;
 	/** Measured available height for the grid (px); 0 = unmeasured. Desktop only. */
 	@state() private _availHeightPx = 0;
+	/**
+	 * The viewport height, as REACTIVE state — mobile's height cap is a fraction of
+	 * it (see render()), and a cap read straight out of `window` would go stale the
+	 * moment the viewport changed height without anything else re-rendering (a mobile
+	 * URL bar collapsing; a rotation whose width change we happen not to notice).
+	 * Kept fresh by _onResize. It does not depend on layout, so writing it from a
+	 * resize can never feed back into a resize — and Lit's dirty-check makes a
+	 * no-change resize a no-op rather than a re-render.
+	 */
+	@state() private _viewportH =
+		typeof window !== "undefined" ? window.innerHeight : 0;
 	/** Per-item furniture tone, id → {color, halo}; memoised, recomputed only
 	 *  when a cell-background-affecting property changes (never on target moves). */
 	@state() private _furnitureTones?: Map<string, FurnitureItemTone>;
@@ -154,18 +165,19 @@ export class EppGrid extends LitElement {
 	// fire, and one that doesn't alter our box doesn't affect the desktop budget
 	// either, which is measured from the box and never from the window).
 	//
-	// It earns its keep on MOBILE, where the height cap is `window.innerHeight *
-	// 0.45`, read straight out of render(). Nothing else in the component re-reads
-	// window.innerHeight, and the mobile column is content-sized so our own box
-	// need not change when the viewport does — without this hook a rotation would
-	// leave the map fitted to the old viewport. (_measureAvail only re-renders when
-	// a measurement actually moves; on a rotation the width does, which is what
-	// carries the fresh innerHeight into render(). A pure-height viewport change —
-	// a mobile URL bar collapsing — therefore doesn't re-fit until something else
-	// re-renders. That's a stale cap of a few px, not a layout break.)
+	// It earns its keep on MOBILE, where the height cap is a fraction of the VIEWPORT
+	// height (see render()). The mobile column is content-sized, so our own box need
+	// not change when the viewport does — the ResizeObserver can stay silent through a
+	// pure-height viewport change (a URL bar collapsing) — and _measureAvail() takes an
+	// early return on mobile anyway, writing nothing and re-rendering nothing. So the
+	// ONLY thing that can carry a fresh viewport height into render() is this handler
+	// writing it to reactive state, which is exactly what it does: `_viewportH` is
+	// @state, so a real change re-renders and the cap re-fits; an unchanged one is
+	// dirty-checked away.
 	//
 	// Detached on disconnect.
 	private _onResize = (): void => {
+		this._viewportH = window.innerHeight;
 		this._measureAvail();
 	};
 
@@ -327,14 +339,31 @@ export class EppGrid extends LitElement {
 		if (Math.abs(avail - this._availHeightPx) >= 1) this._availHeightPx = avail;
 	}
 
+	/**
+	 * The caption's margin-top (px), memoised on first read.
+	 *
+	 * It comes from THIS COMPONENT'S OWN static stylesheet
+	 * (`.grid-dimensions { margin-top: 8px }`) — a constant no caller, theme or
+	 * layout can change at runtime — so re-deriving it via getComputedStyle is pure
+	 * waste, and _captionBlockPx() runs on the ~10Hz live path (every sensor frame
+	 * re-renders the grid, and updated() re-measures). Same caching idiom, and the
+	 * same reason, as _updateFurnitureTones above: keep getComputedStyle off the hot
+	 * path when its answer cannot have moved.
+	 */
+	private _captionMarginPx?: number;
+
 	/** Height (px) the dimensions caption occupies inside our box, margin included. */
 	private _captionBlockPx(): number {
 		const cap = this.shadowRoot?.querySelector<HTMLElement>(".grid-dimensions");
 		if (!cap) return 0;
-		return (
-			cap.offsetHeight +
-			(Number.parseFloat(getComputedStyle(cap).marginTop) || 0)
-		);
+		this._captionMarginPx ??=
+			Number.parseFloat(getComputedStyle(cap).marginTop) || 0;
+		// offsetHeight is deliberately NOT memoised: the caption's text wraps at
+		// narrow widths, so its height really does change with the layout — and a
+		// stale (too small) one inflates the height budget and overflows the map out
+		// of its card. It is also cheap here: the layout flush it forces is already
+		// paid for by the clientWidth read at the top of _measureAvail.
+		return cap.offsetHeight + this._captionMarginPx;
 	}
 
 	/**
@@ -581,6 +610,9 @@ export class EppGrid extends LitElement {
 		//  - fill (card): none — it fills the width and the dashboard scrolls.
 		//  - mobile: 45% of the viewport (not 50%: the tab bar + device dropdown sit
 		//    above the panel, so half the viewport is ~55-60% of the usable area).
+		//    Read from _viewportH (reactive state, refreshed by _onResize) rather than
+		//    window.innerHeight directly, so a viewport height change actually re-fits
+		//    the map instead of leaving the cap pinned to the old viewport.
 		//  - desktop: the measured box. Any positive value IS the truth — the box
 		//    really is that small — so the map simply fits it. There is deliberately
 		//    no minimum: a floor that dropped the budget to 0 below its threshold is
@@ -591,7 +623,7 @@ export class EppGrid extends LitElement {
 		const availHeightPx = this.fill
 			? 0
 			: this.capHeightToHalfViewport
-				? window.innerHeight * 0.45
+				? this._viewportH * 0.45
 				: this._availHeightPx;
 		// Vertical chrome mirrors the width chrome: 2px border (×2) + (visRows-1)
 		// ×gap. Subtract it so the cells fit the height budget exactly.

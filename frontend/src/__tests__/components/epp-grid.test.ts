@@ -1998,9 +1998,9 @@ describe("epp-grid cell sizing (measured available width)", () => {
 	it("re-measures on a window resize and detaches the handler when removed", async () => {
 		// This is not a backstop for the ResizeObserver, which already covers both
 		// width and height on desktop via the host's own box. The window 'resize'
-		// hook exists to refresh the MOBILE height cap (window.innerHeight * 0.45),
-		// the one value nothing else in the component re-reads. It must detach on
-		// disconnect so a removed grid doesn't keep re-measuring.
+		// hook exists to refresh the MOBILE height cap (a fraction of the viewport
+		// height), the one value nothing else in the component re-reads. It must
+		// detach on disconnect so a removed grid doesn't keep re-measuring.
 		const el = createGrid();
 		document.body.appendChild(el);
 		await el.updateComplete;
@@ -2017,6 +2017,71 @@ describe("epp-grid cell sizing (measured available width)", () => {
 		measureSpy.mockClear();
 		window.dispatchEvent(new Event("resize"));
 		expect(measureSpy).not.toHaveBeenCalled();
+	});
+
+	it("re-fits the MOBILE cap when the viewport height changes (the resize hook's actual job)", async () => {
+		// The whole point of the window 'resize' hook. On mobile the height cap is a
+		// fraction of the VIEWPORT, and _measureAvail() takes an early return there —
+		// it writes nothing, so nothing re-renders. If the cap were read straight out
+		// of `window.innerHeight` in render(), a viewport height change (a URL bar
+		// collapsing, a rotation) would leave the map fitted to the OLD viewport until
+		// something unrelated happened to re-render it. The handler therefore writes
+		// the viewport height to reactive state, and render() reads that.
+		const realH = window.innerHeight;
+		try {
+			Object.defineProperty(window, "innerHeight", {
+				value: 900,
+				configurable: true,
+			});
+			// Constructed AFTER the patch, so _viewportH seeds from the tall viewport.
+			const el = createGrid({ capHeightToHalfViewport: true }) as any;
+			expect(el._viewportH).toBe(900);
+			document.body.appendChild(el);
+			await el.updateComplete;
+			const tall = cellPx(el);
+			expect(tall).toBeGreaterThan(0);
+
+			// The viewport gets shorter; nothing else about the grid changes.
+			Object.defineProperty(window, "innerHeight", {
+				value: 400,
+				configurable: true,
+			});
+			window.dispatchEvent(new Event("resize"));
+			await el.updateComplete;
+
+			expect(el._viewportH).toBe(400);
+			// The cap moved with it: a shorter viewport means a smaller map.
+			expect(cellPx(el)).toBeLessThan(tall);
+			document.body.removeChild(el);
+		} finally {
+			Object.defineProperty(window, "innerHeight", {
+				value: realH,
+				configurable: true,
+			});
+		}
+	});
+
+	it("reads the caption's constant margin-top only once (it is off the 10Hz hot path)", async () => {
+		// _captionBlockPx() runs on every frame (each sensor frame re-renders the grid
+		// and updated() re-measures). The caption's margin-top comes from this
+		// component's OWN static stylesheet, so it cannot change at runtime and is
+		// memoised; its offsetHeight is re-read every call, because the caption's text
+		// wraps at narrow widths and a stale height would inflate the budget.
+		const el = createGrid();
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const a = el as unknown as { _captionBlockPx: () => number };
+
+		// The margin has already been read once during the mount's own measure passes.
+		const spy = vi.spyOn(globalThis, "getComputedStyle");
+		try {
+			expect(a._captionBlockPx()).toBe(8);
+			expect(a._captionBlockPx()).toBe(8);
+			expect(spy).not.toHaveBeenCalled();
+		} finally {
+			spy.mockRestore();
+		}
+		document.body.removeChild(el);
 	});
 });
 
