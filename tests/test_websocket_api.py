@@ -4222,6 +4222,52 @@ class TestWebSocketSubscriptions:
         unsub_stream.assert_called_once()
         mock_dm.note_target_unsubscribe.assert_not_called()
 
+    async def test_unsubscribe_during_registration_releases_the_stream_not_leaked(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """A client can unsubscribe while `async_add_state_stream` is still awaiting —
+        in practice `_arm_stream`'s `asyncio.wait_for(conn.async_connect(), timeout=30)`
+        against an unresponsive device (the #336 condition: the panel switches device,
+        HA suspends the hidden panel, or the user hits Retry, all while the connect is
+        still in flight).
+
+        HA's own `handle_unsubscribe_events` only tears a subscription down if it finds
+        an entry under this id in `connection.subscriptions` — before this fix, nothing
+        was registered there until AFTER the await returned, so an unsubscribe landing in
+        that window found nothing to call and ran no teardown at all. The stream (and the
+        session ref / subscriber count it pins) then leaked forever once the arm
+        completed, since the handler had no idea the client had already left.
+        """
+        mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
+        unsub_stream = MagicMock()
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 36, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        async def _add_stream(mac, *, counter_attr, make_on_state, on_availability, on_closed):
+            # Simulate HA's handle_unsubscribe_events landing while the arm is
+            # still in flight: it looks up (and removes) whatever is registered
+            # under this id right now, calling it only if something is there —
+            # exactly the "Subscription not found" vs. real-teardown branch.
+            pending_unsub = connection.subscriptions.pop(msg["id"], None)
+            if pending_unsub is not None:
+                pending_unsub()
+            return unsub_stream
+
+        mock_dm.async_add_state_stream = AsyncMock(side_effect=_add_stream)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        connection.send_result.assert_called_once_with(36)
+        unsub_stream.assert_called_once()
+        # The fixed-up cancellation entry must not be left stashed under the id —
+        # the client already left, so there is nothing left to tear down later.
+        assert 36 not in connection.subscriptions
+
     async def test_subscribe_grid_targets_opted_in_registration_failure_reports_unavailable(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:

@@ -150,6 +150,30 @@ async def start_durable_stream(
         event: dict[str, Any] = {"available": False, "closed": True} if protocol == "full" else {"closed": True}
         connection.send_message(websocket_api.event_message(msg["id"], event))
 
+    # Registered BEFORE the await below (the standard HA pattern) so an
+    # unsubscribe arriving while the arm is still in flight — in practice
+    # `_arm_stream`'s `asyncio.wait_for(conn.async_connect(), timeout=30)`
+    # against an unresponsive device (#336: the client switches device, HA
+    # suspends the hidden panel, or the user hits Retry, all while the connect
+    # is still running) — has something to find. HA's own
+    # `handle_unsubscribe_events` only tears a subscription down if it finds an
+    # entry under this id; with nothing registered yet it took its
+    # "Subscription not found" branch and ran NO teardown at all, and the real
+    # unsub below would then be stashed for a client that already left —
+    # leaking the stream (and the session ref / subscriber count it holds) for
+    # the life of the manager. Recorded rather than acted on immediately: the
+    # arm below still needs to run to completion so its own rollback path
+    # (registration failure, `mac not in self.devices`) stays the single place
+    # that decides whether anything was actually registered.
+    cancelled = False
+
+    @callback
+    def _cancel_pending() -> None:
+        nonlocal cancelled
+        cancelled = True
+
+    connection.subscriptions[msg["id"]] = _cancel_pending
+
     try:
         unsub_stream = await manager.async_add_state_stream(
             mac,
@@ -162,6 +186,11 @@ async def start_durable_stream(
         _LOGGER.warning("%s: stream registration failed for %s: %s", log_prefix, mac, err)
         unsub_stream = None
     if unsub_stream is None:
+        # Nothing was registered (unknown mac, or the arm raised) — drop the
+        # `_cancel_pending` placeholder too, so this id is left exactly as
+        # unrecoverable as it always was: a later unsubscribe finds nothing,
+        # rather than a no-op handler that lingers under this id forever.
+        connection.subscriptions.pop(msg["id"], None)
         # Covers the recorded `last_available` too — nothing was registered, so this
         # single event is all the client gets either way.
         if protocol != "frames_only":
@@ -187,6 +216,14 @@ async def start_durable_stream(
             return
         released = True
         unsub_stream()
+
+    if cancelled:
+        # `_cancel_pending` fired mid-arm: the client is already gone, so there
+        # is nothing left to stash the real unsub against — release the stream
+        # right now instead of registering it under an id nobody will ever call
+        # again (see the comment above `_cancel_pending`).
+        _unsub()
+        return
 
     connection.subscriptions[msg["id"]] = _unsub
     # If the connection closed during the await above, HA already cleared
