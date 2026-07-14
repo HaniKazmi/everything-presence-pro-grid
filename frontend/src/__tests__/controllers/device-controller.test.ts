@@ -2158,10 +2158,11 @@ describe("DeviceController", () => {
 			vi.restoreAllMocks();
 		});
 
-		/** Tracks grid- and raw-target callbacks separately so each can be driven independently. */
+		/** Tracks grid-, raw-, and heatmap-target callbacks separately so each can be driven independently. */
 		function makeMultiStreamHass() {
 			const gridCbs: ((msg: any) => void)[] = [];
 			const rawCbs: ((msg: any) => void)[] = [];
+			const heatmapCbs: ((msg: any) => void)[] = [];
 			const subscribeMessage = vi.fn((cb: any, msg: any) => {
 				if (msg.type === "eppgrid/subscribe_grid_targets") {
 					gridCbs.push(cb);
@@ -2171,12 +2172,18 @@ describe("DeviceController", () => {
 					rawCbs.push(cb);
 					return Promise.resolve(vi.fn());
 				}
+				if (msg.type === "eppgrid/subscribe_heatmap") {
+					heatmapCbs.push(cb);
+					return Promise.resolve(vi.fn());
+				}
 				return Promise.resolve(vi.fn());
 			});
 			return {
 				hass: { callWS: vi.fn(), connection: { subscribeMessage } },
 				emitGrid: (msg: any, n = gridCbs.length - 1) => gridCbs[n]?.(msg),
 				emitRaw: (msg: any, n = rawCbs.length - 1) => rawCbs[n]?.(msg),
+				emitHeatmap: (msg: any, n = heatmapCbs.length - 1) =>
+					heatmapCbs[n]?.(msg),
 			};
 		}
 
@@ -2261,6 +2268,69 @@ describe("DeviceController", () => {
 			h.emitRaw({ available: false });
 
 			expect(onAvailability).toHaveBeenCalledWith("bb", false);
+		});
+
+		it("does not let a stranded heatmap entry mask a real device outage after the overlay is disabled (#336 regression)", async () => {
+			// Nothing ever removed a stream's entry from `_streamAvailability`
+			// once torn down. Enabling then disabling the heatmap overlay left
+			// `heatmap: true` stranded in the map forever, so `.some(v => v)`
+			// stayed true even after grid AND raw both went false — the
+			// offline banner (and the zone-engine reset that goes with it)
+			// never fired.
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			ctrl.onAvailability = onAvailability;
+			ctrl.selectedMac = "aa";
+
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			ctrl.setHeatmapEnabled(true);
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emitGrid({ available: true });
+			h.emitRaw({ available: true });
+			h.emitHeatmap({ available: true });
+
+			// User toggles the overlay off — the heatmap stream is torn down,
+			// but its last-known `true` must not keep voting.
+			ctrl.setHeatmapEnabled(false);
+			onAvailability.mockClear();
+
+			// The device genuinely goes offline: both remaining streams
+			// report false.
+			h.emitGrid({ available: false });
+			h.emitRaw({ available: false });
+
+			expect(onAvailability).toHaveBeenCalledWith("aa", false);
+		});
+
+		it("tearing down a stream does not itself flip host availability", async () => {
+			// Deleting a stream's stale entry on teardown must be silent
+			// bookkeeping, not a liveness signal in its own right — otherwise
+			// disabling the heatmap overlay (or any stream teardown) would
+			// spuriously fire onAvailability on its own.
+			const h = makeMultiStreamHass();
+			ctrl.hass = h.hass;
+			const onAvailability = vi.fn();
+			ctrl.onAvailability = onAvailability;
+			ctrl.selectedMac = "aa";
+
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+			ctrl.setHeatmapEnabled(true);
+			await vi.advanceTimersByTimeAsync(0);
+
+			h.emitGrid({ available: true });
+			h.emitRaw({ available: true });
+			h.emitHeatmap({ available: true });
+			onAvailability.mockClear();
+
+			ctrl.setHeatmapEnabled(false);
+			ctrl.unsubscribeDisplay();
+			ctrl.unsubscribeTargets();
+
+			expect(onAvailability).not.toHaveBeenCalled();
 		});
 	});
 

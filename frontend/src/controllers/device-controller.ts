@@ -142,7 +142,13 @@ export class DeviceController implements ReactiveController {
 	// replica) while a sibling stream is still live and delivering frames,
 	// desyncing the frontend's zone-engine replica from the firmware's
 	// (#336). Reset on every `subscribeTargets` so a previous device's
-	// entries can never leak into this one's aggregate.
+	// entries can never leak into this one's aggregate. A stream that is
+	// torn down (unsubscribeTargets/unsubscribeDisplay/_unsubscribeHeatmap)
+	// deletes its own entry rather than leaving its last value behind — a
+	// stream that is not subscribed must not vote, or a stranded `true`
+	// (e.g. the heatmap overlay disabled after reporting available) could
+	// mask a genuine outage on the remaining streams forever (#336
+	// regression).
 	private _streamAvailability: Partial<Record<string, boolean>> = {};
 	// The last aggregate ("is any stream up") reported to the host, so a
 	// same-valued update doesn't re-fire onAvailability. `undefined` (reset
@@ -667,6 +673,12 @@ export class DeviceController implements ReactiveController {
 			this._targetRetryTimer = undefined;
 		}
 		this._reopenAttempts["eppgrid/subscribe_grid_targets"] = 0;
+		// A stream that is not subscribed must not vote in the aggregate
+		// (see `_streamAvailability`) — otherwise its last-known value is
+		// stranded there forever, potentially masking a genuine outage on
+		// the other streams (#336). No recompute/onAvailability call here:
+		// tearing a stream down is bookkeeping, not a liveness signal.
+		delete this._streamAvailability["eppgrid/subscribe_grid_targets"];
 		safeUnsub(this._unsubTargets);
 		this._unsubTargets = undefined;
 	}
@@ -946,6 +958,9 @@ export class DeviceController implements ReactiveController {
 			this._displayRetryTimer = undefined;
 		}
 		this._reopenAttempts["eppgrid/subscribe_raw_targets"] = 0;
+		// See unsubscribeTargets — a torn-down stream must not keep voting
+		// in the aggregate (#336).
+		delete this._streamAvailability["eppgrid/subscribe_raw_targets"];
 		safeUnsub(this._unsubDisplay);
 		this._unsubDisplay = undefined;
 	}
@@ -989,6 +1004,12 @@ export class DeviceController implements ReactiveController {
 			this._heatmapRetryTimer = undefined;
 		}
 		this._reopenAttempts["eppgrid/subscribe_heatmap"] = 0;
+		// The heatmap overlay is optional and can be toggled off while grid/
+		// raw keep streaming — its last-known `true` must not be stranded in
+		// the aggregate forever, or a genuine outage on the other streams
+		// would never flip `onAvailability` to false (#336 regression: this
+		// was the ONLY one of the three unsubscribe paths missing this).
+		delete this._streamAvailability["eppgrid/subscribe_heatmap"];
 		safeUnsub(this._unsubHeatmap);
 		this._unsubHeatmap = undefined;
 	}
