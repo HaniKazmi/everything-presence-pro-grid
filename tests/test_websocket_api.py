@@ -4118,6 +4118,42 @@ class TestWebSocketSubscriptions:
         connection.subscriptions[40]()
         unsub_stream.assert_called_once()
 
+    async def test_subscribe_raw_targets_opted_out_silence(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """BWC pin: an opted-out client sees no protocol events on this wire either (#336).
+
+        `test_subscribe_grid_targets_relays_availability_only_when_asked` and
+        `..._opted_out_swallows_registration_race_availability` pin this same gate
+        only for `subscribe_grid_targets`, even though all three panel streams
+        (raw/grid/heatmap) share `_start_panel_stream`. A future per-stream slip
+        (e.g. hardcoding `send_availability=True` for one of them) would blank the
+        calibration wizard's raw-target feed for every cached pre-upgrade bundle
+        with the grid-targets pin alone staying green.
+        """
+        mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
+        mock_dm.async_add_state_stream = AsyncMock(return_value=MagicMock())
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        # NO "availability" key — the old bundle's message shape.
+        msg = {"id": 42, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
+
+        kwargs = mock_dm.async_add_state_stream.await_args.kwargs
+        kwargs["on_availability"](False)
+        kwargs["on_closed"]()
+
+        events = [
+            c.args[0]["event"]
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and "event" in c.args[0]
+        ]
+        assert events == [], f"opted-out client must see no protocol events, got {events}"
+
     async def test_raw_target_callback_is_rebuilt_from_the_live_connection(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
@@ -4654,6 +4690,41 @@ class TestSubscribeHeatmap:
 
         on_state(TextSensorState(key=99, state="anything", missing_state=False))
         connection.send_message.assert_not_called()
+
+    async def test_subscribe_heatmap_opted_out_silence(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """BWC pin: an opted-out client sees no protocol events on this wire either (#336).
+
+        Mirrors `TestWebSocketSubscriptions`'s grid-targets opted-out pins, extended to
+        `subscribe_heatmap` — it shares `_start_panel_stream` with the other two panel
+        streams, but had no dedicated regression test of its own. A future per-stream
+        slip (e.g. hardcoding `send_availability=True` for the heatmap path) would
+        blank the calibration wizard's heatmap overlay for every cached pre-upgrade
+        bundle with a fully green suite otherwise.
+        """
+        mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
+        mock_dm.async_add_state_stream = AsyncMock(return_value=MagicMock())
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_heatmap
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        # NO "availability" key — the old bundle's message shape.
+        msg = {"id": 51, "type": "eppgrid/subscribe_heatmap", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_heatmap, connection, msg)
+
+        kwargs = mock_dm.async_add_state_stream.await_args.kwargs
+        kwargs["on_availability"](False)
+        kwargs["on_closed"]()
+
+        events = [
+            c.args[0]["event"]
+            for c in connection.send_message.call_args_list
+            if c.args and isinstance(c.args[0], dict) and "event" in c.args[0]
+        ]
+        assert events == [], f"opted-out client must see no protocol events, got {events}"
 
 
 class TestSubscribeDeviceList:

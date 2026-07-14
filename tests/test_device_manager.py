@@ -5858,10 +5858,14 @@ class TestEventCallbacks:
         ESPHome reload triggered by an entity-registry change flips the device
         offline (which fires _fire_device_list_changed with available=False),
         then online. _on_device_available sets dev.available=True; if the
-        guard-skip path returns without firing the broadcast, the frontend's
-        recovery hook (device-controller.ts: onSelectedAvailable on false→true
-        transition) never runs, the WS subscription stays attached to the
-        torn-down session, and the user sees a stuck target until they refresh.
+        guard-skip path returns without firing the broadcast, the panel's
+        bootstrap (onDeviceListChanged's `!hasDeviceSession` guard, #336) never
+        sees the device come back, so a device that has no session (e.g. it was
+        offline when the panel mounted, or was removed and re-added) never gets
+        one — the user sees a stuck/empty grid until they refresh. Stream
+        recovery for a device that ALREADY has a session is the manager's own
+        job (`_ensure_streams`, above); this broadcast is what the device-list
+        push still needs to carry on top of that.
         """
         mac = "AA:BB:CC:DD:EE:FF"
         store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
@@ -11438,6 +11442,13 @@ class TestPanelStreamRecovery:
         assert len(opened) == 1
         assert len(conns[0].subscribers) == 1
 
+        # Reset so only the flap's own availability events are captured below — the
+        # initial arm already sent its own rising `{"available": True}` (`_arm_stream`
+        # notifies True on every successful arm, including the first), which would
+        # otherwise satisfy a set-membership check on `events` even if the flap's
+        # events came out in the wrong ORDER (see the ordered assertion below).
+        connection.send_message.reset_mock()
+
         # The device flaps: its API connection dies, taking every state subscriber with
         # it (exactly what `_release_references` does).
         conns[0].kill()
@@ -11450,14 +11461,17 @@ class TestPanelStreamRecovery:
         assert len(opened) == 2
         assert len(conns[1].subscribers) == 1
 
-        # The panel was told the device dropped and came back.
+        # The panel was told the device dropped and came back, in that ORDER. A bug
+        # that fires `notify(False)` right after the re-arm's `notify(True)` — frames
+        # flow but the panel stays stuck on the offline banner — would still satisfy
+        # a set-membership `{"available": True} in events` / `{"available": False} in
+        # events` check; asserting the exact ordered sequence catches it.
         events = [
             c.args[0]["event"]
             for c in connection.send_message.call_args_list
             if c.args and isinstance(c.args[0], dict) and "available" in c.args[0].get("event", {})
         ]
-        assert {"available": False} in events
-        assert {"available": True} in events
+        assert events == [{"available": False}, {"available": True}]
 
         # A frame on the new connection reaches the panel.
         connection.send_message.reset_mock()

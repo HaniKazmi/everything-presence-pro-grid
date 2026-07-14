@@ -1551,27 +1551,41 @@ describe("DeviceController", () => {
 			expect(ctrl.selectedMac).toBe("bb");
 		});
 
-		it("keeps the deferred device selected across a delete/re-add cycle, with no teardown (USB-reflash flow)", () => {
-			// Delete + re-add with the same mac: the deferred selection must
-			// stay put across the blip. Recovery is the manager's job now
-			// (#336) — the frontend must not tear the session down or attempt
-			// to reconnect from this edge.
+		it("keeps the deferred device selected across a delete/re-add cycle, but closes the session on the delete (USB-reflash flow, #336)", async () => {
+			// Delete + re-add with the same mac: the deferred SELECTION stays
+			// put across the blip (dirty-guard, same as above) — but this is
+			// a real REMOVAL, not a mere availability blip, so the session
+			// itself must still close. Without that, `hasDeviceSession`
+			// would stay true forever once the backend force-closes its own
+			// session (`_on_device_removed`), permanently disarming the
+			// `!hasDeviceSession` bootstrap that re-establishes the session
+			// when the device comes back — the regression this test pins.
 			localStorage.setItem("epp_selected_mac", "aa");
-			const closeSpy = vi.spyOn(ctrl, "closeDeviceSession");
 			ctrl.isHostDirty = () => true;
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
+			await ctrl.openDeviceSession("aa");
+			expect(ctrl.hasDeviceSession).toBe(true);
+			const closeSpy = vi.spyOn(ctrl, "closeDeviceSession");
 
-			// Device deleted; another remains. Deferred — selection stays "aa".
+			// Device deleted; another remains. Deferred — selection stays
+			// "aa" — but the session closes: "aa" is gone, not just offline.
 			(ctrl as any)._applyDeviceList([makeDevice("bb", true)]);
 			expect(ctrl.selectedMac).toBe("aa");
+			expect(closeSpy).toHaveBeenCalledTimes(1);
+			expect(ctrl.hasDeviceSession).toBe(false);
 
-			// Device re-added (same mac) — selection sticks, no teardown.
+			// Device re-added (same mac) — selection sticks. The controller
+			// itself does not reopen anything here (that's the host's job,
+			// gated on `!hasDeviceSession`) — it just leaves the session
+			// closed so the host's bootstrap can act on it.
+			closeSpy.mockClear();
 			(ctrl as any)._applyDeviceList([
 				makeDevice("aa", true),
 				makeDevice("bb", true),
 			]);
 			expect(ctrl.selectedMac).toBe("aa");
 			expect(closeSpy).not.toHaveBeenCalled();
+			expect(ctrl.hasDeviceSession).toBe(false);
 		});
 	});
 

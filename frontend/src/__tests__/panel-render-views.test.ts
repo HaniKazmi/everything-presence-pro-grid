@@ -700,6 +700,31 @@ describe("render() shows the calibration wizard an offline device (#336)", () =>
 		expect(str).toContain("connection.offline");
 		expect(str).toContain("epp-wizard");
 	});
+
+	it("wraps the banner and the wizard in .wizard-stage so the banner can't squeeze the wizard on mobile", () => {
+		// .panel becomes a flex column on mobile (max-width: 819px) — a bare
+		// block sibling with flex:1 (the banner) would absorb the free space
+		// and squeeze <epp-wizard> (which carries no flex), clipping it. The
+		// settings view solves the equivalent problem with an absolute-overlay
+		// stage (.settings-stage); .wizard-stage mirrors that here (#336).
+		const a = createPanel() as any;
+		a._view = "calibrate";
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: false,
+				configured: true,
+				firmware_status: "unavailable",
+			},
+		];
+
+		const str = JSON.stringify(a.render());
+
+		expect(str).toContain("wizard-stage");
+	});
 });
 
 describe("render() preserves settings view across transient device states", () => {

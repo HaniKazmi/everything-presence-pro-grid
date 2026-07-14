@@ -313,6 +313,32 @@ export const panelStyles = css`
     z-index: 5;
   }
 
+  /* The calibrate/tutorial wizard is bounded the same way: the connection banner
+     overlays <epp-wizard> instead of stacking as its sibling. On desktop .panel is
+     a plain block, so this is inert there (as it always was) — but on mobile .panel
+     becomes a flex column (below), where a bare sibling's flex:1 would otherwise
+     absorb the free space and squeeze epp-wizard (which carries no flex of its
+     own), clipping it. Room calibration is typically done on a phone, walking the
+     room, so the wizard must stay fully visible (#336). */
+  .wizard-stage {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .wizard-stage > epp-wizard {
+    flex: 1;
+    min-height: 0;
+  }
+  .wizard-stage > .protocol-fullpage {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    border-radius: 0;
+    z-index: 5;
+  }
+
   @media (max-width: 819px) {
     :host {
       --epp-control-height: 44px;
@@ -2644,23 +2670,25 @@ export class EPPGridPanel extends LitElement {
         ${this._renderTabBar()}
         <div class="panel">
           ${this._renderHeader()}
-          ${isOffline ? this._renderConnectionBanner() : nothing}
-          <epp-wizard
-            .rawTargets=${this._rawTargets}
-            .sensorState=${this._getWizardSensorState()}
-            .localize=${this._localize}
-            .initialRoomWidth=${this._roomWidth}
-            .initialRoomDepth=${this._roomDepth}
-            .initialStep=${this._view === "tutorial" ? "guide" : "corners"}
-            @dismiss-tutorial=${() => this._onDismissTutorial()}
-            @begin-corners=${() => {
-							this._view = "calibrate";
+          <div class="wizard-stage">
+            ${isOffline ? this._renderConnectionBanner() : nothing}
+            <epp-wizard
+              .rawTargets=${this._rawTargets}
+              .sensorState=${this._getWizardSensorState()}
+              .localize=${this._localize}
+              .initialRoomWidth=${this._roomWidth}
+              .initialRoomDepth=${this._roomDepth}
+              .initialStep=${this._view === "tutorial" ? "guide" : "corners"}
+              @dismiss-tutorial=${() => this._onDismissTutorial()}
+              @begin-corners=${() => {
+								this._view = "calibrate";
+							}}
+              @wizard-save=${(e: CustomEvent) => this._onWizardSave(e)}
+            @wizard-cancel=${() => {
+							this._view = "live";
 						}}
-            @wizard-save=${(e: CustomEvent) => this._onWizardSave(e)}
-          @wizard-cancel=${() => {
-						this._view = "live";
-					}}
-          ></epp-wizard>
+            ></epp-wizard>
+          </div>
         </div>
       </div>`;
 		}

@@ -18,9 +18,13 @@ const SUBSCRIBE_RETRY_DELAY_MS = 2000;
 // card spreads re-opens across many dashboard cards sharing a connection; the panel
 // has at most 3 streams total, so jitter buys nothing) and no TERMINAL_REOPEN_CODES
 // (the card can't tell a removed device from a reload failure on its own; the panel's
-// device-list push already cancels the retry timer when the device disappears — see
-// closeDeviceSession/unsubscribeTargets). Distinct from SUBSCRIBE_RETRY_*, which
-// covers a rejected *initial* subscribe and does latch a banner after 5 tries.
+// device-list push cancels the retry timer via closeDeviceSession/unsubscribeTargets
+// only when the device disappears from the list entirely — see _applyDeviceList's
+// removal-scoped teardown. A device that merely goes unavailable while still LISTED
+// does NOT cancel it: that flap is the manager's own recovery to make, and the
+// backoff here is what keeps re-opening until the re-arm lands). Distinct from
+// SUBSCRIBE_RETRY_*, which covers a rejected *initial* subscribe and does latch a
+// banner after 5 tries.
 const REOPEN_BASE_MS = 500;
 const REOPEN_CAP_MS = 30_000;
 
@@ -319,9 +323,33 @@ export class DeviceController implements ReactiveController {
 	}
 
 	private _applyDeviceList(devices: DeviceInfo[]): void {
+		const prevSelectedMac = this.selectedMac;
 		this.devices = [...devices].sort((a, b) =>
 			(a.name || "").localeCompare(b.name || ""),
 		);
+		// Removal (not availability) teardown. A device merely going
+		// unavailable while still LISTED must NOT close the session — that's
+		// the retired edge's job, now the manager's (#336), and re-tearing it
+		// down here would race the manager's own re-arm. But a device the
+		// manager no longer knows about at all (`_on_device_removed`) has no
+		// stream left to re-arm: its `available`/`closed` signal already
+		// stopped (the backend's registration returns `None` for an unknown
+		// mac, so a re-subscribe attempt gets one `available: false` and then
+		// silence — see `_start_panel_stream`). Without closing the session
+		// here, `hasDeviceSession` would stay true forever, permanently
+		// disarming the `!hasDeviceSession` bootstrap guards
+		// (onDeviceListChanged/updated() in eppgrid-panel.ts) — so a
+		// re-added device (USB reflash / re-adoption with the same mac) would
+		// never get a session again short of a page reload. Gated on a
+		// non-empty push: an empty list is ambiguous with a transient reload
+		// (see below) and must not be treated as a real deletion.
+		if (
+			prevSelectedMac !== "" &&
+			devices.length > 0 &&
+			!devices.some((d) => d.mac === prevSelectedMac)
+		) {
+			this.closeDeviceSession();
+		}
 		// A transient empty list during HA/integration reload is
 		// indistinguishable from a real deletion, so never invalidate the
 		// current selection on an empty list — otherwise the panel flips
@@ -337,8 +365,9 @@ export class DeviceController implements ReactiveController {
 			// path already treats missing-from-list as offline, and the user
 			// can still switch via the picker's unsaved-changes guard. The
 			// switch happens on the next push once the host is clean, and a
-			// re-added device (USB reflash) is picked up by the durable
-			// stream's own availability signal, not by this method (#336).
+			// re-added device (USB reflash) is picked up by the bootstrap in
+			// onDeviceListChanged once hasDeviceSession is false again (see
+			// the removal teardown above) — not by this method (#336).
 			// Boundary: the guard only covers the selected-mac-missing case —
 			// a stored-mac change while the device is still listed
 			// intentionally switches (out of scope here).

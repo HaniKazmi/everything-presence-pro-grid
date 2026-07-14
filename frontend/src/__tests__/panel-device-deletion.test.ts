@@ -342,6 +342,55 @@ describe("panel device list transitions", () => {
 		expect(html).not.toMatch(/aa:bb:cc:dd:ee:ff/i);
 	});
 
+	// --- Removal (not availability) recovery: USB-reflash flow (#336) ---
+	//
+	// Distinct from "Session close behaviour" above: those tests push an
+	// EMPTY list, which is deliberately ambiguous with a transient reload and
+	// must not tear the session down. Here the selected device disappears
+	// from a NON-empty push (another device remains) — a genuine removal,
+	// which the backend has already force-closed its own session for
+	// (`_on_device_removed` -> `async_close_session`). Without the frontend
+	// also closing its side, `hasDeviceSession` stays true forever and the
+	// bootstrap that re-establishes it when the device reappears
+	// (onDeviceListChanged's `!hasDeviceSession` guard) never fires again —
+	// the regression this end-to-end flow pins.
+
+	it("closes the session when the selected device is removed, and re-opens + resubscribes when it reappears with the same mac", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const dev2 = mockDeviceInfo("bb", "Bravo");
+		const { el, a, pushDeviceList } = await mountPanel([dev1, dev2]);
+		await new Promise((r) => setTimeout(r, 0));
+		expect(a._deviceCtrl.hasDeviceSession).toBe(true);
+
+		const sessionSubCount = () =>
+			(a.hass.connection.subscribeMessage as any).mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_device",
+			).length;
+		const before = sessionSubCount();
+
+		// Unsaved edits — the auto-switch defers, so the missing mac stays
+		// selected instead of flipping to "bb" (same dirty-guard as the
+		// "does not auto-switch away from a dirty editor" test above).
+		a._dirty = true;
+
+		// "aa" removed from HA; "bb" remains.
+		pushDeviceList([dev2]);
+		await el.updateComplete;
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(a._selectedMac).toBe("aa");
+		expect(a._deviceCtrl.hasDeviceSession).toBe(false);
+
+		// "aa" re-added with the same mac (USB reflash / re-adoption).
+		pushDeviceList([dev1, dev2]);
+		await el.updateComplete;
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(a._selectedMac).toBe("aa");
+		expect(a._deviceCtrl.hasDeviceSession).toBe(true);
+		expect(sessionSubCount()).toBeGreaterThan(before);
+	});
+
 	// --- Non-selected device changes ---
 
 	it("does not disturb UI state when a non-selected device is removed", async () => {
