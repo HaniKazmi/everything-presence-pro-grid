@@ -105,8 +105,62 @@ If the signal is marginal or poor, the fix is on the network side:
     them — bringing it clearly within range of one node usually settles it.
 - Give the device a fixed DHCP reservation so its IP never changes.
 
-The **WiFi Signal** entity only exists on WiFi builds; the ethernet variant has
-no WiFi radio.
+### When the signal looks fine but it still drops
+
+A strong RSSI doesn't rule out a WiFi problem — plenty of drops happen at -50
+dBm because the *router* ended the connection, not because the signal was weak.
+Five more diagnostic entities record what happened at the moment of each drop
+and report it once the device is back online, so you don't have to catch it live
+or tether the device to a laptop:
+
+| Entity                     | What it tells you                                            |
+| -------------------------- | ------------------------------------------------------------ |
+| **WiFi Disconnects**       | How many times the device has lost WiFi since it last booted |
+| **WiFi Disconnect Reason** | Why the link went away, the last time it did                 |
+| **WiFi Disconnect Signal** | RSSI at the exact moment of the drop                         |
+| **WiFi Downtime**          | How many seconds the last outage lasted                      |
+| **WiFi BSSID**             | Which access point the device is connected to                |
+
+How to read them:
+
+- **WiFi Disconnects stays at 0 while HA still shows the device unavailable.**
+    The device never lost WiFi. The problem is elsewhere on the network — or in
+    Home Assistant's connection to it — and moving the device or changing your
+    WiFi will not help. Worth reporting as an issue.
+- **The reason is `Beacon Timeout`.** Nobody disconnected the device; it stopped
+    hearing the router. That's coverage or interference, even if the average
+    signal looks acceptable — check **WiFi Disconnect Signal** to see what RSSI
+    actually was at the drop, which is often much worse than the once-a-minute
+    average.
+- **The reason mentions Association Leave, Auth Expire, or BSS Transition.**
+    Your router ended the connection. On a mesh this is usually the router
+    steering the device to a different node — check whether **WiFi BSSID**
+    changes each time, and see the mesh note above.
+- **The reason mentions No AP Found.** Your router is refusing the device on its
+    own terms rather than simply dropping it — the RSSI-threshold and
+    auth-threshold variants in particular are typical of a mesh that has decided
+    the device belongs on a different node.
+- **The reason mentions Inactivity.** The router dropped the device because it
+    saw no traffic from it. Some routers are aggressive about this with
+    low-power devices.
+- **The reason is `Auth Fail` or a handshake timeout.** The device was rejected.
+    Check the WiFi password and whether your router changed its security mode.
+- **WiFi Downtime is short (a few seconds) but HA showed the device unavailable
+    for much longer.** WiFi recovered quickly and something above it was slow to
+    reconnect — worth reporting as an issue.
+
+These entities only update when the connection actually drops, so on a healthy
+device they stay unchanged: **WiFi Disconnects** reads 0, and **WiFi Downtime**,
+**WiFi Disconnect Reason** and **WiFi Disconnect Signal** stay empty until the
+first drop.
+
+One limit: if the device is off WiFi for more than about 15 minutes it reboots
+itself to try to recover, which resets these counters. They're built for the
+repeated short drops in this section, not for a router that has been off all
+night — for that, **Uptime** tells the story.
+
+The WiFi entities only exist on WiFi builds; the ethernet variant has no WiFi
+radio.
 
 ## Reporting an issue
 
