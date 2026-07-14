@@ -289,6 +289,32 @@ def test_connect_trigger_publishes_downtime():
     )
 
 
+def test_connect_trigger_republishes_reason_and_rssi():
+    """Closes the handler-ordering race, by making its outcome unobservable.
+
+    Two handlers run for each disconnect: ESPHome's (registered first, in its
+    setup) queues the event for the main loop, and ours (registered in on_boot,
+    so second) stashes the reason and RSSI. If the loop were to pick the event up
+    in the window between the two, `wifi.on_disconnect` would publish the
+    *previous* drop's reason — precisely the misleading value we built this to
+    avoid.
+
+    The fix is not a handshake. The disconnect-time publish never reaches HA at
+    all: the device is offline, so the value merely sits in the entity until the
+    API reconnects and ESPHome ships it in the initial-state burst. What matters
+    is the value held at *reconnect*, and by then the handler has long since run.
+    Re-publishing here overwrites any stale value before anything could have
+    transmitted it, which makes the race unobservable rather than merely rare.
+    """
+    text = _wifi_trigger_text("on_connect")
+    for sensor_id in ("wifi_disconnect_reason_sensor", "wifi_disconnect_rssi_sensor"):
+        assert sensor_id in text, (
+            f"wifi.on_connect must re-publish {sensor_id} — the value published "
+            "during the outage was never transmitted, and re-publishing it now "
+            "is what closes the event-handler ordering race."
+        )
+
+
 def test_led_script_still_driven_by_wifi_triggers():
     """Regression guard: the triggers already drove the LEDs. Don't drop that.
 

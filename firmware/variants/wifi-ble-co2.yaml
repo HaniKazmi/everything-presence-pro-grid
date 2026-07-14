@@ -101,14 +101,32 @@ wifi:
   on_connect:
     then:
       - script.execute: control_leds
-      # Downtime can only be computed on the way back up. Skipped when the
-      # device has never dropped (at_ms == 0), so a fresh boot doesn't publish a
-      # phantom outage.
+      # Downtime can only be computed on the way back up. All of this is skipped
+      # when the device has never dropped (at_ms == 0), so a fresh boot doesn't
+      # publish a phantom outage.
+      #
+      # The reason and RSSI are re-published here even though on_disconnect
+      # already published them, and that repetition is load-bearing. Two handlers
+      # run for each disconnect: ESPHome's (registered first, in its setup)
+      # queues the event for the main loop, and ours (registered in on_boot, so
+      # second) stashes the reason and RSSI. Should the loop ever pick the event
+      # up in the window between the two, on_disconnect would publish the
+      # PREVIOUS drop's reason — exactly the misleading value these entities
+      # exist to prevent.
+      #
+      # No handshake is needed to close that, because the disconnect-time publish
+      # never reaches HA in the first place: the device is offline, so the value
+      # only sits in the entity until the API reconnects and ESPHome ships it in
+      # the initial-state burst. The value that matters is the one held HERE, at
+      # reconnect, by which time the handler has long since run. Re-publishing
+      # overwrites any stale value before anything could have transmitted it.
       - lambda: |-
           if (id(wifi_disconnect_at_ms) != 0) {
             const uint32_t downtime_ms =
                 epp::wifi_downtime_ms(esphome::millis(), id(wifi_disconnect_at_ms));
             id(wifi_downtime_sensor).publish_state((float) downtime_ms / 1000.0f);
+            id(wifi_disconnect_reason_sensor).publish_state(epp::wifi_disconnect_reason_str(id(wifi_disconnect_reason_code)));
+            id(wifi_disconnect_rssi_sensor).publish_state((float) id(wifi_disconnect_rssi));
           }
 
   on_disconnect:
