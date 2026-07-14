@@ -1996,9 +1996,10 @@ describe("epp-grid cell sizing (measured available width)", () => {
 	});
 
 	it("re-measures on a window resize and detaches the handler when removed", async () => {
-		// The ResizeObserver now covers both width and height, but it delivers no
-		// usable callback at all in the HA companion webview — so a window 'resize'
-		// hook is kept as a fallback that doesn't depend on it. It must detach on
+		// This is not a backstop for the ResizeObserver, which already covers both
+		// width and height on desktop via the host's own box. The window 'resize'
+		// hook exists to refresh the MOBILE height cap (window.innerHeight * 0.45),
+		// the one value nothing else in the component re-reads. It must detach on
 		// disconnect so a removed grid doesn't keep re-measuring.
 		const el = createGrid();
 		document.body.appendChild(el);

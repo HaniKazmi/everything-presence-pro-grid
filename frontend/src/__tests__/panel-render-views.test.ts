@@ -1205,8 +1205,9 @@ describe("_renderLiveOverview", () => {
 
 		// Expanding the log changes the height of a SIBLING BELOW the grid, so none
 		// of the grid's properties change and Lit never runs its update cycle. The
-		// grid's ResizeObserver is the primary trigger, but it delivers no usable
-		// callback in the HA companion webview — hence the explicit nudge.
+		// grid's own ResizeObserver would catch this correctly on its own — this
+		// explicit call is only a same-frame latency nudge, landing the re-fit in
+		// the paint the log opens in instead of one observer tick later.
 		a._showBackendDebugLog = true;
 		await el.updateComplete;
 		expect(spy).toHaveBeenCalled();

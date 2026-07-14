@@ -187,10 +187,16 @@ layout.
     — which claimed every pixel to the bottom of the window and knew nothing
     about what rendered below it, so the log could be pushed off-screen with no
     way to scroll to it (#338). There is no reserve constant to hand-sum any
-    more. Callers whose layout changes below the grid without changing any of
-    the grid's own properties must call the grid's `remeasure()` directly — Lit
-    won't otherwise re-render it. The grid also recomputes on add/remove
-    rows/columns, not only on save.
+    more. The grid's own `ResizeObserver` on its host is what makes this
+    correct: it watches the box the grid was actually given, so a caller's
+    layout change below the grid — the log expanding — shrinks that box and
+    the observer fires, with no caller involvement required. A caller can
+    additionally call the grid's `remeasure()` from its own `updated()`; that
+    is a synchronous, same-frame nudge, not a correctness requirement — it
+    lands the re-fit in the same paint as the layout change instead of one
+    observer tick later. A caller that forgets it still gets a correctly
+    sized map, just a tick later, never a broken one. The grid also
+    recomputes on add/remove rows/columns, not only on save.
 - **Known follow-up:** a transient re-measure flicker on the live↔editor view
     swap (the grid briefly grows then settles). Cosmetic; deferred — see the PR
     / handoff. Reverted experiments (hide-until-measured) did not fix it.

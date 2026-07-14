@@ -195,14 +195,16 @@ export class EppGrid extends LitElement {
 		}
 	}
 
-	// Deterministic, synchronous width measurement that doesn't depend on the
-	// ResizeObserver. In the HA companion webview the observer doesn't deliver a
-	// usable callback, leaving _availPx at 0 → fitCellPx snaps to the ceiling cell
-	// size and overflows. The host's own clientWidth tracks the constrained parent
+	// Synchronous measurement on the first update, rather than waiting for the
+	// ResizeObserver's first (async) callback: without it _availPx stays 0 for
+	// that first frame, and fitCellPx reads 0 as "unmeasured" and snaps to the
+	// ceiling cell size, so the grid would overflow before self-correcting a
+	// tick later. The host's own clientWidth tracks the constrained parent
 	// (`:host { display: flex }` — still block-level in layout terms, so the
 	// clientWidth reasoning is unchanged), so reading it here fits the grid to
-	// the viewport. Converges in 2 renders: clientWidth stays constant regardless
-	// of cell size, so the second pass sees |w - _availPx| < 1 and stops.
+	// the viewport from the first paint. Converges in 2 renders: clientWidth
+	// stays constant regardless of cell size, so the second pass sees
+	// |w - _availPx| < 1 and stops.
 	firstUpdated(): void {
 		this._measureAvail();
 		// Defense in depth: re-measure once after the next frame. A freshly-mounted
