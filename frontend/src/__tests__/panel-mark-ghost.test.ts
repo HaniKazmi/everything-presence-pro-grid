@@ -225,13 +225,19 @@ describe("_showTargetMenu", () => {
 
 		const card = el.shadowRoot!.querySelector(".grid-container");
 		expect(card).not.toBeNull();
-		// happy-dom has no layout, so hand the card a box to be offset by.
+		// happy-dom has no layout, so hand the card a box to be offset by — a BORDER
+		// box (what getBoundingClientRect reports) plus the 1px border the real card
+		// has. The menu is absolutely positioned, so its left/top resolve against the
+		// card's PADDING box: the border has to come off too, or every menu sits 1px
+		// down and right of its dot.
 		(card as HTMLElement).getBoundingClientRect = () =>
 			({ left: 100, top: 40 }) as DOMRect;
+		Object.defineProperty(card, "clientLeft", { value: 1 });
+		Object.defineProperty(card, "clientTop", { value: 1 });
 
 		a._showTargetMenu(makeClickDetail(1500, 2000, 800, 400));
-		expect(a._targetMenu.menuX).toBe(700);
-		expect(a._targetMenu.menuY).toBe(360);
+		expect(a._targetMenu.menuX).toBe(699);
+		expect(a._targetMenu.menuY).toBe(359);
 
 		el.remove();
 	});
@@ -242,6 +248,29 @@ describe("_showTargetMenu", () => {
 		a._showTargetMenu(makeClickDetail(1500, 2000, 800, 400));
 		expect(a._targetMenu.menuX).toBe(800);
 		expect(a._targetMenu.menuY).toBe(400);
+	});
+});
+
+describe("the target menu closes when its layout moves", () => {
+	it("closes on window resize, and stops listening once disconnected", async () => {
+		// The menu's px position is a snapshot of where the dot was when it opened, so
+		// a resize (HA sidebar collapse, rotation) leaves it anchored to nothing.
+		const el = createPanel();
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const a = el as any;
+
+		a._targetMenu = makeMenuDetail(1500, 2000, 0);
+		window.dispatchEvent(new Event("resize"));
+		expect(a._targetMenu).toBeNull();
+
+		// And the listener is removed with the panel — HA destroys and recreates this
+		// panel on rebuild and on its 5-minute hidden-suspend, so an asymmetric
+		// listener leaks one instance per cycle.
+		el.remove();
+		a._targetMenu = makeMenuDetail(1500, 2000, 0);
+		window.dispatchEvent(new Event("resize"));
+		expect(a._targetMenu).not.toBeNull();
 	});
 });
 

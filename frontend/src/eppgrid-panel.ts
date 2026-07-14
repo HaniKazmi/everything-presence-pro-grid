@@ -1079,6 +1079,7 @@ export class EPPGridPanel extends LitElement {
 		// beforeunload / hashchange / history interception are owned by
 		// _navGuard (hostConnected ran in super.connectedCallback() above).
 		window.addEventListener("keydown", this._onKeyDown);
+		window.addEventListener("resize", this._onWindowResize);
 		// Mobile breakpoint: editor switches to the bottom-sheet layout below
 		// 820px. Seed the flag from the current match, then track changes.
 		this._mql = window.matchMedia("(max-width: 819px)");
@@ -1097,8 +1098,24 @@ export class EPPGridPanel extends LitElement {
 		// beforeunload / hashchange / history-interception teardown is owned
 		// by _navGuard (hostDisconnected ran in super.disconnectedCallback()).
 		window.removeEventListener("keydown", this._onKeyDown);
+		window.removeEventListener("resize", this._onWindowResize);
 		this._mql?.removeEventListener("change", this._onMql);
 	}
+
+	/**
+	 * The target menu is anchored to a px SNAPSHOT of where its dot was when it
+	 * opened (see `_showTargetMenu`), so any layout change that moves the map out
+	 * from under it leaves it pointing at nothing — measured 216px/197px adrift and
+	 * entirely off-screen after a 1600x1000 -> 1440x560 resize. Layout changes that
+	 * come FROM a click (the log and heatmap toggles) are already handled: the
+	 * click-outside handler in `_renderLiveOverview` closes the menu on the very
+	 * click that toggles them. This covers the ones that don't — window resize, the
+	 * HA sidebar collapsing, device rotation. Close it: a transient popover should
+	 * not chase the layout around.
+	 */
+	private _onWindowResize = (): void => {
+		this._closeTargetMenu();
+	};
 
 	private _attachConnectionListeners(conn: any): void {
 		if (!conn || this._listeningConnection === conn) return;
@@ -3237,14 +3254,19 @@ export class EPPGridPanel extends LitElement {
 		// to ~300px away from the dot. Anchor to the dot instead: convert its centre
 		// from client space into the card's coordinate space, once, at open time (the
 		// menu is transient; it doesn't need to track later reflows).
+		//
+		// getBoundingClientRect() is the card's BORDER box, but an absolutely
+		// positioned child's left/top resolve against its containing block's PADDING
+		// box — and the card has a 1px border, so the raw rect is off by exactly that
+		// border in each axis. clientLeft/clientTop ARE that border width.
 		const card = this.shadowRoot?.querySelector(".grid-container");
 		const box = card?.getBoundingClientRect();
 		this._targetMenu = {
 			targetIndex: detail.targetIndex,
 			x: detail.x,
 			y: detail.y,
-			menuX: detail.clientX - (box?.left ?? 0),
-			menuY: detail.clientY - (box?.top ?? 0),
+			menuX: detail.clientX - (box?.left ?? 0) - (card?.clientLeft ?? 0),
+			menuY: detail.clientY - (box?.top ?? 0) - (card?.clientTop ?? 0),
 		};
 	}
 

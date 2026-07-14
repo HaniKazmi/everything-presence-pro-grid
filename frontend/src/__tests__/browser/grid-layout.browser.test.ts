@@ -361,10 +361,18 @@ describe.each(
 
 		// .target-menu is `transform: translate(-50%, 8px)` off its left/top, so a
 		// correctly anchored menu is centred on the dot and hangs 8px below it.
+		//
+		// The tolerance is deliberately far below 1px. The menu's left/top resolve
+		// against the card's PADDING box while getBoundingClientRect() reports its
+		// BORDER box, so forgetting the card's 1px border (clientLeft/clientTop) is a
+		// systematic 1px error in each axis — and a `< 3` tolerance hid exactly that.
+		// Measured error here is 0; Chromium lays out in 1/64px (0.0156) LayoutUnits,
+		// so 0.125 (8 of them) absorbs any sub-pixel rounding while still failing an
+		// off-by-one-border regression by 8x.
 		expect(
 			Math.abs(m.left + m.width / 2 - (d.left + d.width / 2)),
-		).toBeLessThan(3);
-		expect(Math.abs(m.top - (d.top + d.height / 2 + 8))).toBeLessThan(3);
+		).toBeLessThan(0.125);
+		expect(Math.abs(m.top - (d.top + d.height / 2 + 8))).toBeLessThan(0.125);
 
 		// And it is actually on screen — a menu positioned off the card is a menu
 		// the user cannot click.
@@ -384,6 +392,29 @@ describe.each(
 		);
 		expect(cs.overflowX).toBe("visible");
 		expect(cs.overflowY).toBe("visible");
+	});
+});
+
+describe("the target menu does not outlive the layout it was anchored to", () => {
+	it("closes on window resize", async () => {
+		// The px anchor is a SNAPSHOT of where the dot was when the menu opened. A
+		// layout change with no click behind it — window resize, the HA sidebar
+		// collapsing, device rotation — moves the map out from under the menu, which
+		// then points at nothing: measured 216px/197px adrift and entirely OFF-SCREEN
+		// across this exact resize. (Layout changes that DO come from a click — the
+		// log and heatmap toggles — are already covered: the click-outside handler
+		// closes the menu on the very click that toggles them.) A transient popover
+		// should not chase the layout; it should go away.
+		await page.viewport(1600, 1000);
+		const panel = await mountLivePanel();
+		const dot = await showTargetAt(panel, 1500, 2000);
+
+		dot.click();
+		await settle(panel);
+		expect(panel.shadowRoot!.querySelector(".target-menu")).not.toBeNull();
+
+		await resizeTo(panel, 1440, 560);
+		expect(panel.shadowRoot!.querySelector(".target-menu")).toBeNull();
 	});
 });
 
