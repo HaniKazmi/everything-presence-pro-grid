@@ -481,12 +481,40 @@ export const layoutStyles = css`
   /* Desktop editor/live: frame the grid in a full-width "expansion area" card.
      The grid centres within it, the white surface shows the space the grid can
      use, and the detection log below lines up with the card's left edge. Reset
-     on mobile (the grid fills the screen there — no card). */
+     on mobile (the grid fills the screen there — no card).
+
+     The card is also the column's flex REMAINDER: whatever the heatmap toggle and
+     the detection log below it don't use. This is what bounds the map — epp-grid
+     measures the box it's given (its own clientHeight) instead of guessing at
+     "viewport bottom minus a reserve constant", so anything a caller renders below
+     the grid simply takes its space and the map shrinks to fit (#338). No constant
+     to hand-sum, and no new scroll container anywhere — that's the tell the model
+     is right. min-height:0 lets it shrink below its content.
+     (flex/min-height live on THIS rule rather than in a second rule with the same
+     selector, so the cssText regression guards — which read the FIRST
+     .editor-shell .grid-container rule they find — see one card rule, not two.)
+     Mobile resets this (see the @media block): there the column is content-sized,
+     so a flex-basis:0 card would collapse to nothing. */
   .editor-shell .grid-container {
     background: var(--epp-surface, var(--card-background-color, #fff));
     border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
     border-radius: var(--epp-radius-lg, 16px);
     padding: var(--epp-space-4, 16px);
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* Hand the box down to the element (:host is display:flex, so it centres the map
+     inside it). A percentage height resolves here because the card's own height is
+     flex-resolved (definite), NOT content-derived — which is the whole point: if
+     <epp-grid> had no definite height, its clientHeight would BE the map's content
+     height and the budget would be a function of the map it produced (the map could
+     then shrink but never grow back). Against the content-sized mobile container
+     this resolves to \`auto\`, so the rule is desktop-only in effect. The overview
+     CARD has its own stylesheet and is deliberately NOT dragged into a height:100%
+     fill chain — that caused scroll-driven resize oscillation (see eppgrid-card.ts). */
+  .grid-container > epp-grid {
+    height: 100%;
   }
 
   .sidebar-title {
@@ -603,6 +631,12 @@ export const layoutStyles = css`
       background: none;
       border: none;
       padding: 0;
+      /* And it is CONTENT-sized here, not the column's remainder: mobile's
+         .grid-column is flex:0 0 auto, so a flex-basis:0 child contributes a
+         hypothetical main size of 0 and the card would collapse. Mobile keeps
+         capHeightToHalfViewport (see epp-grid._measureAvail) — measuring a
+         content-sized container would be circular. */
+      flex: 0 0 auto;
     }
     /* The hand-rolled sub-tabs aren't epp-* primitives, so they don't pick up
        the panel's mobile control height on their own. Size them to it (44px
@@ -1130,6 +1164,21 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	updated(changedProps: PropertyValues): void {
+		// Expanding/collapsing the detection log changes the height of a SIBLING
+		// BELOW <epp-grid>: none of the grid's properties change, so Lit never runs
+		// its update cycle and it never re-measures its box. The grid's own
+		// ResizeObserver is the primary trigger, but it is documented not to deliver
+		// a usable callback in the HA companion webview — so nudge it explicitly.
+		// Reading layout here is safe and correct: updated() runs after the DOM is
+		// written, so the measure sees the new layout.
+		if (
+			changedProps.has("_showDebugLog") ||
+			changedProps.has("_showBackendDebugLog")
+		) {
+			for (const grid of this.shadowRoot?.querySelectorAll("epp-grid") ?? []) {
+				grid.remeasure();
+			}
+		}
 		if (changedProps.has("hass") && this.hass) {
 			this._deviceCtrl.hass = this.hass;
 			this._flasherCtrl.hass = this.hass;
@@ -2176,7 +2225,15 @@ export class EPPGridPanel extends LitElement {
 
     .debug-log-container {
       margin-top: 4px;
-      max-height: 200px;
+      /* A FIXED height, not a growth cap: under a ceiling the log grew line by
+         line as events streamed in, and under container measurement every growth
+         step would resize the map. 6 lines × 16.5px (11px monospace × 1.5
+         line-height) = 99px; the box is content-box, so its 6px padding sits
+         OUTSIDE this. Six lines is what we want: the old 200px box fit ~12, which
+         is dead space when the room is quiet — and every pixel of it comes out of
+         the map. (The regression guard greps this rule for the growth-cap
+         property, so don't name it here.) */
+      height: 99px;
       overflow-y: auto;
       overflow-x: hidden;
       background: var(--card-background-color, #1e1e1e);
@@ -2331,8 +2388,9 @@ export class EPPGridPanel extends LitElement {
       }
       .debug-log-container {
         /* ~2 log entries (≈4 wrapped lines) before it scrolls — keeps the log
-           from shoving the rest of the panel down on a phone. */
-        max-height: 76px;
+           from shoving the rest of the panel down on a phone. Fixed, not a
+           growth cap, for the same reason as the desktop rule. */
+        height: 76px;
       }
     }
 

@@ -347,6 +347,62 @@ describe("layout styles", () => {
 		expect(resetIdx).toBeGreaterThan(mediaIdx);
 	});
 
+	it("makes the grid card the column's flex remainder", () => {
+		// The map's height budget IS this box (epp-grid measures its own
+		// clientHeight). flex:1 hands it whatever the heatmap toggle and the
+		// detection log below it don't use; min-height:0 lets it shrink below its
+		// content instead of pushing the log off the bottom of the viewport (#338).
+		const match = layoutCss.match(
+			/\.editor-shell \.grid-container\s*\{([^}]*)\}/,
+		);
+		expect(match).not.toBeNull();
+		expect(match![1]).toMatch(/flex:\s*1/);
+		expect(match![1]).toMatch(/min-height:\s*0/);
+	});
+
+	it("hands the measured box down to <epp-grid>", () => {
+		const match = layoutCss.match(/\.grid-container > epp-grid\s*\{([^}]*)\}/);
+		expect(match).not.toBeNull();
+		expect(match![1]).toMatch(/height:\s*100%/);
+	});
+
+	it("resets the card to content-sized on mobile, AFTER the base rule", () => {
+		// Mobile's .grid-column is flex:0 0 auto (content-sized), so a flex-basis:0
+		// card contributes a hypothetical main size of 0 and COLLAPSES. Mobile keeps
+		// capHeightToHalfViewport instead of container measurement. The override is
+		// dead if it precedes the base rule — @media does not raise specificity.
+		const baseIdx = layoutCss.indexOf(".editor-shell .grid-container {");
+		const mediaIdx = layoutCss.indexOf("@media (max-width: 819px)");
+		expect(baseIdx).toBeGreaterThan(-1);
+		expect(mediaIdx).toBeGreaterThan(baseIdx);
+		const overrideIdx = layoutCss.indexOf(
+			".editor-shell .grid-container {",
+			mediaIdx,
+		);
+		expect(overrideIdx).toBeGreaterThan(mediaIdx);
+		const rule = layoutCss.slice(
+			overrideIdx,
+			layoutCss.indexOf("}", overrideIdx),
+		);
+		expect(rule).toMatch(/flex:\s*0 0 auto/);
+	});
+
+	it("gives the detection log a FIXED height, not a max-height", () => {
+		// With max-height the log grew line by line as events streamed in — and under
+		// container measurement every growth step would resize the map. Fixed at 6
+		// lines (6 x 16.5px; content-box, so the 6px padding sits outside it).
+		const styles = (
+			customElements.get("eppgrid-panel") as typeof HTMLElement & {
+				styles: { cssText: string }[];
+			}
+		).styles;
+		const css = styles.map((s) => s.cssText).join("\n");
+		const idx = css.indexOf(".debug-log-container {");
+		const rule = css.slice(idx, css.indexOf("}", idx));
+		expect(rule).toMatch(/height:\s*99px/);
+		expect(rule).not.toMatch(/max-height/);
+	});
+
 	it("sizes the mobile sidebar sub-tabs to the panel's touch-target control height", () => {
 		// The zones/overlays/furniture sub-tabs are hand-rolled <button class="sidebar-tab">,
 		// not epp-* primitives, so they don't inherit the panel's mobile 44px control
