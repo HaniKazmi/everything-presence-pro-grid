@@ -24,6 +24,67 @@ esphome:
   name: ${name}
   friendly_name: ${friendly_name}
   name_add_mac_suffix: True
+  # Pulls in the disconnect-reason table, the rollover-safe downtime helper, and
+  # (on-device only) the ESP-IDF wifi/event headers the on_boot lambda below
+  # needs. ESPHome does not include esp_wifi.h transitively on the ESP32.
+  includes:
+    - ../lib/epp_component_helpers/include/epp_wifi_diag.h
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            // WiFi drop diagnostics (issue #291): a device that falls off WiFi
+            // can't tell us so while it is off WiFi, and tethering it over USB
+            // moves it away from the spot where it fails. So it records the drop
+            // and publishes once the link is back.
+            //
+            // ESPHome logs the disconnect reason but exposes no getter for it,
+            // and its wifi_signal sensor polls once a minute — up to 60s stale by
+            // the time the link drops. The raw IDF event carries both the reason
+            // code and the RSSI at the instant of the drop.
+            //
+            // This handler runs in the IDF event task, NOT the ESPHome loop, so
+            // it may only touch plain globals — calling publish_state() here
+            // would reach into the single-threaded loop from another task. The
+            // wifi.on_disconnect trigger below does the publishing.
+            //
+            // It also must NOT count: the event fires again on every failed
+            // reconnect attempt while the device is down, so counting here would
+            // measure retries rather than drops. The trigger counts, because it
+            // fires only on the connected→disconnected edge.
+            esp_event_handler_instance_register(
+                WIFI_EVENT, WIFI_EVENT_STA_DISCONNECTED,
+                [](void *, esp_event_base_t, int32_t, void *event_data) {
+                  auto *ev = static_cast<wifi_event_sta_disconnected_t *>(event_data);
+                  id(wifi_disconnect_reason_code) = ev->reason;
+                  id(wifi_disconnect_rssi) = ev->rssi;
+                  id(wifi_disconnect_at_ms) = esphome::millis();
+                },
+                nullptr, nullptr);
+
+globals:
+  # Written by the IDF event handler above, read by the wifi triggers below.
+  # Not restored across reboots: a disconnect count that survived a reboot would
+  # be indistinguishable from one that didn't, and Uptime already tells us
+  # whether the device restarted.
+  - id: wifi_disconnect_total
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
+  - id: wifi_disconnect_reason_code
+    type: uint8_t
+    restore_value: false
+    initial_value: '0'
+  - id: wifi_disconnect_rssi
+    type: int8_t
+    restore_value: false
+    initial_value: '0'
+  # millis() at the drop. 0 = never dropped, which is what stops the first
+  # connect after boot from reporting an outage that never happened.
+  - id: wifi_disconnect_at_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: '0'
 
 update:
   - platform: http_request
@@ -40,10 +101,32 @@ wifi:
   on_connect:
     then:
       - script.execute: control_leds
+      # Downtime can only be computed on the way back up. Skipped when the
+      # device has never dropped (at_ms == 0), so a fresh boot doesn't publish a
+      # phantom outage.
+      - lambda: |-
+          if (id(wifi_disconnect_at_ms) != 0) {
+            const uint32_t downtime_ms =
+                epp::wifi_downtime_ms(esphome::millis(), id(wifi_disconnect_at_ms));
+            id(wifi_downtime_sensor).publish_state((float) downtime_ms / 1000.0f);
+          }
 
   on_disconnect:
     then:
       - script.execute: control_leds
+      # Fires once per connected→disconnected transition (not per retry), so
+      # this is a count of real drops. Published while the device is offline:
+      # ESPHome holds the state and ships it in the initial-state burst when the
+      # API reconnects, which is what makes these survive the outage they
+      # describe.
+      - lambda: |-
+          // Keep each `id(x).method()` on one line: ESPHome rewrites that form
+          // textually before compiling, and a line break between the id() and
+          // the `.` defeats the rewrite (the lambda then sees a raw pointer).
+          id(wifi_disconnect_total)++;
+          id(wifi_disconnect_count_sensor).publish_state((float) id(wifi_disconnect_total));
+          id(wifi_disconnect_reason_sensor).publish_state(epp::wifi_disconnect_reason_str(id(wifi_disconnect_reason_code)));
+          id(wifi_disconnect_rssi_sensor).publish_state((float) id(wifi_disconnect_rssi));
 
 sensor:
   # RSSI as a diagnostic entity so a device dropping off WiFi can be diagnosed
@@ -58,6 +141,76 @@ sensor:
     id: wifi_signal_db
     entity_category: diagnostic
     update_interval: 60s
+
+  # The three sensors below (and the reason text sensor) are published only from
+  # the wifi connect/disconnect triggers — `update_interval: never` because
+  # nothing they report changes except when the link does. A healthy device
+  # sends nothing at all, which is what lets these ship enabled by default on a
+  # device that is already streaming BLE proxy advertisements.
+
+  # The discriminator. If HA keeps losing the device while this stays flat, the
+  # WiFi association held and the fault is above WiFi — in the IP stack or in
+  # our own API reconnect. Nothing we shipped before this could tell us that,
+  # which is why issue #291 ran for three weeks on guesses.
+  - platform: template
+    name: "WiFi Disconnects"
+    id: wifi_disconnect_count_sensor
+    entity_category: diagnostic
+    icon: "mdi:wifi-off"
+    accuracy_decimals: 0
+    # Since-boot counter: resets to 0 on reboot, and total_increasing is the
+    # state class that tells HA to treat that reset as a reset, not as a
+    # negative delta.
+    state_class: total_increasing
+    update_interval: never
+
+  # RSSI at the instant of the drop. Distinguishes "the signal collapsed" from
+  # "the signal was fine and the AP kicked us anyway" — which the WiFi Signal
+  # sensor above cannot, since at 60s it can be a minute stale by the time the
+  # link goes.
+  - platform: template
+    name: "WiFi Disconnect Signal"
+    id: wifi_disconnect_rssi_sensor
+    entity_category: diagnostic
+    device_class: signal_strength
+    unit_of_measurement: dBm
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+  # How long the radio was actually gone. If WiFi returns in 2s but HA stays
+  # unavailable for 30s, the outage is our reconnect path, not the network.
+  - platform: template
+    name: "WiFi Downtime"
+    id: wifi_downtime_sensor
+    entity_category: diagnostic
+    device_class: duration
+    unit_of_measurement: s
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+text_sensor:
+  # Why the link went away: an AP-initiated kick ("Association Leave", "Auth
+  # Expire") means the router made the decision; "Beacon Timeout" means nobody
+  # kicked us and the device simply stopped hearing the AP. Those point at
+  # completely different fixes, and ESPHome only ever logs this — it exposes no
+  # entity, so it is invisible to a user who can't tether the device.
+  - platform: template
+    name: "WiFi Disconnect Reason"
+    id: wifi_disconnect_reason_sensor
+    entity_category: diagnostic
+    icon: "mdi:wifi-alert"
+    update_interval: never
+
+  # Which AP the device is associated with. On a mesh, a BSSID that changes at
+  # every drop means the router is steering the device between nodes — which
+  # from HA's side is indistinguishable from a firmware fault.
+  - platform: wifi_info
+    bssid:
+      name: "WiFi BSSID"
+      id: wifi_bssid_sensor
+      entity_category: diagnostic
 
 improv_serial:
   next_url: http://{{ip_address}}

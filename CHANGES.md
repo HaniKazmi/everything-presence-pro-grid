@@ -6,6 +6,21 @@ firmware downloads, see the
 
 ## v1.6.0 — unreleased
 
+### New features
+
+- **WiFi drop diagnostics.** If a device keeps going offline while never
+    rebooting, the **WiFi Signal** reading alone often can't explain it — plenty
+    of drops happen on a strong signal because the *router* ended the
+    connection. WiFi builds now record what happened at each drop and report it
+    once the device is back online: **WiFi Disconnects** (how many times it has
+    lost WiFi since booting), **WiFi Disconnect Reason** (why, the last time),
+    **WiFi Disconnect Signal** (the signal strength at that exact moment),
+    **WiFi Downtime** (how long the outage lasted), and **WiFi BSSID** (which
+    access point it is on — useful on a mesh, where the router may be moving the
+    device between nodes). Nothing needs to be running or connected to catch a
+    drop, and they only update when the connection actually changes. See
+    [WiFi keeps dropping](https://clintongormley.github.io/everything-presence-pro-grid/user-guide/troubleshooting/#wifi-keeps-dropping).
+
 ### Fixes
 
 - **The dashboard card recovers on its own after a connection drop.** If a
