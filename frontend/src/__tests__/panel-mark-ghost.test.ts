@@ -252,6 +252,92 @@ describe("_showTargetMenu", () => {
 });
 
 describe("the target menu closes when its layout moves", () => {
+	it("closes when its CARD's box changes with no window resize, and disconnects on unmount", async () => {
+		// Docking/undocking the HA sidebar is an IN-PAGE layout change: the panel's
+		// column reflows and the map moves, but NO window 'resize' event fires (HA's
+		// own Lovelace layout uses a ResizeObserver for exactly this reason). The
+		// window hook below therefore cannot cover it — the menu would stay pinned to
+		// a px snapshot of where the dot used to be. So watch the box the menu is
+		// actually anchored to: `.grid-container`, its positioning context.
+		//
+		// happy-dom ships a ResizeObserver that never invokes its callback (it has no
+		// layout engine), so swap in one we can drive by hand. Restored in `finally`.
+		type Rec = { cb: () => void; targets: Element[]; disconnected: boolean };
+		const instances: Rec[] = [];
+		const RealRO = globalThis.ResizeObserver;
+		globalThis.ResizeObserver = class {
+			rec: Rec;
+			constructor(cb: () => void) {
+				this.rec = { cb, targets: [], disconnected: false };
+				instances.push(this.rec);
+			}
+			observe(target: Element) {
+				this.rec.targets.push(target);
+			}
+			unobserve() {}
+			disconnect() {
+				this.rec.disconnected = true;
+			}
+		} as unknown as typeof ResizeObserver;
+
+		try {
+			const el = createPanel();
+			// createPanel()'s bare subscribeMessage stub never answers the device-list
+			// subscription, and the real connectedCallback -> _initialize() (which an
+			// appendChild DOES run) then copies the controller's empty device list back
+			// over the seed — the panel renders the "no devices" view and there is no
+			// card to observe. Answer the subscription for real instead.
+			const device = {
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test Sensor",
+				host: null,
+				available: true,
+				configured: true,
+				firmware_status: "compatible",
+			};
+			(el as any).hass = {
+				callWS: vi.fn().mockResolvedValue({}),
+				connection: {
+					subscribeMessage: vi.fn(
+						(cb: (msg: unknown) => void, req: { type: string }) => {
+							if (req.type === "eppgrid/subscribe_device_list") {
+								cb({ devices: [device] });
+							}
+							return Promise.resolve(() => {});
+						},
+					),
+				},
+			};
+			document.body.appendChild(el);
+			await el.updateComplete;
+			await new Promise((r) => setTimeout(r, 0)); // let _initialize settle
+			await el.updateComplete;
+			const a = el as any;
+
+			const card = el.shadowRoot!.querySelector(".grid-container");
+			expect(card).not.toBeNull();
+			// <epp-grid> observes itself too, so pick out the observer watching the
+			// CARD specifically — asserting on "some observer" would prove nothing.
+			const cardObs = instances.find((i) =>
+				i.targets.includes(card as Element),
+			);
+			expect(cardObs).toBeDefined();
+
+			a._targetMenu = makeMenuDetail(1500, 2000, 0);
+			(cardObs as Rec).cb(); // the card's box changed; the window's did not
+			expect(a._targetMenu).toBeNull();
+
+			// And the observer goes away with the panel — HA destroys and recreates
+			// this panel on rebuild and on its 5-minute hidden-suspend, so an observer
+			// left connected leaks one instance (and its closure over the panel) per
+			// cycle. Symmetric with the window listener's teardown below.
+			el.remove();
+			expect((cardObs as Rec).disconnected).toBe(true);
+		} finally {
+			globalThis.ResizeObserver = RealRO;
+		}
+	});
+
 	it("closes on window resize, and stops listening once disconnected", async () => {
 		// The menu's px position is a snapshot of where the dot was when it opened, so
 		// a resize (HA sidebar collapse, rotation) leaves it anchored to nothing.

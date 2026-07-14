@@ -1100,22 +1100,76 @@ export class EPPGridPanel extends LitElement {
 		window.removeEventListener("keydown", this._onKeyDown);
 		window.removeEventListener("resize", this._onWindowResize);
 		this._mql?.removeEventListener("change", this._onMql);
+		// Symmetric with the attach in updated() — HA destroys and recreates this
+		// panel on every rebuild and on the 5-minute hidden-suspend, so an observer
+		// left connected leaks an instance (and its callback's closure over `this`)
+		// per cycle.
+		this._cardRo?.disconnect();
+		this._cardRo = undefined;
+		this._cardRoTarget = undefined;
 	}
 
 	/**
 	 * The target menu is anchored to a px SNAPSHOT of where its dot was when it
 	 * opened (see `_showTargetMenu`), so any layout change that moves the map out
 	 * from under it leaves it pointing at nothing — measured 216px/197px adrift and
-	 * entirely off-screen after a 1600x1000 -> 1440x560 resize. Layout changes that
-	 * come FROM a click (the log and heatmap toggles) are already handled: the
-	 * click-outside handler in `_renderLiveOverview` closes the menu on the very
-	 * click that toggles them. This covers the ones that don't — window resize, the
-	 * HA sidebar collapsing, device rotation. Close it: a transient popover should
-	 * not chase the layout around.
+	 * entirely off-screen across a 1600x1000 -> 1440x560 resize. A transient popover
+	 * should not chase the layout around; it should go away.
+	 *
+	 * The menu is anchored to the CARD (`.grid-container` is its positioning
+	 * context), so the thing to watch is THE CARD'S BOX, not the window. That is
+	 * what `_cardRo` below does, and it is the general mechanism: it fires for every
+	 * layout change that actually moves the anchor, whatever the cause.
+	 *
+	 * Coverage, precisely:
+	 *  - Changes that come FROM a click (the log and heatmap toggles): already
+	 *    handled by the click-outside handler in `_renderLiveOverview`, which closes
+	 *    the menu on the very click that toggles them.
+	 *  - IN-PAGE layout changes with no window resize behind them — docking or
+	 *    undocking the HA sidebar, an HA theme/density change, the panel's own
+	 *    column reflowing: these fire NO `window.resize` event at all (HA's own
+	 *    Lovelace layout uses a ResizeObserver for exactly this reason). `_cardRo`
+	 *    is the only thing that catches them.
+	 *  - Window resize and device rotation: `_cardRo` catches these too whenever the
+	 *    card's box actually changes, which is the case that matters. The
+	 *    `window.resize` hook below is kept as a belt-and-braces trigger for the
+	 *    residual case where the viewport changes but the card's box happens not to
+	 *    (e.g. a mobile URL bar collapsing over a content-sized column) — the menu is
+	 *    still anchored to a viewport-relative px snapshot there.
+	 *
+	 * Both paths land on `_closeTargetMenu`, which is idempotent and free when the
+	 * menu is already closed (`_targetMenu` is already null → Lit sees no change and
+	 * schedules no update), so the two triggers double-firing costs nothing.
 	 */
 	private _onWindowResize = (): void => {
 		this._closeTargetMenu();
 	};
+
+	/**
+	 * Observes the target menu's anchor box (`.grid-container`). See the comment on
+	 * `_onWindowResize` for why the window alone is not enough.
+	 *
+	 * Attached in `updated()` (the card only exists once a view that renders it has
+	 * rendered) and disconnected in `disconnectedCallback()`. The symmetry is
+	 * load-bearing: HA destroys and recreates this panel on every dashboard rebuild
+	 * and after the 5-minute hidden-suspend, so an observer left connected would
+	 * leak an instance per cycle.
+	 */
+	private _cardRo?: ResizeObserver;
+	private _cardRoTarget?: Element;
+
+	private _syncCardObserver(): void {
+		if (typeof ResizeObserver === "undefined") return;
+		const card = this.shadowRoot?.querySelector(".grid-container") ?? undefined;
+		if (card === this._cardRoTarget) return;
+		this._cardRo?.disconnect();
+		this._cardRoTarget = card;
+		if (!card) return;
+		this._cardRo ??= new ResizeObserver(() => {
+			this._closeTargetMenu();
+		});
+		this._cardRo.observe(card);
+	}
 
 	private _attachConnectionListeners(conn: any): void {
 		if (!conn || this._listeningConnection === conn) return;
@@ -1195,13 +1249,21 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	updated(changedProps: PropertyValues): void {
+		// Track the target menu's anchor box across view swaps: `.grid-container` is
+		// created and destroyed as views change, so re-point the observer at whatever
+		// card is in the DOM now. Idempotent — it early-returns when the element
+		// hasn't changed, so it does NOT re-observe (and so does not re-trigger the
+		// observer's initial delivery) on the update that opens the menu.
+		this._syncCardObserver();
 		// Expanding/collapsing the detection log changes the height of a SIBLING
 		// BELOW <epp-grid>: none of the grid's properties change, so Lit never runs
 		// its update cycle and it never re-measures its box. The grid's own
-		// ResizeObserver is the primary trigger, but it is documented not to deliver
-		// a usable callback in the HA companion webview — so nudge it explicitly.
-		// Reading layout here is safe and correct: updated() runs after the DOM is
-		// written, so the measure sees the new layout.
+		// ResizeObserver already covers this correctly — but its callback is
+		// delivered on a later tick, so the map would visibly re-fit a frame after
+		// the log opened. Nudging it here re-fits it in the SAME frame: updated()
+		// runs after the DOM is written, so the measure sees the new layout, and
+		// remeasure() is synchronous. This is a latency optimisation over the
+		// observer, not a substitute for it.
 		if (
 			changedProps.has("_showDebugLog") ||
 			changedProps.has("_showBackendDebugLog")
