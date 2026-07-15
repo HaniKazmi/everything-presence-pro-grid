@@ -674,6 +674,24 @@ describe("FlasherController", () => {
 			);
 		});
 
+		it("startOtaAll starts an OTA for each mac", () => {
+			const spy = vi.spyOn(ctrl, "startOta").mockResolvedValue(undefined);
+
+			ctrl.startOtaAll(["AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:02"]);
+
+			expect(spy).toHaveBeenCalledTimes(2);
+			expect(spy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:01");
+			expect(spy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:02");
+		});
+
+		it("startOtaAll with an empty list starts nothing", () => {
+			const spy = vi.spyOn(ctrl, "startOta").mockResolvedValue(undefined);
+
+			ctrl.startOtaAll([]);
+
+			expect(spy).not.toHaveBeenCalled();
+		});
+
 		it("updates progress on subscription events", async () => {
 			await ctrl.startOta("AA:BB:CC:DD:EE:01");
 

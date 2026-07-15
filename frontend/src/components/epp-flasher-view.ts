@@ -63,6 +63,14 @@ const flasherStyles = css`
     color: var(--ha-card-header-color, var(--epp-text, var(--primary-text-color, #212121)));
   }
 
+  .card-header-split {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--epp-space-2, 8px);
+  }
+
   .card-content {
     padding: var(--epp-space-4, 16px);
   }
@@ -531,6 +539,33 @@ export class EppFlasherView extends LitElement {
 		);
 	}
 
+	/** A device the "Upgrade all" bulk action (and the per-row Update button)
+	 * should offer to upgrade: eppgrid firmware, with no OTA entry yet this
+	 * session (any `otaStates[mac]` — updating, succeeded, or errored — excludes
+	 * it, since those rows show their own progress/retry indicator instead), and
+	 * a newer version available. */
+	private _isUpgradeable(device: FlashableDevice): boolean {
+		return (
+			device.firmware_type === "eppgrid" &&
+			!this.otaStates[device.mac] &&
+			(device.update_available || device.firmware_status === "firmware_behind")
+		);
+	}
+
+	private _upgradeableDevices(): FlashableDevice[] {
+		return this.flashableDevices.filter((d) => this._isUpgradeable(d));
+	}
+
+	private _dispatchUpdateAll(): void {
+		this.dispatchEvent(
+			new CustomEvent("update-all-firmware", {
+				detail: { macs: this._upgradeableDevices().map((d) => d.mac) },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	}
+
 	// --- OTA error popover dismissal -------------------------------------
 	// Global listeners live only while the popover is open: Escape, a
 	// pointerdown outside the error indicator, or a scroll dismisses it
@@ -963,9 +998,7 @@ export class EppFlasherView extends LitElement {
 
 		const action = ota
 			? this._renderOtaIndicator(device)
-			: isEppgrid &&
-					(device.update_available ||
-						device.firmware_status === "firmware_behind")
+			: this._isUpgradeable(device)
 				? html`<epp-button
 							variant="primary"
 							@click=${() => this._dispatchUpdateFirmware(device)}
@@ -999,9 +1032,20 @@ export class EppFlasherView extends LitElement {
 						: nothing
 				}
         <ha-card>
-          <div class="card-header">
-            ${this.localize("flasher.devices_on_network")}
-            ${this.integrationVersion ? html`<span class="integration-version">v${this.integrationVersion}</span>` : nothing}
+          <div class="card-header card-header-split">
+            <span>
+              ${this.localize("flasher.devices_on_network")}
+              ${this.integrationVersion ? html`<span class="integration-version">v${this.integrationVersion}</span>` : nothing}
+            </span>
+            ${
+							this.flashableDevices.some((d) => this._isUpgradeable(d))
+								? html`<epp-button
+										class="upgrade-all-btn"
+										variant="primary"
+										@click=${() => this._dispatchUpdateAll()}
+									>${this.localize("flasher.update_all")}</epp-button>`
+								: nothing
+						}
           </div>
           <div class="card-content">
             ${
