@@ -327,10 +327,11 @@ export const headerStyles = css`
        post-layout re-measure as defence in depth; this rule is what stops the known
        case from ever needing it.)
 
-       Intentionally unscoped (not desktop-only): harmless on mobile, where the grid
-       sizes off the viewport height rather than its container. Must stay on this
-       (cascade-winning) .panel-header rule; see the root cause + cascade guard in
-       panel-layout.test.ts. */
+       Intentionally unscoped (not desktop-only): the same reserve is load-bearing on
+       mobile too, since the grid container-measures there as well now (#338) — a
+       briefly-0px header inflates the grid's measured box on mobile just as on
+       desktop. Must stay on this (cascade-winning) .panel-header rule; see the root
+       cause + cascade guard in panel-layout.test.ts. */
     min-height: 56px;
   }
 

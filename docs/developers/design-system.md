@@ -171,10 +171,10 @@ layout.
     detection log below lines up with the card's left edge. The mobile `@media`
     resets it to `background/border/padding: none` (the grid fills the screen
     there — no card).
-- **Desktop grid sizing** (`epp-grid.ts`, gated on `!capHeightToHalfViewport`):
-    cell cap 48px (vs 32 mobile), grid cap 960px (vs `maxGridPx`), and the grid
-    is height-bounded by **container measurement**, not the viewport:
-    `<epp-grid>` reads the box its container actually gives it
+- **Grid sizing** (`epp-grid.ts`): the `mobile` flag selects only the cell-size
+    tier — desktop cell cap 48px / grid cap 960px, mobile 32px / `maxGridPx`.
+    Both desktop **and** mobile are height-bounded by **container measurement**,
+    not the viewport: `<epp-grid>` reads the box its container actually gives it
     (`this.clientHeight`, less the dimensions caption rendered inside it), never
     `window.innerHeight`. The panel makes that box definite —
     `.editor-shell .grid-container` is `flex: 1; min-height: 0` of the
@@ -186,17 +186,17 @@ layout.
     `innerHeight − top − DESKTOP_HEIGHT_RESERVE_PX`, a hand-tuned 130px reserve
     — which claimed every pixel to the bottom of the window and knew nothing
     about what rendered below it, so the log could be pushed off-screen with no
-    way to scroll to it (#338). There is no reserve constant to hand-sum any
-    more. The grid's own `ResizeObserver` on its host is what makes this
-    correct: it watches the box the grid was actually given, so a caller's
-    layout change below the grid — the log expanding — shrinks that box and the
-    observer fires, with no caller involvement required. A caller can
-    additionally call the grid's `remeasure()` from its own `updated()`; that is
-    a synchronous, same-frame nudge, not a correctness requirement — it lands
-    the re-fit in the same paint as the layout change instead of one observer
-    tick later. A caller that forgets it still gets a correctly sized map, just
-    a tick later, never a broken one. The grid also recomputes on add/remove
-    rows/columns, not only on save.
+    way to scroll to it (#338). There is no reserve constant to hand-sum any more.
+    The grid's own `ResizeObserver` on its host is what makes this correct: it
+    watches the box the grid was actually given, so a caller's layout change
+    below the grid — the log expanding — shrinks that box and the observer
+    fires, with no caller involvement required. A caller can additionally call
+    the grid's `remeasure()` from its own `updated()`; that is a synchronous,
+    same-frame nudge, not a correctness requirement — it lands the re-fit in the
+    same paint as the layout change instead of one observer tick later. A caller
+    that forgets it still gets a correctly sized map, just a tick later, never a
+    broken one. The grid also recomputes on add/remove rows/columns, not only on
+    save.
 - **Known follow-up:** a transient re-measure flicker on the live↔editor view
     swap (the grid briefly grows then settles). Cosmetic; deferred — see the PR
     / handoff. Reverted experiments (hide-until-measured) did not fix it.

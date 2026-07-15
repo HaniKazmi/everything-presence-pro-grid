@@ -492,8 +492,10 @@ export const layoutStyles = css`
      is right (overflow stays visible: the target menu hangs over the card's edge,
      and overflow-y:auto would silently force overflow-x:auto and clip it).
      min-height:0 lets it shrink below its content.
-     Mobile resets this (see the @media block): there the column is content-sized,
-     so a flex-basis:0 card would collapse to nothing. */
+     Mobile keeps this flex:1 remainder (see the @media block) — the mobile column
+     is flex-bounded (capped at 45vh), not content-sized, so the card fills it and
+     is the box <epp-grid> measures there too; the @media block only strips the card
+     chrome and adds a legibility floor. */
   .editor-shell .grid-container {
     background: var(--epp-surface, var(--card-background-color, #fff));
     border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
