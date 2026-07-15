@@ -343,6 +343,22 @@ describe("epp-flasher-view inline event handlers", () => {
 		expect(spy).toHaveBeenCalledWith("aa:bb:cc");
 	});
 
+	it("@update-all-firmware calls flasherCtrl.startOta once per mac", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const spy = vi.spyOn(ctrl, "startOta").mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("update-all-firmware", {
+				detail: { macs: ["aa:bb:cc", "dd:ee:ff"] },
+				bubbles: true,
+			}),
+		);
+
+		expect(spy).toHaveBeenCalledTimes(2);
+		expect(spy).toHaveBeenCalledWith("aa:bb:cc");
+		expect(spy).toHaveBeenCalledWith("dd:ee:ff");
+	});
+
 	it("@retry-ota dismisses the error then starts a fresh OTA", () => {
 		// "Retry" used to only clear the error — the user needed a second
 		// click on "Update" to actually retry. The handler must chain

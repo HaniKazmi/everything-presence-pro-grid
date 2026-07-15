@@ -2773,6 +2773,11 @@ export class EPPGridPanel extends LitElement {
 					@update-firmware=${(e: CustomEvent) => {
 						this._flasherCtrl.startOta(e.detail.mac);
 					}}
+					@update-all-firmware=${(e: CustomEvent) => {
+						for (const mac of e.detail.macs as string[]) {
+							this._flasherCtrl.startOta(mac);
+						}
+					}}
 					@retry-ota=${(e: CustomEvent) => {
 						// Clear the error AND start a fresh OTA — dismissing alone
 						// made "Retry" a two-click flow (the second click being the
