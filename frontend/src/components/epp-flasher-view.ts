@@ -540,8 +540,10 @@ export class EppFlasherView extends LitElement {
 	}
 
 	/** A device the "Upgrade all" bulk action (and the per-row Update button)
-	 * should offer to upgrade: eppgrid firmware, not already updating, with a
-	 * newer version available. */
+	 * should offer to upgrade: eppgrid firmware, with no OTA entry yet this
+	 * session (any `otaStates[mac]` — updating, succeeded, or errored — excludes
+	 * it, since those rows show their own progress/retry indicator instead), and
+	 * a newer version available. */
 	private _isUpgradeable(device: FlashableDevice): boolean {
 		return (
 			device.firmware_type === "eppgrid" &&
