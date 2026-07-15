@@ -56,15 +56,18 @@ const flasherStyles = css`
   }
 
   .card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--epp-space-2, 8px);
     font-size: var(--epp-font-xl, 18px);
     font-weight: var(--epp-weight-regular, 400);
     line-height: 48px;
     padding: var(--epp-space-2, 8px) var(--epp-space-4, 16px) 0;
     color: var(--ha-card-header-color, var(--epp-text, var(--primary-text-color, #212121)));
+  }
+
+  .card-header-split {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--epp-space-2, 8px);
   }
 
   .card-content {
@@ -1026,7 +1029,7 @@ export class EppFlasherView extends LitElement {
 						: nothing
 				}
         <ha-card>
-          <div class="card-header">
+          <div class="card-header card-header-split">
             <span class="card-header-title">
               ${this.localize("flasher.devices_on_network")}
               ${this.integrationVersion ? html`<span class="integration-version">v${this.integrationVersion}</span>` : nothing}
