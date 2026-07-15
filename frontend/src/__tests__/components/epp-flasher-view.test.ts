@@ -2288,3 +2288,60 @@ describe("desktop max-width centering", () => {
 		expect(cssText).toContain("margin: 0 auto");
 	});
 });
+
+describe("Upgrade all button", () => {
+	it("does not show Upgrade all when no device is upgradeable", () => {
+		// device1 = original firmware; device2 = eppgrid but compatible / no update.
+		const el = createView({ flashableDevices: [device1, device2] });
+		const c = renderTo((el as any).render());
+		expect(c.querySelector(".upgrade-all-btn")).toBeNull();
+	});
+
+	it("shows Upgrade all when at least one device is upgradeable", () => {
+		const el = createView({ flashableDevices: [device2, updatableDevice] });
+		const c = renderTo((el as any).render());
+		const btn = c.querySelector(".upgrade-all-btn");
+		expect(btn).not.toBeNull();
+		expect(btn!.textContent).toContain("flasher.update_all");
+	});
+
+	it("dispatches update-all-firmware with exactly the upgradeable macs", () => {
+		// In-flight device is eligible on paper but excluded because it is
+		// already in otaStates.
+		const inFlight: FlashableDevice = {
+			...updatableDevice,
+			mac: "AA:BB:CC:DD:EE:05",
+			name: "EPP Busy",
+		};
+		const el = createView({
+			flashableDevices: [device1, device2, updatableDevice, inFlight],
+			otaStates: {
+				[inFlight.mac]: { state: "updating", progress: 10, errorKey: null },
+			},
+		});
+		const events: CustomEvent[] = [];
+		el.addEventListener("update-all-firmware", (e) =>
+			events.push(e as CustomEvent),
+		);
+		const c = renderTo((el as any).render());
+		const btn = c.querySelector(".upgrade-all-btn") as HTMLElement;
+		btn.click();
+		expect(events.length).toBe(1);
+		expect(events[0].detail.macs).toEqual([updatableDevice.mac]);
+	});
+
+	it("hides Upgrade all once every upgradeable device is already updating", () => {
+		const el = createView({
+			flashableDevices: [updatableDevice],
+			otaStates: {
+				[updatableDevice.mac]: {
+					state: "updating",
+					progress: 0,
+					errorKey: null,
+				},
+			},
+		});
+		const c = renderTo((el as any).render());
+		expect(c.querySelector(".upgrade-all-btn")).toBeNull();
+	});
+});

@@ -56,6 +56,10 @@ const flasherStyles = css`
   }
 
   .card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--epp-space-2, 8px);
     font-size: var(--epp-font-xl, 18px);
     font-weight: var(--epp-weight-regular, 400);
     line-height: 48px;
@@ -531,6 +535,31 @@ export class EppFlasherView extends LitElement {
 		);
 	}
 
+	/** A device the "Upgrade all" bulk action (and the per-row Update button)
+	 * should offer to upgrade: eppgrid firmware, not already updating, with a
+	 * newer version available. */
+	private _isUpgradeable(device: FlashableDevice): boolean {
+		return (
+			device.firmware_type === "eppgrid" &&
+			!this.otaStates[device.mac] &&
+			(device.update_available || device.firmware_status === "firmware_behind")
+		);
+	}
+
+	private _upgradeableDevices(): FlashableDevice[] {
+		return this.flashableDevices.filter((d) => this._isUpgradeable(d));
+	}
+
+	private _dispatchUpdateAll(): void {
+		this.dispatchEvent(
+			new CustomEvent("update-all-firmware", {
+				detail: { macs: this._upgradeableDevices().map((d) => d.mac) },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	}
+
 	// --- OTA error popover dismissal -------------------------------------
 	// Global listeners live only while the popover is open: Escape, a
 	// pointerdown outside the error indicator, or a scroll dismisses it
@@ -963,9 +992,7 @@ export class EppFlasherView extends LitElement {
 
 		const action = ota
 			? this._renderOtaIndicator(device)
-			: isEppgrid &&
-					(device.update_available ||
-						device.firmware_status === "firmware_behind")
+			: this._isUpgradeable(device)
 				? html`<epp-button
 							variant="primary"
 							@click=${() => this._dispatchUpdateFirmware(device)}
@@ -1000,8 +1027,19 @@ export class EppFlasherView extends LitElement {
 				}
         <ha-card>
           <div class="card-header">
-            ${this.localize("flasher.devices_on_network")}
-            ${this.integrationVersion ? html`<span class="integration-version">v${this.integrationVersion}</span>` : nothing}
+            <span class="card-header-title">
+              ${this.localize("flasher.devices_on_network")}
+              ${this.integrationVersion ? html`<span class="integration-version">v${this.integrationVersion}</span>` : nothing}
+            </span>
+            ${
+							this._upgradeableDevices().length > 0
+								? html`<epp-button
+										class="upgrade-all-btn"
+										variant="primary"
+										@click=${() => this._dispatchUpdateAll()}
+									>${this.localize("flasher.update_all")}</epp-button>`
+								: nothing
+						}
           </div>
           <div class="card-content">
             ${
