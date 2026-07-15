@@ -65,6 +65,7 @@ const flasherStyles = css`
 
   .card-header-split {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: var(--epp-space-2, 8px);
@@ -1030,12 +1031,12 @@ export class EppFlasherView extends LitElement {
 				}
         <ha-card>
           <div class="card-header card-header-split">
-            <span class="card-header-title">
+            <span>
               ${this.localize("flasher.devices_on_network")}
               ${this.integrationVersion ? html`<span class="integration-version">v${this.integrationVersion}</span>` : nothing}
             </span>
             ${
-							this._upgradeableDevices().length > 0
+							this.flashableDevices.some((d) => this._isUpgradeable(d))
 								? html`<epp-button
 										class="upgrade-all-btn"
 										variant="primary"

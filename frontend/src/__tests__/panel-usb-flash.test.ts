@@ -343,9 +343,9 @@ describe("epp-flasher-view inline event handlers", () => {
 		expect(spy).toHaveBeenCalledWith("aa:bb:cc");
 	});
 
-	it("@update-all-firmware calls flasherCtrl.startOta once per mac", () => {
+	it("@update-all-firmware delegates to flasherCtrl.startOtaAll with the macs", () => {
 		const ctrl = (panel as any)._flasherCtrl;
-		const spy = vi.spyOn(ctrl, "startOta").mockResolvedValue(undefined);
+		const spy = vi.spyOn(ctrl, "startOtaAll").mockReturnValue(undefined);
 
 		getFlasherView().dispatchEvent(
 			new CustomEvent("update-all-firmware", {
@@ -354,9 +354,7 @@ describe("epp-flasher-view inline event handlers", () => {
 			}),
 		);
 
-		expect(spy).toHaveBeenCalledTimes(2);
-		expect(spy).toHaveBeenCalledWith("aa:bb:cc");
-		expect(spy).toHaveBeenCalledWith("dd:ee:ff");
+		expect(spy).toHaveBeenCalledWith(["aa:bb:cc", "dd:ee:ff"]);
 	});
 
 	it("@retry-ota dismisses the error then starts a fresh OTA", () => {

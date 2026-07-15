@@ -194,6 +194,13 @@ export class FlasherController implements ReactiveController {
 		}
 	}
 
+	// Bulk entry point for the "Upgrade all" button. Each per-device OTA is
+	// independent (per-MAC state + backend lock), so fire them all off; the
+	// panel's render handler stays a one-liner.
+	startOtaAll(macs: string[]): void {
+		for (const mac of macs) this.startOta(mac);
+	}
+
 	private _handleOtaEvent(mac: string, event: any): void {
 		switch (event.state) {
 			case "updating": {
