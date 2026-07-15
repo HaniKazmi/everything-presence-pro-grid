@@ -419,20 +419,27 @@ describe("layout styles", () => {
 		expect(rule).toMatch(/padding:\s*0/);
 		// …but the flex:0 0 auto content-sizing is gone (inherits the flex:1 remainder).
 		expect(rule).not.toMatch(/flex:\s*0 0 auto/);
+		// A FIXED-px legibility floor (not min-content — that ratchets): on a short
+		// landscape phone the flex remainder would collapse to an illegible sliver, so
+		// the card floors the map's box at a readable size and the column scrolls.
+		expect(rule).toMatch(/min-height:\s*\d+px/);
 	});
 
-	it("caps the mobile grid column at 45vh (the CSS soft cap that replaced the JS 0.45)", () => {
+	it("caps the mobile grid column at 45vh and makes it the scroll boundary", () => {
 		// The old JS height cap (viewportH*0.45, applied inside epp-grid) is gone;
 		// the layout engine now caps the map declaratively via max-height:45vh on the
 		// bounded mobile column, and <epp-grid> just measures the box it ends up with
-		// (#338). min-height:0 lets the column shrink BELOW 45vh on a short landscape
-		// phone so the log stays reachable. Scoped to the mobile @media block.
+		// (#338). min-height:0 lets the column shrink BELOW 45vh; overflow-y:auto makes
+		// it the scroll boundary so that on a short landscape phone — where the legible
+		// map + toggle + log exceed 45vh — the log scrolls into view instead of hiding
+		// behind the overflow:hidden panel. Scoped to the mobile @media block.
 		const mq = layoutCss.slice(layoutCss.indexOf("@media (max-width: 819px)"));
 		const start = mq.indexOf(".editor-shell > .grid-column");
 		expect(start).toBeGreaterThan(-1);
 		const rule = mq.slice(start, mq.indexOf("}", start));
 		expect(rule).toMatch(/max-height:\s*45vh/);
 		expect(rule).toMatch(/min-height:\s*0/);
+		expect(rule).toMatch(/overflow-y:\s*auto/);
 	});
 
 	it("gives the detection log a FIXED height, not a max-height", () => {

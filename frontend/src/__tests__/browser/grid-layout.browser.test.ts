@@ -595,10 +595,12 @@ const cardRect = (p: EPPGridPanel): DOMRect =>
 
 /**
  * Walk the map's parent/host chain (crossing shadow boundaries) and return every
- * ancestor that is an overflow:auto|scroll SCROLL container currently hiding
- * content (scrollHeight > clientHeight). #338's fix forbids introducing any such
- * container between the viewport and the grid — if the list is non-empty, some
- * content (the log) is only reachable by scrolling a box that must not exist.
+ * ancestor that is ACTIVELY scrolling — overflow:auto|scroll AND scrollHeight >
+ * clientHeight. On DESKTOP the #338 fix forbids any such container (measuring a
+ * viewport-relative top inside a scroller is the resize-loop hazard). On MOBILE the
+ * grid column is intentionally an overflow-y:auto scroll boundary, but where the
+ * content FITS (portrait, the mobile editor) it has no overflow, so this still
+ * returns [] — proving nothing there is hidden behind a scroll.
  */
 function scrollAncestors(start: Element): Element[] {
 	const found: Element[] = [];
@@ -649,47 +651,66 @@ describe("#338 is unreachable on a portrait phone (420x900)", () => {
 		// remainder after the toggle+log — is comfortably under it.
 		expect(map.height).toBeLessThanOrEqual(0.45 * window.innerHeight + 2);
 
-		// No scroll container was introduced anywhere above the grid: nothing needs
-		// scrolling because nothing is clipped (the log is genuinely on-screen).
+		// Portrait fits without scrolling: the map (its 45vh-bounded flex remainder)
+		// is well above the mobile floor, so map + toggle + log fit the column and
+		// the (overflow-y:auto) column has no overflow — nothing is hidden.
 		expect(scrollAncestors(gridEl(panel))).toEqual([]);
 	});
 });
 
-describe("#338 is unreachable on a landscape phone (667x375)", () => {
-	it("keeps the expanded log above the fold (the probe that FAILS at 470>375 today)", async () => {
-		const panel = await mountAt(...VIEWPORT.mobileLandscape);
-		await expandLog(panel);
-		const log = logEl(panel);
-		expect(log).not.toBeNull();
-		// The exact #338 repro: pre-fix the log's bottom sat at 470px in a 375px
-		// viewport, its top already below the fold, inside an overflow:hidden panel
-		// with nothing able to scroll to it. The flex-bounded, shrinkable column now
-		// pulls it back on-screen.
-		expect(log!.getBoundingClientRect().bottom).toBeLessThanOrEqual(
-			window.innerHeight,
-		);
-	});
+// The legibility floor the mobile map card carries (min-height on .grid-container
+// in the mobile @media block). The test asserts the map clears this with margin;
+// the CSS floor (132px on the card, ~108px of map after the caption) sits above it.
+const MOBILE_MAP_FLOOR_PX = 96;
 
-	it("shrinks the map to its floor — small, on-screen, and below the 45vh cap", async () => {
+describe("#338 is unreachable on a landscape phone (667x375)", () => {
+	// On a 375px-tall screen the header + a LEGIBLE map + the heatmap toggle + the
+	// fixed 6-line log + a usable controls sheet cannot all fit at once. So the map
+	// card carries a min-height legibility floor and the grid column SCROLLS to bring
+	// the log into view. This is safe where the desktop #338 loop was not: the grid
+	// measures its own (fixed) clientHeight, never a scroll-moving
+	// getBoundingClientRect().top, so an outer scroll can't feed the resize loop; and
+	// a fixed-px floor (not min-content) can't ratchet the box larger.
+
+	it("keeps the map LEGIBLE and inside its box — not the illegible sliver", async () => {
 		const panel = await mountAt(...VIEWPORT.mobileLandscape);
 		await expandLog(panel);
 		const map = mapRect(panel);
 		const card = cardRect(panel);
 
-		// Genuinely small here (the column shrank well below 45vh to keep the log
-		// reachable) but never zero.
-		expect(map.height).toBeGreaterThan(0);
+		// Priority 1: legible. The floor pins the map well above the ~6px sliver the
+		// pure flex remainder collapsed to before this refinement.
+		expect(map.height).toBeGreaterThanOrEqual(MOBILE_MAP_FLOOR_PX);
+		// The floor is a MINIMUM, not a new maximum: still below the 45vh cap.
 		expect(map.height).toBeLessThan(0.45 * window.innerHeight);
-		// On-screen: the map itself is above the fold.
-		expect(map.bottom).toBeLessThanOrEqual(window.innerHeight);
-		// The map fits its box. On this pathologically short landscape the fixed
-		// 6-line log + toggle exceed the 45vh column, so the card collapses to a
-		// sliver and the map sits at its irreducible 1px-cell floor — it overhangs
-		// the collapsed card by ~1px (a 33px map cannot fit an 8px card, and the
-		// non-ratcheting min-height:0 remainder model — the invariant that lets the
-		// map grow back — forbids a content-derived floor on the card). The map
-		// staying on-screen (above) is the guarantee that matters for #338.
-		expect(map.bottom).toBeLessThanOrEqual(card.bottom + 2);
+		// It fits its card exactly now (the card IS the floored box — no overhang).
+		expect(map.bottom).toBeLessThanOrEqual(card.bottom + 1);
+	});
+
+	it("keeps the expanded log REACHABLE — it scrolls fully into view", async () => {
+		const panel = await mountAt(...VIEWPORT.mobileLandscape);
+		await expandLog(panel);
+		const col = panel.shadowRoot!.querySelector<HTMLElement>(".grid-column")!;
+		const log = logEl(panel);
+		expect(log).not.toBeNull();
+
+		// The grid column is the scroll boundary on mobile (overflow-y:auto). This is
+		// the #338 fix's counterpart: on a space-starved landscape the log CAN be
+		// reached, unlike the original bug where it sat behind an overflow:hidden
+		// panel with nothing able to scroll to it.
+		expect(getComputedStyle(col).overflowY).toBe("auto");
+
+		// Scroll the column to the bottom: the log comes FULLY into view — both edges
+		// on-screen. A small amount of scroll to reveal the log here is acceptable
+		// (the whole point is it is reachable, not clipped-with-no-scroll).
+		col.scrollTop = col.scrollHeight;
+		await settle(panel);
+		const r = log!.getBoundingClientRect();
+		expect(r.top).toBeGreaterThanOrEqual(0);
+		expect(r.bottom).toBeLessThanOrEqual(window.innerHeight + 1);
+
+		// The map is a FIXED box: it stayed legible through the scroll (no ratchet).
+		expect(mapRect(panel).height).toBeGreaterThanOrEqual(MOBILE_MAP_FLOOR_PX);
 	});
 });
 
@@ -733,9 +754,9 @@ describe("mobile map monotonicity (the sweep, at 420 wide)", () => {
 
 describe("mobile editor map fits its flex-bounded column (420x900)", () => {
 	// The mobile editor renders NO detection log (it is gated on !_isMobile), so the
-	// map has the whole 45vh column, but it must still fit that column's card and
-	// introduce no scroll container.
-	it("fits its box with nothing clipped", async () => {
+	// map has the whole 45vh column, fits that column's card, and — with nothing
+	// below it to overflow — the (overflow-y:auto) column does not actually scroll.
+	it("fits its box with nothing hidden", async () => {
 		const panel = await mountEditorAt(...VIEWPORT.mobile);
 		const map = mapRect(panel);
 		const card = cardRect(panel);

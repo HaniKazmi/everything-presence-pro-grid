@@ -643,16 +643,26 @@ export const layoutStyles = css`
              sliver. Growing to the 45vh cap fixes that (the sheet's flex-basis:0,
              below, is the other half: it stops the tall sidebar stealing the space).
            - flex-shrink:1 + min-height:0 let the column shrink BELOW 45vh on a very
-             short landscape phone, so the map+toggle+log shrink to fit instead of
-             overflowing an overflow:hidden panel with nothing able to scroll to the
-             log. The map, as the card's flex remainder, shrinks toward its 1px-cell
-             floor; on a pathologically short landscape (≲430px tall) the card can
-             collapse under that floor and the map overhangs it by ~1px — the log
-             stays reachable, which is the #338 invariant that matters. */
+             short landscape phone so the map+toggle+log shrink to fit.
+           - overflow-y:auto makes THIS column the scroll boundary. On a portrait
+             phone the map (a flex remainder well above its floor) + toggle + log fit
+             the 45vh column exactly, so nothing scrolls. On a short landscape phone
+             the map is pinned at its legibility floor (min-height on the card below),
+             so the card + toggle + log exceed the 45vh column — and rather than
+             overflow an overflow:hidden panel with nothing able to reach the log
+             (that WAS #338), the column scrolls and the log is brought into view.
+             This is SAFE where the desktop version was not: <epp-grid> measures its
+             own clientHeight (a fixed, definite box), never a scroll-moving
+             getBoundingClientRect().top, so an outer scroll cannot feed the resize
+             loop, and a fixed-px card floor (not min-content) cannot ratchet the box
+             larger. overflow-x rides along as auto (CSS forces the pair), which on
+             the full-width mobile card only matters for a target menu that overhangs
+             the edge — a negligible mobile edge case. */
       flex: 1 1 auto;
       min-height: 0;
       max-height: 45vh;
       max-width: 100%;
+      overflow-y: auto;
     }
     .editor-shell > .editor-controls,
     .editor-shell > .live-controls {
@@ -667,14 +677,22 @@ export const layoutStyles = css`
       max-width: none;
     }
     /* No expansion-area card on mobile — the grid fills the screen (drop the
-       surface, border and padding). It KEEPS the desktop flex:1;min-height:0
-       though: the mobile .grid-column is now flex-bounded (above), so the card must
-       fill it as the column's remainder — the box <epp-grid> measures (#338). (This
-       used to reset to flex:0 0 auto, back when the column was content-sized.) */
+       surface, border and padding). It KEEPS the desktop flex:1 remainder so the
+       card fills the bounded column and is the box <epp-grid> measures (#338). (This
+       used to reset to flex:0 0 auto, back when the column was content-sized.)
+
+       min-height is a LEGIBILITY FLOOR: on a portrait phone the flex remainder is
+       far above it so the map keeps its 45vh-bounded size unchanged; on a short
+       landscape phone the remainder would collapse to a few illegible px, so the
+       floor pins the map's box at a readable size instead. It is a FIXED px (not
+       min-content) on purpose — a content-derived floor ratchets the measured box
+       larger and never lets it shrink back. The card + toggle + log then exceed the
+       45vh column and the column (above) scrolls to keep the log reachable. */
     .editor-shell .grid-container {
       background: none;
       border: none;
       padding: 0;
+      min-height: 132px;
     }
     /* The hand-rolled sub-tabs aren't epp-* primitives, so they don't pick up
        the panel's mobile control height on their own. Size them to it (44px
