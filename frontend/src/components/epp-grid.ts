@@ -54,18 +54,6 @@ const OVERLAY_STRIPE_CSS: Record<number, string> = {
 	[CELL_OVERLAY_SUPPRESS]: `background-image: ${overlayStripeGradient(CELL_OVERLAY_SUPPRESS, 5)};`,
 };
 
-// Minimum measured height (px) to use the desktop height-fit path. If the
-// panel sits low on a short viewport, the computed available height can be a
-// small positive (e.g. 26px), which collapses fitCellPx toward 1px. Below this
-// floor we treat the height as unmeasured (0) so the grid falls back to
-// width-fit and the page can scroll instead of collapsing the cells.
-const DESKTOP_MIN_HEIGHT_PX = 200;
-
-// Space (px) reserved below the grid on desktop for the dimensions caption +
-// the detection-log toggle, so a height-bounded grid doesn't push them off the
-// bottom of the viewport.
-const DESKTOP_HEIGHT_RESERVE_PX = 130;
-
 export class EppGrid extends LitElement {
 	@property({ attribute: false }) grid: Uint8Array = new Uint8Array(0);
 	@property({ attribute: false }) zoneConfigs: (ZoneConfig | null)[] = [];
@@ -121,10 +109,15 @@ export class EppGrid extends LitElement {
 	 */
 	@property({ type: Boolean }) fadeUncovered = false;
 	/**
-	 * Mobile-only: cap the grid height to half the viewport so the controls
-	 * panel below it always has room. Desktop leaves this false → no height cap.
+	 * Mobile flag: use the compact mobile cell-size tier (see render(): a 480px /
+	 * 32px cell cap instead of the desktop 960px / 48px). It NO LONGER changes how
+	 * the height budget is derived — both desktop and mobile now container-measure
+	 * the box the panel gives us (see _measureAvail). On mobile the panel bounds that
+	 * box declaratively (a flex-shrinkable grid column capped at 45vh), so a sibling
+	 * rendered below the map — the detection log — simply takes its space and the map
+	 * shrinks to fit (#338), exactly as on desktop.
 	 */
-	@property({ type: Boolean }) capHeightToHalfViewport = false;
+	@property({ type: Boolean }) mobile = false;
 	/** Map of target index → dismissed cell index (ephemeral, not persisted) */
 	@property({ attribute: false }) dismissedTargets: Map<number, number> =
 		new Map();
@@ -146,7 +139,7 @@ export class EppGrid extends LitElement {
 
 	/** Measured content width of the host (px); 0 = unmeasured (e.g. unit tests). */
 	@state() private _availPx = 0;
-	/** Measured available height for the grid (px); 0 = unmeasured. Desktop only. */
+	/** Measured available height for the grid (px); 0 = unmeasured. */
 	@state() private _availHeightPx = 0;
 	/** Per-item furniture tone, id → {color, halo}; memoised, recomputed only
 	 *  when a cell-background-affecting property changes (never on target moves). */
@@ -155,22 +148,28 @@ export class EppGrid extends LitElement {
 	/** Pending post-layout re-measure scheduled in firstUpdated (see below). */
 	private _settleRaf?: number;
 
-	// The ResizeObserver tracks the host's WIDTH only, so a height-only viewport
-	// change (desktop vertical window resize, mobile URL-bar collapse, devtools
-	// dock height) wouldn't re-measure the height cap. A window 'resize' hook
-	// closes that gap; it's detached on disconnect.
+	// Re-measure the box on a height-only viewport change. Our ResizeObserver keys
+	// off OUR box, and a pure-height viewport change (a mobile URL bar collapsing or
+	// the soft keyboard opening) reshapes that box without changing our WIDTH — the
+	// width-only RO comparison a naive observer runs would miss it. The RO is also
+	// documented as unreliable in the HA companion webview, so this window-resize
+	// hook is the caller-agnostic backstop that keeps the measured budget fresh on
+	// both axes. _measureAvail's own >=1px dirty-guards make a no-change measure a
+	// no-op, so over-calling costs nothing. Detached on disconnect.
 	private _onResize = (): void => {
 		this._measureAvail();
 	};
 
-	/* v8 ignore start -- happy-dom has no real layout/ResizeObserver callback */
 	connectedCallback(): void {
 		super.connectedCallback();
 		if (typeof ResizeObserver !== "undefined") {
-			this._ro = new ResizeObserver((entries) => {
-				const w = entries[0]?.contentRect.width ?? 0;
-				if (w && Math.abs(w - this._availPx) >= 1)
-					this._availPx = Math.floor(w);
+			// Our BOX is the height budget now (see _measureAvail), so the observer
+			// has to react to height as well as width. This is the primary
+			// re-measure trigger and the only caller-agnostic one: a sibling BELOW
+			// the grid (the panel's detection log) expanding shrinks our box without
+			// changing any of the grid's properties, so Lit's updated() never fires.
+			this._ro = new ResizeObserver(() => {
+				this._measureAvail();
 			});
 			this._ro.observe(this);
 		}
@@ -186,25 +185,27 @@ export class EppGrid extends LitElement {
 			this._settleRaf = undefined;
 		}
 	}
-	/* v8 ignore stop */
 
-	/* v8 ignore start -- happy-dom has no layout (clientWidth 0); measured visually */
-	// Deterministic, synchronous width measurement that doesn't depend on the
-	// ResizeObserver. In the HA companion webview the observer doesn't deliver a
-	// usable callback, leaving _availPx at 0 → fitCellPx snaps to the ceiling cell
-	// size and overflows. The host's own clientWidth tracks the constrained parent
-	// (`:host { display: block }`), so reading it here fits the grid to the viewport.
-	// Converges in 2 renders: clientWidth stays constant regardless of cell size, so
-	// the second pass sees |w - _availPx| < 1 and stops.
+	// Synchronous measurement on the first update, rather than waiting for the
+	// ResizeObserver's first (async) callback: without it _availPx stays 0 for
+	// that first frame, and fitCellPx reads 0 as "unmeasured" and snaps to the
+	// ceiling cell size, so the grid would overflow before self-correcting a
+	// tick later. The host's own clientWidth tracks the constrained parent
+	// (`:host { display: flex }` — still block-level in layout terms, so the
+	// clientWidth reasoning is unchanged), so reading it here fits the grid to
+	// the viewport from the first paint. Converges in 2 renders: clientWidth
+	// stays constant regardless of cell size, so the second pass sees
+	// |w - _availPx| < 1 and stops.
 	firstUpdated(): void {
 		this._measureAvail();
 		// Defense in depth: re-measure once after the next frame. A freshly-mounted
-		// grid can read its viewport `top` before an async-rendering sibling above it
-		// (e.g. the header's ha-select, which is 0px until it upgrades) has laid out,
-		// latching a stale available-height that the width-only ResizeObserver never
-		// corrects. One post-layout re-measure self-corrects it, bounding any such
-		// transient to <=1 frame. (The .panel-header CSS reserve prevents the known
-		// case; this guards future late-laying-out chrome above the grid.)
+		// grid can measure its box (clientHeight) before an async-rendering sibling
+		// above it in the column — e.g. the header's ha-select, which is 0px until
+		// it upgrades — has laid out and claimed its space, so the box we read here
+		// can be transiently taller than its settled size, over-measuring the
+		// height budget. One post-layout re-measure self-corrects it, bounding any
+		// such transient to <=1 frame. (The .panel-header CSS reserve prevents the
+		// known case; this guards future late-laying-out chrome above the grid.)
 		if (typeof requestAnimationFrame !== "undefined") {
 			this._settleRaf = requestAnimationFrame(() => {
 				this._settleRaf = undefined;
@@ -260,7 +261,6 @@ export class EppGrid extends LitElement {
 		if (overlay) overlay.furnitureTones = this._furnitureTones;
 	}
 
-	/* v8 ignore start -- getComputedStyle needs real layout; happy-dom returns "" */
 	private _readCellRgb(idx: number): [number, number, number] | null {
 		// Only cells inside the visible/in-range window are rendered, so a cell
 		// outside it legitimately has no element — null then means "keep the
@@ -269,44 +269,142 @@ export class EppGrid extends LitElement {
 		if (!cell) return null;
 		return parseRgb(getComputedStyle(cell).backgroundColor);
 	}
-	/* v8 ignore stop */
 
 	private _measureAvail(): void {
 		const w = this.clientWidth;
 		if (w && Math.abs(w - this._availPx) >= 1) this._availPx = w;
-		// Desktop only: bound the grid by the space from its top to the viewport
-		// bottom so a tall room can't overflow. Mobile uses capHeightToHalfViewport.
-		if (!this.capHeightToHalfViewport) {
-			const top = this.getBoundingClientRect().top;
-			const avail = Math.floor(
-				window.innerHeight - top - DESKTOP_HEIGHT_RESERVE_PX,
-			);
-			if (avail > 0 && Math.abs(avail - this._availHeightPx) >= 1)
-				this._availHeightPx = avail;
+		// Fill mode (the dashboard overview card) fills the WIDTH and grows tall — it
+		// has no height budget at all, so don't measure one, and zero it so a mode
+		// flip can never leave a stale budget latched. Mobile does NOT early-return
+		// here any more: it container-measures the box just like desktop, because the
+		// panel now bounds the mobile box declaratively (a flex column capped at 45vh)
+		// instead of the grid guessing a viewport fraction (#338).
+		if (this.fill) {
+			this._availHeightPx = 0;
+			return;
 		}
+		// Measure THE BOX WE WERE GIVEN, never the window. The panel makes the grid
+		// card flex:1 of a height-bounded column, so this clientHeight is a pure
+		// function of the layout: it cannot feed back from the map's own content,
+		// and — unlike a viewport-relative getBoundingClientRect().top — it does not
+		// change when an ancestor scrolls. That makes the scroll-driven re-render
+		// loop that fed PR #339 structurally impossible now, not merely avoided.
+		// The dimensions caption renders INSIDE this box, below the map, so its
+		// measured height comes off the top of the budget.
+		const h = Math.floor(this.clientHeight - this._captionBlockPx());
+		// 0 is fitCellPx's "never measured" sentinel: it drops the height term and
+		// falls back to WIDTH-fit. So 0 must mean exactly that, and nothing else.
+		//
+		// A MEASURED box that is merely tiny — even one shorter than the caption
+		// inside it, so `h` goes negative — is not unmeasured. It is a real box that
+		// really is that small, and the map must keep shrinking to fit it. Resolving
+		// it to 0 instead inverts the invariant: the map snaps to the width-fit
+		// ceiling and gets BIGGER as its box gets smaller. That is #339's failure
+		// mode, and it was still reachable here — at a ~400px viewport (in HA, whose
+		// app header eats ~64px above the panel, ~465-485px: a window snapped to the
+		// top half of a 1080p screen) the card's remainder fell to 19px against a
+		// 27px caption and the map went 33px -> 738px, overflowing a 53px card and
+		// hanging below the fold.
+		//
+		// So a laid-out host floors at 1px (fitCellPx already floors its result at
+		// 1px, so this is the smallest map, not an arbitrary reserve — the 200px
+		// floor that CAUSED #339 is not coming back in another costume). Only a host
+		// with no layout at all — detached, display:none, or happy-dom, where every
+		// box is 0 — resolves to 0. Either way we never keep the previous, larger
+		// value: a latched budget height-fits the map to space that no longer exists.
+		//
+		// This mirrors the width axis (see the clamp in render()), which has always
+		// drawn exactly this distinction.
+		const laidOut = this.clientWidth > 0 || this.clientHeight > 0;
+		const avail = h > 0 ? h : laidOut ? 1 : 0;
+		if (Math.abs(avail - this._availHeightPx) >= 1) this._availHeightPx = avail;
 	}
-	/* v8 ignore stop */
+
+	/**
+	 * The caption's margin-top (px), memoised on first read.
+	 *
+	 * It comes from THIS COMPONENT'S OWN static stylesheet
+	 * (`.grid-dimensions { margin-top: 8px }`) — a constant no caller, theme or
+	 * layout can change at runtime — so re-deriving it via getComputedStyle is pure
+	 * waste, and _captionBlockPx() runs on the ~10Hz live path (every sensor frame
+	 * re-renders the grid, and updated() re-measures). Same caching idiom, and the
+	 * same reason, as _updateFurnitureTones above: keep getComputedStyle off the hot
+	 * path when its answer cannot have moved.
+	 */
+	private _captionMarginPx?: number;
+
+	/** Height (px) the dimensions caption occupies inside our box, margin included. */
+	private _captionBlockPx(): number {
+		const cap = this.shadowRoot?.querySelector<HTMLElement>(".grid-dimensions");
+		if (!cap) return 0;
+		this._captionMarginPx ??=
+			Number.parseFloat(getComputedStyle(cap).marginTop) || 0;
+		// offsetHeight is deliberately NOT memoised: the caption's text wraps at
+		// narrow widths, so its height really does change with the layout — and a
+		// stale (too small) one inflates the height budget and overflows the map out
+		// of its card. It is also cheap here: the layout flush it forces is already
+		// paid for by the clientWidth read at the top of _measureAvail.
+		return cap.offsetHeight + this._captionMarginPx;
+	}
+
+	/**
+	 * Re-read our box, synchronously.
+	 *
+	 * The ResizeObserver already covers this case correctly — a caller expanding a
+	 * sibling BELOW the grid (the panel's detection log) shrinks our box, and the
+	 * observer fires. What it does not cover is LATENCY: observer callbacks are
+	 * delivered after layout, on a later tick, so the map would visibly re-fit one
+	 * frame after the log opened. The panel calls this from its own updated(),
+	 * which runs after the DOM is written but within the same frame, so the map
+	 * resizes in the SAME paint as the thing that displaced it.
+	 *
+	 * The observer remains the correctness guarantee (it needs no caller to
+	 * remember); this is the smoothness one. Cheap to over-call: a no-change
+	 * measure is a no-op, because the >=1px guards in _measureAvail skip the
+	 * assignment and nothing re-renders.
+	 */
+	remeasure(): void {
+		this._measureAvail();
+	}
 
 	static styles = css`
 		:host {
-			display: block;
-			/* Centre the inline-block .grid-targets-wrapper horizontally within
-			   the host. The host fills its container width (display:block), so
-			   without this the inline-block grid hugs the LEFT edge whenever the
-			   grid is narrower than its region (tall/narrow rooms, or any room
-			   narrower than the column). The furniture/target overlays are
-			   absolutely positioned relative to .grid-targets-wrapper (which is
-			   position:relative), so centring the wrapper moves the whole
-			   positioning context together — overlay math is unaffected. */
-			text-align: center;
+			/* A centred flex column holding the map and its dimensions caption. The
+			   panel makes our container (.grid-container) flex:1 of a height-bounded
+			   column, so the box we're given is usually TALLER than the map — the
+			   card is the "expansion area" that shows the space the map can use, and
+			   the map floats in the middle of it. align-items does the horizontal
+			   centring the old \`text-align: center\` used to do (.grid-targets-wrapper
+			   is a flex item now, so it no longer shrink-wraps its own line box; it
+			   would otherwise stretch, or hug the left edge, whenever the map is
+			   narrower than the column). The absolutely-positioned overlays are
+			   relative to the wrapper, so centring the wrapper moves the whole
+			   positioning context together — overlay maths is unaffected. */
+			display: flex;
+			flex-direction: column;
+			justify-content: center;
+			align-items: center;
+		}
+
+		/* Never let flex SHRINK these: a transient over-tall map (measured budget
+		   one frame stale) would otherwise be squashed into the wrapper's
+		   overflow:hidden and clipped, instead of simply overhanging for a frame
+		   and self-correcting on the next measure. */
+		.grid-targets-wrapper,
+		.grid-dimensions {
+			flex: 0 0 auto;
 		}
 
 		.grid-targets-wrapper {
 			position: relative;
-			display: inline-block;
-			vertical-align: top;
-			/* Reset text-align inside the wrapper so the centred host doesn't
-			   leak into the grid-dimensions caption / cell content. */
+			/* Defensive reset, not a fix for our own CSS: the host no longer sets
+			   text-align itself (it centres via align-items on the flex column —
+			   see :host above), so there's nothing of ours to reset here. But
+			   text-align is inherited, and the host's own used value still
+			   depends on whatever its light-DOM ancestor sets — a centred or
+			   right-aligned ancestor outside our shadow boundary could otherwise
+			   leak through into the grid-dimensions caption / cell content. Pin
+			   it here regardless. */
 			text-align: left;
 			/* Own the overlay z-indexes. The targets (z-index 20), furniture (15)
 			   and heatmap (15) overlays are absolutely positioned with positive
@@ -475,8 +573,8 @@ export class EppGrid extends LitElement {
 		// The grid adds a 2px border (×2) + (visCols-1)×gap on top of the cells;
 		// subtract that from the measured width so the grid fits exactly.
 		const gridChromePx = this._availPx > 0 ? 4 + (visCols - 1) * gapPx : 0;
-		// Desktop allows a larger grid + bigger cells than the 480/32 mobile-era caps.
-		const isDesktop = !this.capHeightToHalfViewport;
+		// Desktop allows a larger grid + bigger cells than the 480/32 mobile caps.
+		const isDesktop = !this.mobile;
 		// Fill mode (card) lifts the caps once the width is measured so the grid
 		// grows to fill its container; the unmeasured first render keeps the small
 		// cap so it doesn't flash huge before the real width arrives.
@@ -489,23 +587,18 @@ export class EppGrid extends LitElement {
 				? 960
 				: this.maxGridPx;
 		const effMaxCellPx = uncap ? Number.POSITIVE_INFINITY : isDesktop ? 48 : 32;
-		// Mobile only: cap the grid to a fraction of the viewport height so the
-		// controls panel below it keeps a fair share. 0.45 (not 0.5) because the
-		// tab bar + device dropdown sit above the panel, so 50% of the viewport
-		// would be ~55-60% of the usable area below them. The width ResizeObserver
-		// re-renders on viewport resize, refreshing this budget. happy-dom has
-		// innerHeight defined but no layout, so reading it is safe; the cap is
-		// exercised only behind the capHeightToHalfViewport flag.
-		/* v8 ignore next -- window.innerHeight read has no layout effect under happy-dom */
-		const availHeightPx = this.fill
-			? // Fill mode fills the WIDTH; the card grows taller to match and the
-				// dashboard scrolls, so the viewport-height bound is dropped.
-				0
-			: this.capHeightToHalfViewport
-				? window.innerHeight * 0.45
-				: this._availHeightPx >= DESKTOP_MIN_HEIGHT_PX
-					? this._availHeightPx
-					: 0;
+		// The height budget, by mode:
+		//  - fill (card): none — it fills the width and the dashboard scrolls.
+		//  - everything else (desktop AND mobile): the measured box. Any positive
+		//    value IS the truth — the box really is that small — so the map simply
+		//    fits it. There is deliberately no minimum: a floor that dropped the
+		//    budget to 0 below its threshold is what made #339 invert (smaller box →
+		//    width-fit → 3x BIGGER map). _measureAvail() guarantees 0 here means
+		//    "never measured" and NOTHING else, so the width-fit fallback below can
+		//    only fire on an unmeasured host — never on a small one. The panel bounds
+		//    the mobile box (a flex column capped at 45vh) just as it bounds the
+		//    desktop one, so the same measured budget now serves both (#338).
+		const availHeightPx = this.fill ? 0 : this._availHeightPx;
 		// Vertical chrome mirrors the width chrome: 2px border (×2) + (visRows-1)
 		// ×gap. Subtract it so the cells fit the height budget exactly.
 		const gridChromeHpx = availHeightPx > 0 ? 4 + (visRows - 1) * gapPx : 0;
@@ -918,14 +1011,23 @@ export class EppGrid extends LitElement {
 				@click=${(e: Event) => {
 					if (this.editable) return;
 					e.stopPropagation();
+					// The detail is the target (targetIndex + its room coordinates x/y, in
+					// mm) and where the dot IS: its centre in CLIENT coordinates. It does
+					// NOT carry xPct/yPct — those are percentages of the MAP, and the map
+					// is not the box a listener draws in (the panel's card is bigger, with
+					// the map centred inside it — #338), so a percentage of it is not a
+					// position anyone else can use; passing one is how the target menu
+					// ended up ~300px from its dot. The dot is `translate(-50%, -50%)`, so
+					// its rect centre IS the point it marks.
+					const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
 					this.dispatchEvent(
 						new CustomEvent("target-click", {
 							detail: {
 								targetIndex: i,
 								x: t.x,
 								y: t.y,
-								pctX: xPct,
-								pctY: yPct,
+								clientX: r.left + r.width / 2,
+								clientY: r.top + r.height / 2,
 							},
 							bubbles: true,
 							composed: true,

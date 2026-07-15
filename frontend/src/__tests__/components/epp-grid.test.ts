@@ -64,6 +64,14 @@ function cellStyles(el: EppGrid): string[] {
 	).map((c) => (c.getAttribute("style") ?? "").toLowerCase());
 }
 
+// The cell's inline `width: Npx` is computed from cellPx in render(), so we can
+// drive the measured width/height directly (happy-dom has no layout) and read
+// it back.
+function cellPx(el: any): number {
+	const cell = el.shadowRoot!.querySelector(".cell") as HTMLElement | null;
+	return cell ? Number.parseInt(cell.style.width || "0", 10) : 0;
+}
+
 describe("epp-grid element", () => {
 	it("is registered as a custom element", () => {
 		expect(customElements.get("epp-grid")).toBeDefined();
@@ -747,13 +755,6 @@ describe("epp-grid rest-of-room colour", () => {
 });
 
 describe("epp-grid fill mode (card fills available width)", () => {
-	// The cell's inline `width: Npx` is computed from cellPx in render(), so we can
-	// drive the measured width directly (happy-dom has no layout) and read it back.
-	function cellPx(el: any): number {
-		const cell = el.shadowRoot!.querySelector(".cell") as HTMLElement | null;
-		return cell ? Number.parseInt(cell.style.width || "0", 10) : 0;
-	}
-
 	it("grows cells past the 48px desktop cap to fill the measured width when fill is set", async () => {
 		const el = createGrid({ fill: true }) as any;
 		el._availPx = 1500; // a wide measured container
@@ -775,7 +776,12 @@ describe("epp-grid fill mode (card fills available width)", () => {
 	it("ignores a small available height in fill mode (fills width, grows tall)", async () => {
 		const el = createGrid({ fill: true }) as any;
 		el._availPx = 1500;
-		el._availHeightPx = 250; // would otherwise bound the grid height
+		// Inert either way: render()'s availHeightPx is hardcoded to 0 whenever
+		// `fill` is true, regardless of this field, and _measureAvail() (which
+		// runs on the very first update cycle) force-zeroes it too — so this
+		// pre-set value only survives up to the first render and can never leak
+		// into the fill-mode height budget. Set here to document that explicitly.
+		el._availHeightPx = 250;
 		document.body.appendChild(el);
 		await el.updateComplete;
 		// Height is not allowed to shrink a fill map below its width-driven size.
@@ -1351,6 +1357,39 @@ describe("epp-grid target-click event", () => {
 
 		document.body.removeChild(el);
 	});
+
+	it("reports the dot's own centre in client coordinates", async () => {
+		// The listener draws a menu next to the dot, in a box that is NOT the map
+		// (the panel's card is bigger, with the map centred in it — #338), so a
+		// percentage of the map is not a position it can use. The dot's rect centre
+		// is; the dot is translate(-50%, -50%), so its centre is the point it marks.
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("target-click", (e) => events.push(e as CustomEvent));
+
+		const dot = el.shadowRoot!.querySelector(".target-dot") as HTMLElement;
+		// happy-dom reports a zero rect; give the dot a real box to be measured from.
+		dot.getBoundingClientRect = () =>
+			({ left: 200, top: 90, width: 14, height: 14 }) as DOMRect;
+		dot.click();
+
+		expect(events.length).toBe(1);
+		expect(events[0].detail.clientX).toBe(207);
+		expect(events[0].detail.clientY).toBe(97);
+		// And it carries no percentages: they were only ever meaningful inside the
+		// map, the listener draws in a different box, and a field that reads like a
+		// position but isn't one is what mispositioned the menu in the first place.
+		expect(events[0].detail.pctX).toBeUndefined();
+		expect(events[0].detail.pctY).toBeUndefined();
+
+		document.body.removeChild(el);
+	});
 });
 
 describe("epp-grid target dot cursor guard", () => {
@@ -1919,12 +1958,13 @@ describe("epp-grid cell sizing (measured available width)", () => {
 
 	it("schedules a post-layout re-measure on mount (self-corrects async layout above the grid)", async () => {
 		// Defense in depth for the live↔editor flicker class: a freshly-mounted
-		// desktop grid can read its viewport `top` before an async-rendering sibling
-		// above it (e.g. the header's ha-select) has laid out, latching a stale
-		// available-height that the width-only ResizeObserver never corrects.
-		// firstUpdated() schedules ONE post-layout re-measure so any such transient
-		// self-corrects within a frame instead of persisting. (The .panel-header CSS
-		// reserve prevents the known case; this guards future late-laying-out chrome.)
+		// desktop grid can measure its box (clientHeight) before an async-rendering
+		// sibling above it in the column (e.g. the header's ha-select) has laid out
+		// and claimed its space, so the box read here can be transiently taller
+		// than its settled size — over-measuring the height budget. firstUpdated()
+		// schedules ONE post-layout re-measure so any such transient self-corrects
+		// within a frame instead of persisting. (The .panel-header CSS reserve
+		// prevents the known case; this guards future late-laying-out chrome.)
 		let rafCb: FrameRequestCallback | null = null;
 		const rafSpy = vi
 			.spyOn(globalThis, "requestAnimationFrame")
@@ -1956,11 +1996,12 @@ describe("epp-grid cell sizing (measured available width)", () => {
 	});
 
 	it("re-measures on a window resize and detaches the handler when removed", async () => {
-		// The ResizeObserver only tracks the host's WIDTH, so a height-only viewport
-		// change (desktop vertical resize, mobile URL-bar collapse, devtools dock
-		// height) wouldn't otherwise re-measure the height cap. A window 'resize'
-		// hook closes that gap; it must detach on disconnect so a removed grid
-		// doesn't keep re-measuring.
+		// The window 'resize' hook re-measures the box on a height-only viewport
+		// change (a mobile URL bar collapsing, the soft keyboard opening) that a
+		// width-only ResizeObserver comparison would miss — and the RO is documented
+		// as unreliable in the HA companion webview, so this is the caller-agnostic
+		// backstop. It must detach on disconnect so a removed grid doesn't keep
+		// re-measuring.
 		const el = createGrid();
 		document.body.appendChild(el);
 		await el.updateComplete;
@@ -1977,6 +2018,29 @@ describe("epp-grid cell sizing (measured available width)", () => {
 		measureSpy.mockClear();
 		window.dispatchEvent(new Event("resize"));
 		expect(measureSpy).not.toHaveBeenCalled();
+	});
+
+	it("reads the caption's constant margin-top only once (it is off the 10Hz hot path)", async () => {
+		// _captionBlockPx() runs on every frame (each sensor frame re-renders the grid
+		// and updated() re-measures). The caption's margin-top comes from this
+		// component's OWN static stylesheet, so it cannot change at runtime and is
+		// memoised; its offsetHeight is re-read every call, because the caption's text
+		// wraps at narrow widths and a stale height would inflate the budget.
+		const el = createGrid();
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const a = el as unknown as { _captionBlockPx: () => number };
+
+		// The margin has already been read once during the mount's own measure passes.
+		const spy = vi.spyOn(globalThis, "getComputedStyle");
+		try {
+			expect(a._captionBlockPx()).toBe(8);
+			expect(a._captionBlockPx()).toBe(8);
+			expect(spy).not.toHaveBeenCalled();
+		} finally {
+			spy.mockRestore();
+		}
+		document.body.removeChild(el);
 	});
 });
 
@@ -2017,6 +2081,245 @@ describe("epp-grid furniture auto-contrast", () => {
 		el.targets = [];
 		await el.updateComplete;
 		expect(overlay.furnitureTones).toBe(firstMap); // same ref = not recomputed
+		document.body.removeChild(el);
+	});
+});
+
+describe("epp-grid height budget (container measurement)", () => {
+	/**
+	 * happy-dom has no layout: clientHeight is always 0 and the caption has no
+	 * offsetHeight. Stub both so the measurement logic itself is testable — the
+	 * real geometry is covered by the browser-mode suite.
+	 */
+	function stubBox(el: any, boxPx: number, captionPx = 0): void {
+		Object.defineProperty(el, "clientHeight", {
+			value: boxPx,
+			configurable: true,
+		});
+		el._captionBlockPx = () => captionPx;
+	}
+
+	it("_captionBlockPx reads the real caption's offsetHeight + computed margin-top", async () => {
+		// Every other test in this describe block stubs _captionBlockPx (via
+		// stubBox), so the real method — offsetHeight + computed margin-top of
+		// .grid-dimensions — otherwise has no coverage at all; a dropped margin
+		// term would be silent. happy-dom has no layout, so offsetHeight is
+		// always 0 here, but it DOES resolve the component stylesheet's
+		// `.grid-dimensions { margin-top: 8px }` via getComputedStyle (verified:
+		// the existing "cells use pointer cursor only when editable" test above
+		// relies on the same happy-dom behaviour for a different rule), so this
+		// exercises the real method end to end and would catch the margin term
+		// being dropped. The full geometry (a non-zero offsetHeight too) is
+		// covered in the real-Chromium suite at
+		// src/__tests__/browser/grid-layout.browser.test.ts.
+		const el = createGrid(); // real _captionBlockPx — not stubbed
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const cap = el.shadowRoot!.querySelector(".grid-dimensions");
+		expect(cap).not.toBeNull(); // the caption this method measures actually renders
+		expect(
+			(el as unknown as { _captionBlockPx: () => number })._captionBlockPx(),
+		).toBe(8);
+		document.body.removeChild(el);
+	});
+
+	it("takes the height budget from its own box, minus the caption inside it", async () => {
+		const el = createGrid() as any;
+		stubBox(el, 400, 26);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		// The box we were given (400), less the dimensions caption that renders
+		// inside it (26) — never `window.innerHeight - top - a reserve constant`.
+		expect(el._availHeightPx).toBe(374);
+		document.body.removeChild(el);
+	});
+
+	it("resolves a MEASURED-but-degenerate box to 1px, not to 0 and not to the stale budget", async () => {
+		const el = createGrid() as any;
+		stubBox(el, 400, 26);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el._availHeightPx).toBe(374);
+
+		// The box collapses below the height of the caption rendered inside it (a
+		// real, measured 10px box; the panel's card really is that short). Two wrong
+		// answers here, and 0 is BOTH of them at once:
+		//  - latching 374 height-fits the map to space that no longer exists;
+		//  - 0 is fitCellPx's "unmeasured" sentinel — it drops the height term
+		//    entirely and falls back to WIDTH-fit, so a smaller box produces a
+		//    BIGGER map (#339's inversion, at a lower threshold).
+		// A measured box is never "unmeasured": it floors at 1px so the map keeps
+		// shrinking.
+		stubBox(el, 10, 26);
+		el.remeasure();
+		expect(el._availHeightPx).toBe(1);
+		document.body.removeChild(el);
+	});
+
+	it("resolves a genuinely UNMEASURED box (no layout at all) to 0 → width-fit", async () => {
+		const el = createGrid() as any;
+		stubBox(el, 400, 26);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el._availHeightPx).toBe(374);
+
+		// The other side of the sentinel: an element with no layout at all (both
+		// clientWidth and clientHeight 0 — detached, display:none, or a server-side
+		// first render) has not been measured, so there is no height budget to
+		// honour and fitCellPx must fall back to width-fit. It must still not latch
+		// the stale 374.
+		stubBox(el, 0, 26);
+		el.remeasure();
+		expect(el._availHeightPx).toBe(0);
+		document.body.removeChild(el);
+	});
+
+	it("a degenerate box still SHRINKS the map — it never snaps back to width-fit", async () => {
+		const el = createGrid() as any;
+		el._availPx = 900;
+		stubBox(el, 600, 26);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		// See the two-await note on the "shrinks the map as the box shrinks" test
+		// below: _measureAvail() runs from inside the update cycle, so the first
+		// render still sees the unmeasured budget.
+		await el.updateComplete;
+		const roomy = cellPx(el);
+		expect(roomy).toBeGreaterThan(0);
+
+		// Live repro at 1500px wide with the log expanded, walking the viewport down:
+		// at 400px the card's remainder was 19px, the caption inside it 27px, and the
+		// budget latched to 0 → width-fit → the map went 33px to 738px, overflowing a
+		// 53px card and hanging 125px below the fold. The map must only ever get
+		// smaller as the box does.
+		stubBox(el, 19, 27);
+		el.remeasure();
+		await el.updateComplete;
+		expect(el._availHeightPx).toBe(1);
+		expect(cellPx(el)).toBeLessThanOrEqual(roomy);
+		document.body.removeChild(el);
+	});
+
+	it("re-measures when its OWN ResizeObserver fires (the primary #338 trigger)", async () => {
+		// The observer is the correctness guarantee — the only trigger that needs no
+		// caller to remember anything. A sibling BELOW the grid (the detection log)
+		// expanding shrinks our box while changing NONE of the grid's properties, so
+		// Lit's updated() never runs and remeasure() is only called by callers who
+		// know to. If the observer isn't wired to _measureAvail, #338 is back for
+		// every layout change nobody thought to nudge us about.
+		//
+		// happy-dom ships a ResizeObserver that never invokes its callback (no layout
+		// engine), so swap in one we can fire by hand. Restored in `finally` — a
+		// leaked global would silently disarm the observer for every later test.
+		const callbacks: Array<() => void> = [];
+		const observed: Element[] = [];
+		const RealRO = globalThis.ResizeObserver;
+		globalThis.ResizeObserver = class {
+			constructor(cb: () => void) {
+				callbacks.push(cb);
+			}
+			observe(target: Element) {
+				observed.push(target);
+			}
+			unobserve() {}
+			disconnect() {}
+		} as unknown as typeof ResizeObserver;
+
+		try {
+			const el = createGrid() as any;
+			stubBox(el, 500, 20);
+			document.body.appendChild(el);
+			await el.updateComplete;
+
+			// It observes ITSELF: our own box is the height budget.
+			expect(observed).toContain(el);
+			expect(el._availHeightPx).toBe(480);
+
+			// The log expands below us; the box shrinks; nothing else happens.
+			stubBox(el, 300, 20);
+			for (const cb of callbacks) cb();
+			expect(el._availHeightPx).toBe(280);
+
+			document.body.removeChild(el);
+		} finally {
+			globalThis.ResizeObserver = RealRO;
+		}
+	});
+
+	it("re-measures on remeasure() when a sibling below it changes height", async () => {
+		const el = createGrid() as any;
+		stubBox(el, 500, 20);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el._availHeightPx).toBe(480);
+
+		// The detection log expands below the grid: the column redistributes and
+		// our box shrinks. None of the grid's PROPERTIES changed, so Lit's
+		// updated() never fires — the panel nudges us instead.
+		stubBox(el, 380, 20);
+		el.remeasure();
+		expect(el._availHeightPx).toBe(360);
+		document.body.removeChild(el);
+	});
+
+	it("skips the height budget in fill mode (the card fills width and grows tall)", async () => {
+		const el = createGrid({ fill: true }) as any;
+		stubBox(el, 400, 0);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el._availHeightPx).toBe(0);
+		document.body.removeChild(el);
+	});
+
+	it("container-measures the box on mobile too (no viewport cap any more)", async () => {
+		// Mobile now measures the box the panel gives it, exactly like desktop — the
+		// panel bounds that box declaratively (a flex column capped at 45vh) so the
+		// old circular "measuring a content-sized container" concern is gone (#338).
+		// `mobile` now selects only the compact cell tier, never the height source.
+		const el = createGrid({ mobile: true }) as any;
+		stubBox(el, 400, 0);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		expect(el._availHeightPx).toBe(400);
+		document.body.removeChild(el);
+	});
+
+	it("shrinks the map as the box shrinks — never inverts to a bigger map", async () => {
+		const el = createGrid() as any;
+		el._availPx = 900;
+		stubBox(el, 600, 26);
+		document.body.appendChild(el);
+		await el.updateComplete;
+		// _measureAvail() runs inside firstUpdated()/updated(), AFTER render() has
+		// already committed for this cycle — so the height budget it computes from
+		// the stubbed box only reaches _availHeightPx here, not the DOM. A single
+		// await therefore observes the FIRST render, which still saw the initial,
+		// unmeasured _availHeightPx (0) and fell back to width-fit at the 48px
+		// desktop ceiling — the exact same value #339's inversion would also
+		// produce. Capturing "roomy" there would make `48 <= 48` trivially true
+		// even if the post-shrink budget also collapsed to 0 (the #339 bug), so
+		// the guard below would never actually fail. A second await lets the
+		// Lit update that _availHeightPx's assignment scheduled land, so we read
+		// the real settled cell size (this file documents the same one-cycle-late
+		// caveat for `_furnitureTones` above, at updated()/_updateFurnitureTones).
+		await el.updateComplete;
+		const roomy = cellPx(el);
+
+		// The regression that killed #339: a SMALLER budget crossed a floor, the
+		// budget dropped to 0, and the map fell back to width-fit — TRIPLING in
+		// size. A smaller box may only ever produce a smaller-or-equal map.
+		stubBox(el, 150, 26);
+		el.remeasure();
+		// Asymmetric on purpose: remeasure() calls _measureAvail() synchronously,
+		// outside Lit's update cycle entirely, so _availHeightPx is already updated
+		// and a request-update already queued by the time we get here — ONE await
+		// is enough to observe the settled post-shrink render. The baseline above
+		// needs a second await for exactly the opposite reason: there,
+		// _measureAvail() runs FROM INSIDE the update cycle we're awaiting, one
+		// step too late for that same cycle's render to see it. Missing that
+		// asymmetry is what let the pre-measurement baseline slip through above.
+		await el.updateComplete;
+		expect(cellPx(el)).toBeLessThanOrEqual(roomy);
 		document.body.removeChild(el);
 	});
 });

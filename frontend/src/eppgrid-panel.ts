@@ -481,12 +481,54 @@ export const layoutStyles = css`
   /* Desktop editor/live: frame the grid in a full-width "expansion area" card.
      The grid centres within it, the white surface shows the space the grid can
      use, and the detection log below lines up with the card's left edge. Reset
-     on mobile (the grid fills the screen there — no card). */
+     on mobile (the grid fills the screen there — no card).
+
+     The card is also the column's flex REMAINDER: whatever the heatmap toggle and
+     the detection log below it don't use. This is what bounds the map — epp-grid
+     measures the box it's given (its own clientHeight) instead of guessing at
+     "viewport bottom minus a reserve constant", so anything a caller renders below
+     the grid simply takes its space and the map shrinks to fit (#338). No constant
+     to hand-sum, and no new scroll container anywhere — that's the tell the model
+     is right (overflow stays visible: the target menu hangs over the card's edge,
+     and overflow-y:auto would silently force overflow-x:auto and clip it).
+     min-height:0 lets it shrink below its content.
+     Mobile keeps this flex:1 remainder (see the @media block) — the mobile column
+     is flex-bounded (capped at 45vh), not content-sized, so the card fills it and
+     is the box <epp-grid> measures there too; the @media block only strips the card
+     chrome and adds a legibility floor. */
   .editor-shell .grid-container {
     background: var(--epp-surface, var(--card-background-color, #fff));
     border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
     border-radius: var(--epp-radius-lg, 16px);
     padding: var(--epp-space-4, 16px);
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* …but the remainder is for the MAP. The uncalibrated live overview renders an
+     <epp-wizard> in this same card, and the wizard neither wants nor uses a
+     bounded box: stretched to the column's remainder it framed a 314px wizard in
+     an 836px card, and on a short viewport the card (min-height:0) shrank below
+     the wizard, which then spilled past its bottom border. The panel adds this
+     class whenever it renders the wizard instead of the grid — same specificity as
+     the rule above, declared after it, so it wins. */
+  .editor-shell .grid-container--wizard {
+    flex: 0 0 auto;
+  }
+
+  /* Hand the box down to the element (:host is display:flex, so it centres the map
+     inside it). A percentage height resolves here because the card's own height is
+     flex-resolved (definite), NOT content-derived — which is the whole point: if
+     <epp-grid> had no definite height, its clientHeight would BE the map's content
+     height and the budget would be a function of the map it produced (the map could
+     then shrink but never grow back). This now holds on mobile too: the mobile card
+     is flex:1 of a flex-bounded (45vh) column, so it has a definite height there as
+     well and the map container-measures on both sides of the breakpoint (#338). The
+     overview CARD has its own stylesheet and is deliberately NOT dragged into a
+     height:100% fill chain — that caused scroll-driven resize oscillation (see
+     eppgrid-card.ts). */
+  .grid-container > epp-grid {
+    height: 100%;
   }
 
   .sidebar-title {
@@ -580,8 +622,9 @@ export const layoutStyles = css`
 
   @media (max-width: 819px) {
     /* Unified editor shell: stacks to a column on mobile (grid top, sheet below
-       filling height). The grid column is fixed-height (flex:0 0 auto) and the
-       inline <epp-sheet> fills the rest and owns its own scroll. */
+       filling height). The grid column is flex-bounded (max-height:45vh and
+       shrinkable, below) and the inline <epp-sheet> fills the rest and owns its
+       own scroll. */
     .editor-shell {
       display: flex;
       flex-direction: column;
@@ -589,20 +632,69 @@ export const layoutStyles = css`
       min-height: 0;
     }
     .editor-shell > .grid-column {
-      flex: 0 0 auto;
+      /* Bound the mobile grid column's height declaratively — this is what makes
+         #338 unreachable on a phone, and it replaces the old JS _viewportH*0.45 hard
+         cap the grid used to apply. The layout engine caps here; <epp-grid> just
+         measures whatever box it ends up with (no measured JS reserve).
+           - max-height:45vh is the soft cap: on a tall portrait phone it stops the
+             map eating the whole screen so the controls sheet keeps its share.
+           - flex-grow:1 lets the column actually REACH 45vh. With flex-grow:0 the
+             column would be content-sized, and because its map card is a flex:1
+             (basis-0) child the content basis excludes the map — so the column
+             collapsed to just the toggle+log and the portrait map shrank to a
+             sliver. Growing to the 45vh cap fixes that (the sheet's flex-basis:0,
+             below, is the other half: it stops the tall sidebar stealing the space).
+           - flex-shrink:1 + min-height:0 let the column shrink BELOW 45vh on a very
+             short landscape phone so the map+toggle+log shrink to fit.
+           - overflow-y:auto makes THIS column the scroll boundary. On a portrait
+             phone the map (a flex remainder well above its floor) + toggle + log fit
+             the 45vh column exactly, so nothing scrolls. On a short landscape phone
+             the map is pinned at its legibility floor (min-height on the card below),
+             so the card + toggle + log exceed the 45vh column — and rather than
+             overflow an overflow:hidden panel with nothing able to reach the log
+             (that WAS #338), the column scrolls and the log is brought into view.
+             This is SAFE where the desktop version was not: <epp-grid> measures its
+             own clientHeight (a fixed, definite box), never a scroll-moving
+             getBoundingClientRect().top, so an outer scroll cannot feed the resize
+             loop, and a fixed-px card floor (not min-content) cannot ratchet the box
+             larger. overflow-x rides along as auto (CSS forces the pair), which on
+             the full-width mobile card only matters for a target menu that overhangs
+             the edge — a negligible mobile edge case. */
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: 45vh;
       max-width: 100%;
+      overflow-y: auto;
     }
     .editor-shell > .editor-controls,
     .editor-shell > .live-controls {
-      flex: 1 1 auto;
+      /* flex-basis 0 (not auto): the sheet scrolls internally, so it must take
+         only the space LEFT OVER after the grid column — not demand its full
+         content height as its flex basis. With basis:auto the tall live sidebar
+         inflated the flex line and, in shrink mode, stole the map's 45vh so the
+         portrait map collapsed to a sliver. basis 0 lets the column reach its 45vh
+         and the sheet fills the remainder and scrolls. */
+      flex: 1 1 0;
       min-height: 0;
       max-width: none;
     }
-    /* No expansion-area card on mobile — the grid fills the screen. */
+    /* No expansion-area card on mobile — the grid fills the screen (drop the
+       surface, border and padding). It KEEPS the desktop flex:1 remainder so the
+       card fills the bounded column and is the box <epp-grid> measures (#338). (This
+       used to reset to flex:0 0 auto, back when the column was content-sized.)
+
+       min-height is a LEGIBILITY FLOOR: on a portrait phone the flex remainder is
+       far above it so the map keeps its 45vh-bounded size unchanged; on a short
+       landscape phone the remainder would collapse to a few illegible px, so the
+       floor pins the map's box at a readable size instead. It is a FIXED px (not
+       min-content) on purpose — a content-derived floor ratchets the measured box
+       larger and never lets it shrink back. The card + toggle + log then exceed the
+       45vh column and the column (above) scrolls to keep the log reachable. */
     .editor-shell .grid-container {
       background: none;
       border: none;
       padding: 0;
+      min-height: 132px;
     }
     /* The hand-rolled sub-tabs aren't epp-* primitives, so they don't pick up
        the panel's mobile control height on their own. Size them to it (44px
@@ -770,12 +862,16 @@ export class EPPGridPanel extends LitElement {
 		this._targetCtrl.zoneEngineState = value;
 	}
 	@state() _overlayMode: OverlayMode = null;
+	// x/y are the target's ROOM coordinates (mm) — the cell-index lookups behind
+	// dismiss/overlay run off those. menuX/menuY are where to draw the menu: the
+	// clicked dot's centre, in px relative to `.grid-container` (the positioned
+	// ancestor the menu renders into).
 	@state() private _targetMenu: {
 		x: number;
 		y: number;
 		targetIndex: number;
-		pctX: number;
-		pctY: number;
+		menuX: number;
+		menuY: number;
 	} | null = null;
 	@state() private _dismissedTargets: Map<number, number> = new Map();
 	@state() _isPainting = false;
@@ -1050,6 +1146,63 @@ export class EPPGridPanel extends LitElement {
 		// by _navGuard (hostDisconnected ran in super.disconnectedCallback()).
 		window.removeEventListener("keydown", this._onKeyDown);
 		this._mql?.removeEventListener("change", this._onMql);
+		// Symmetric with the attach in updated() — HA destroys and recreates this
+		// panel on every rebuild and on the 5-minute hidden-suspend, so an observer
+		// left connected leaks an instance (and its callback's closure over `this`)
+		// per cycle.
+		this._cardRo?.disconnect();
+		this._cardRo = undefined;
+		this._cardRoTarget = undefined;
+	}
+
+	/**
+	 * Observes the target menu's anchor box (`.grid-container`), and closes the menu
+	 * when it moves.
+	 *
+	 * The menu is anchored to a px SNAPSHOT of where its dot was when it opened, and
+	 * `_showTargetMenu` converts that snapshot into the CARD'S coordinate space (the
+	 * card is the menu's positioning context). So the menu's position is invalidated
+	 * by exactly one thing — a change to the card's box — and that is precisely what
+	 * this observer watches. A transient popover should not chase the layout around;
+	 * it should go away.
+	 *
+	 * This is the SINGLE mechanism, and it is sufficient for every cause:
+	 *  - Changes that come FROM a click (the log and heatmap toggles): already
+	 *    handled by the click-outside handler in `_renderLiveOverview`, which closes
+	 *    the menu on the very click that toggles them.
+	 *  - IN-PAGE layout changes with no window resize behind them — docking or
+	 *    undocking the HA sidebar, an HA theme/density change, the panel's own
+	 *    column reflowing: these fire NO `window.resize` event at all (HA's own
+	 *    Lovelace layout uses a ResizeObserver for exactly this reason), so an
+	 *    observer is the only thing that can catch them.
+	 *  - Window resize and device rotation: the card is `flex: 1` of a height-bounded
+	 *    column, so a viewport change resizes it and the observer fires. A viewport
+	 *    change that leaves the card's box untouched leaves the menu's card-relative
+	 *    anchor correct too — there is nothing to close it for. (A `window.resize`
+	 *    hook alongside this observer was therefore strictly redundant, and its
+	 *    "viewport-relative snapshot" rationale was simply wrong: the snapshot is
+	 *    card-relative.)
+	 *
+	 * Attached in `updated()` (the card only exists once a view that renders it has
+	 * rendered) and disconnected in `disconnectedCallback()`. The symmetry is
+	 * load-bearing: HA destroys and recreates this panel on every dashboard rebuild
+	 * and after the 5-minute hidden-suspend, so an observer left connected would
+	 * leak an instance per cycle.
+	 */
+	private _cardRo?: ResizeObserver;
+	private _cardRoTarget?: Element;
+
+	private _syncCardObserver(): void {
+		if (typeof ResizeObserver === "undefined") return;
+		const card = this.shadowRoot?.querySelector(".grid-container") ?? undefined;
+		if (card === this._cardRoTarget) return;
+		this._cardRo?.disconnect();
+		this._cardRoTarget = card;
+		if (!card) return;
+		this._cardRo ??= new ResizeObserver(() => {
+			this._closeTargetMenu();
+		});
+		this._cardRo.observe(card);
 	}
 
 	private _attachConnectionListeners(conn: any): void {
@@ -1130,6 +1283,29 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	updated(changedProps: PropertyValues): void {
+		// Track the target menu's anchor box across view swaps: `.grid-container` is
+		// created and destroyed as views change, so re-point the observer at whatever
+		// card is in the DOM now. Idempotent — it early-returns when the element
+		// hasn't changed, so it does NOT re-observe (and so does not re-trigger the
+		// observer's initial delivery) on the update that opens the menu.
+		this._syncCardObserver();
+		// Expanding/collapsing the detection log changes the height of a SIBLING
+		// BELOW <epp-grid>: none of the grid's properties change, so Lit never runs
+		// its update cycle and it never re-measures its box. The grid's own
+		// ResizeObserver already covers this correctly — but its callback is
+		// delivered on a later tick, so the map would visibly re-fit a frame after
+		// the log opened. Nudging it here re-fits it in the SAME frame: updated()
+		// runs after the DOM is written, so the measure sees the new layout, and
+		// remeasure() is synchronous. This is a latency optimisation over the
+		// observer, not a substitute for it.
+		if (
+			changedProps.has("_showDebugLog") ||
+			changedProps.has("_showBackendDebugLog")
+		) {
+			for (const grid of this.shadowRoot?.querySelectorAll("epp-grid") ?? []) {
+				grid.remeasure();
+			}
+		}
 		if (changedProps.has("hass") && this.hass) {
 			this._deviceCtrl.hass = this.hass;
 			this._flasherCtrl.hass = this.hass;
@@ -2176,7 +2352,15 @@ export class EPPGridPanel extends LitElement {
 
     .debug-log-container {
       margin-top: 4px;
-      max-height: 200px;
+      /* A FIXED height, not a max-height: under a max-height the log GROWS line by
+         line as events stream in, and under container measurement every growth step
+         resizes the map underneath it. A fixed height keeps the map still and lets
+         the log scroll internally. 6 lines × 16.5px (11px monospace × 1.5
+         line-height) = 99px; the box is content-box, so its 6px padding sits
+         OUTSIDE this. Six lines is what we want: the old 200px box fit ~12, which
+         is dead space when the room is quiet — and every pixel of it comes out of
+         the map. */
+      height: 99px;
       overflow-y: auto;
       overflow-x: hidden;
       background: var(--card-background-color, #1e1e1e);
@@ -2331,8 +2515,9 @@ export class EPPGridPanel extends LitElement {
       }
       .debug-log-container {
         /* ~2 log entries (≈4 wrapped lines) before it scrolls — keeps the log
-           from shoving the rest of the panel down on a phone. */
-        max-height: 76px;
+           from shoving the rest of the panel down on a phone. Fixed, not a
+           growth cap, for the same reason as the desktop rule. */
+        height: 76px;
       }
     }
 
@@ -3126,7 +3311,7 @@ export class EPPGridPanel extends LitElement {
 				.targetPrevXY=${this._zoneEngineState.targetPrevXY}
 				.localize=${this._localize}
 				.maxGridPx=${480}
-				?capHeightToHalfViewport=${this._isMobile}
+				?mobile=${this._isMobile}
 				.maxRangeMm=${this._computeMaxRangeMm()}
 				.heatmapCells=${this._heatmapCells}
 				?showHeatmap=${this._heatmapEnabled && this._heatmapAvailability() === "available"}
@@ -3156,10 +3341,29 @@ export class EPPGridPanel extends LitElement {
 		targetIndex: number;
 		x: number;
 		y: number;
-		pctX: number;
-		pctY: number;
+		clientX: number;
+		clientY: number;
 	}): void {
-		this._targetMenu = detail;
+		// The menu is positioned inside `.grid-container` (the card), but the map is
+		// centred INSIDE that card and is smaller than it in both axes (#338), so the
+		// event's percentages-of-the-map are meaningless here — they put the menu up
+		// to ~300px away from the dot. Anchor to the dot instead: convert its centre
+		// from client space into the card's coordinate space, once, at open time (the
+		// menu is transient; it doesn't need to track later reflows).
+		//
+		// getBoundingClientRect() is the card's BORDER box, but an absolutely
+		// positioned child's left/top resolve against its containing block's PADDING
+		// box — and the card has a 1px border, so the raw rect is off by exactly that
+		// border in each axis. clientLeft/clientTop ARE that border width.
+		const card = this.shadowRoot?.querySelector(".grid-container");
+		const box = card?.getBoundingClientRect();
+		this._targetMenu = {
+			targetIndex: detail.targetIndex,
+			x: detail.x,
+			y: detail.y,
+			menuX: detail.clientX - (box?.left ?? 0) - (card?.clientLeft ?? 0),
+			menuY: detail.clientY - (box?.top ?? 0) - (card?.clientTop ?? 0),
+		};
 	}
 
 	private _closeTargetMenu(): void {
@@ -3252,10 +3456,10 @@ export class EPPGridPanel extends LitElement {
 
 	private _renderTargetMenu() {
 		if (!this._targetMenu) return nothing;
-		const { pctX, pctY } = this._targetMenu;
+		const { menuX, menuY } = this._targetMenu;
 		return html`
 			<div class="target-menu-backdrop" @click=${() => this._closeTargetMenu()}></div>
-			<div class="target-menu" style="left: ${pctX}%; top: ${pctY}%;">
+			<div class="target-menu" style="left: ${menuX}px; top: ${menuY}px;">
 				<button class="target-menu-item" @click=${() => this._dismissTarget()}>
 					${this._localize("live.delete_target")}
 				</button>
@@ -3291,6 +3495,13 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _renderLiveOverview() {
+		// The card's flex:1 exists to give the MAP a bounded box to measure. The
+		// uncalibrated view puts an <epp-wizard> in that same card, which neither
+		// wants nor uses the remainder: stretched, it frames a 314px wizard in an
+		// 836px card — and on a short viewport the card shrinks BELOW the wizard
+		// (min-height:0) and the wizard spills past its bottom border. Content-size
+		// the card in that case (#338).
+		const wizardCard = !this._perspective;
 		const gridContent = this._perspective
 			? this._renderLiveGrid()
 			: html`<epp-wizard
@@ -3311,7 +3522,7 @@ export class EPPGridPanel extends LitElement {
         ${this._renderHeader()}
         <div class="editor-shell">
           <div class="grid-column">
-            <div class="grid-container" style="position: relative;">
+            <div class="grid-container ${wizardCard ? "grid-container--wizard" : ""}" style="position: relative;">
               ${gridContent}
               ${this._targetMenu ? this._renderTargetMenu() : nothing}
             </div>
@@ -3473,7 +3684,7 @@ export class EPPGridPanel extends LitElement {
                 .targetPrevXY=${this._zoneEngineState.targetPrevXY}
                 .localize=${this._localize}
                 .maxGridPx=${480}
-                ?capHeightToHalfViewport=${this._isMobile}
+                ?mobile=${this._isMobile}
                 .maxRangeMm=${this._editorMaxRangeMm()}
                 .frozenBounds=${this._frozenBounds}
                 .dismissedTargets=${this._dismissedTargets}

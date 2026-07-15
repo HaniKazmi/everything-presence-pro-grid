@@ -347,6 +347,123 @@ describe("layout styles", () => {
 		expect(resetIdx).toBeGreaterThan(mediaIdx);
 	});
 
+	it("makes the grid card the column's flex remainder", () => {
+		// The map's height budget IS this box (epp-grid measures its own
+		// clientHeight). flex:1 hands it whatever the heatmap toggle and the
+		// detection log below it don't use; min-height:0 lets it shrink below its
+		// content instead of pushing the log off the bottom of the viewport (#338).
+		//
+		// Search EVERY desktop rule with this selector, not just the first one the
+		// regex finds: a first-match guard silently asserts "these declarations live
+		// in the first rule", which is a structural constraint on how the stylesheet
+		// may be organised, not on what it computes. (Mobile resets flex on the same
+		// selector inside the @media block, so stop at the media query.)
+		const mediaIdx = layoutCss.indexOf("@media (max-width: 819px)");
+		expect(mediaIdx).toBeGreaterThan(-1);
+		const desktop = layoutCss.slice(0, mediaIdx);
+		const decls = [
+			...desktop.matchAll(/\.editor-shell \.grid-container\s*\{([^}]*)\}/g),
+		]
+			.map((m) => m[1])
+			.join("\n");
+		expect(decls).not.toBe("");
+		expect(decls).toMatch(/flex:\s*1/);
+		expect(decls).toMatch(/min-height:\s*0/);
+	});
+
+	it("content-sizes the card when it holds the wizard, not the map", () => {
+		// The flex:1 remainder exists for the MAP (epp-grid measures the box). The
+		// uncalibrated overview renders <epp-wizard> in the same card: stretched, the
+		// card framed a 314px wizard in an 836px box, and on a short viewport it
+		// shrank below the wizard and the wizard overflowed its bottom border (#338).
+		// The override must come AFTER the base rule — same specificity, so order is
+		// the only thing that makes it win.
+		const baseIdx = layoutCss.indexOf(".editor-shell .grid-container {");
+		const wizIdx = layoutCss.indexOf(".editor-shell .grid-container--wizard {");
+		expect(baseIdx).toBeGreaterThan(-1);
+		expect(wizIdx).toBeGreaterThan(baseIdx);
+		const rule = layoutCss.slice(wizIdx, layoutCss.indexOf("}", wizIdx));
+		expect(rule).toMatch(/flex:\s*0 0 auto/);
+	});
+
+	it("hands the measured box down to <epp-grid>", () => {
+		const match = layoutCss.match(/\.grid-container > epp-grid\s*\{([^}]*)\}/);
+		expect(match).not.toBeNull();
+		expect(match![1]).toMatch(/height:\s*100%/);
+	});
+
+	it("mobile card keeps the flex remainder (only chrome reset), AFTER the base rule", () => {
+		// Mobile now container-measures like desktop (#338): the .grid-column is
+		// flex-bounded (max-height:45vh, below), so the card must stay its flex:1
+		// remainder to be the box <epp-grid> measures. The mobile override therefore
+		// ONLY strips the card chrome (surface/border/padding) and must NOT reset the
+		// flex back to 0 0 auto (which is what content-sized it when the column was
+		// content-sized). The override is dead if it precedes the base rule — @media
+		// does not raise specificity.
+		const baseIdx = layoutCss.indexOf(".editor-shell .grid-container {");
+		const mediaIdx = layoutCss.indexOf("@media (max-width: 819px)");
+		expect(baseIdx).toBeGreaterThan(-1);
+		expect(mediaIdx).toBeGreaterThan(baseIdx);
+		const overrideIdx = layoutCss.indexOf(
+			".editor-shell .grid-container {",
+			mediaIdx,
+		);
+		expect(overrideIdx).toBeGreaterThan(mediaIdx);
+		const rule = layoutCss.slice(
+			overrideIdx,
+			layoutCss.indexOf("}", overrideIdx),
+		);
+		// Chrome reset kept…
+		expect(rule).toMatch(/background:\s*none/);
+		expect(rule).toMatch(/border:\s*none/);
+		expect(rule).toMatch(/padding:\s*0/);
+		// …but the flex:0 0 auto content-sizing is gone (inherits the flex:1 remainder).
+		expect(rule).not.toMatch(/flex:\s*0 0 auto/);
+		// A FIXED-px legibility floor (not min-content — that ratchets): on a short
+		// landscape phone the flex remainder would collapse to an illegible sliver, so
+		// the card floors the map's box at a readable size and the column scrolls.
+		expect(rule).toMatch(/min-height:\s*\d+px/);
+	});
+
+	it("caps the mobile grid column at 45vh and makes it the scroll boundary", () => {
+		// The old JS height cap (viewportH*0.45, applied inside epp-grid) is gone;
+		// the layout engine now caps the map declaratively via max-height:45vh on the
+		// bounded mobile column, and <epp-grid> just measures the box it ends up with
+		// (#338). min-height:0 lets the column shrink BELOW 45vh; overflow-y:auto makes
+		// it the scroll boundary so that on a short landscape phone — where the legible
+		// map + toggle + log exceed 45vh — the log scrolls into view instead of hiding
+		// behind the overflow:hidden panel. Scoped to the mobile @media block.
+		const mq = layoutCss.slice(layoutCss.indexOf("@media (max-width: 819px)"));
+		const start = mq.indexOf(".editor-shell > .grid-column");
+		expect(start).toBeGreaterThan(-1);
+		const rule = mq.slice(start, mq.indexOf("}", start));
+		expect(rule).toMatch(/max-height:\s*45vh/);
+		expect(rule).toMatch(/min-height:\s*0/);
+		expect(rule).toMatch(/overflow-y:\s*auto/);
+	});
+
+	it("gives the detection log a FIXED height, not a max-height", () => {
+		// With max-height the log grew line by line as events streamed in — and under
+		// container measurement every growth step would resize the map. Fixed at 6
+		// lines (6 x 16.5px; content-box, so the 6px padding sits outside it).
+		const styles = (
+			customElements.get("eppgrid-panel") as typeof HTMLElement & {
+				styles: { cssText: string }[];
+			}
+		).styles;
+		// Strip comments first: the rule's own comment explains why max-height is
+		// wrong, and a guard that greps the comment prose is a guard on the prose —
+		// it dictated how the CSS could be documented, not what it declares.
+		const css = styles
+			.map((s) => s.cssText)
+			.join("\n")
+			.replace(/\/\*[\s\S]*?\*\//g, "");
+		const idx = css.indexOf(".debug-log-container {");
+		const rule = css.slice(idx, css.indexOf("}", idx));
+		expect(rule).toMatch(/height:\s*99px/);
+		expect(rule).not.toMatch(/max-height:/);
+	});
+
 	it("sizes the mobile sidebar sub-tabs to the panel's touch-target control height", () => {
 		// The zones/overlays/furniture sub-tabs are hand-rolled <button class="sidebar-tab">,
 		// not epp-* primitives, so they don't inherit the panel's mobile 44px control

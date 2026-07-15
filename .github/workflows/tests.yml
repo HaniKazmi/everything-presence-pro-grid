@@ -71,7 +71,11 @@ jobs:
       - name: Rollup build (fails on warnings)
         run: npm run build
       - name: Vitest with coverage
-        run: npx vitest run --coverage
+        run: npm run test:coverage
+      - name: Install Chromium for browser-mode tests
+        run: npx playwright install --with-deps chromium
+      - name: Vitest browser mode (real layout)
+        run: npm run test:browser
 
   cpp:
     runs-on: ubuntu-latest

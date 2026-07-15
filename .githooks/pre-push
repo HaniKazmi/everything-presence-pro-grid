@@ -222,10 +222,21 @@ else
 fi
 
 step "TypeScript tests + coverage"
-if (cd "$FRONTEND" && npx vitest run --coverage) 2>&1; then
+if (cd "$FRONTEND" && npm run test:coverage) 2>&1; then
     pass "TypeScript tests + coverage"
 else
     fail "TypeScript tests + coverage"
+fi
+
+# The unit suite runs under happy-dom, which has NO layout engine: clientHeight is
+# always 0 and getBoundingClientRect() returns zeros. Every geometry regression
+# (#338, #339) therefore passes vacuously there — the ONLY tests that can catch
+# them are the real-Chromium ones. Gate on them here, not just in CI.
+step "TypeScript browser tests (real layout)"
+if (cd "$FRONTEND" && npm run test:browser) 2>&1; then
+    pass "TypeScript browser tests"
+else
+    fail "TypeScript browser tests — if Chromium is missing, run: cd frontend && npx playwright install chromium"
 fi
 
 fi # frontend changed

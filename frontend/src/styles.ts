@@ -313,12 +313,25 @@ export const headerStyles = css`
     margin-bottom: 16px;
     text-align: center;
     /* Reserve the device picker's 56px height (the ha-select field) so the header
-       can't collapse to 0 while ha-select upgrades async — that briefly shifts the
-       grid up, inflating its height measurement and flickering the live<->editor
-       swap. Intentionally unscoped (not desktop-only): harmless on mobile, where the
-       grid sizes off the viewport height, not the header's top. Must stay on this
-       (cascade-winning) .panel-header rule; see the root cause + cascade guard in
-       panel-layout.test.ts. */
+       can't collapse to 0 while ha-select upgrades async.
+
+       STILL LOAD-BEARING, for a NEW reason. It used to stop a collapsed header from
+       deflating the grid's viewport-relative "top" measurement. Nothing reads that
+       top any more (#338: the grid measures its own BOX, never the window) — but the
+       header is a SIBLING ABOVE the grid inside the height-bounded column, so a
+       header that is briefly 0px hands the grid's card 56px of remainder it is about
+       to lose. The grid measures that inflated box, sizes the map to it, and the map
+       jumps back down a frame later when ha-select upgrades — a visible flicker on
+       the live<->editor swap. Reserving the space up front means the box the grid
+       measures is the box it keeps. (epp-grid's firstUpdated also schedules one
+       post-layout re-measure as defence in depth; this rule is what stops the known
+       case from ever needing it.)
+
+       Intentionally unscoped (not desktop-only): the same reserve is load-bearing on
+       mobile too, since the grid container-measures there as well now (#338) — a
+       briefly-0px header inflates the grid's measured box on mobile just as on
+       desktop. Must stay on this (cascade-winning) .panel-header rule; see the root
+       cause + cascade guard in panel-layout.test.ts. */
     min-height: 56px;
   }
 

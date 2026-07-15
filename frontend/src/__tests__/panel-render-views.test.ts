@@ -1169,6 +1169,51 @@ describe("_renderLiveOverview", () => {
 		expect(sheet!.querySelector('[slot="peek"] epp-kebab-menu')).not.toBeNull();
 		expect(sheet!.querySelector('[slot="actions"]')).toBeNull(); // read-only
 	});
+
+	it("re-measures the grid when the detection log is toggled", async () => {
+		const el = createPanel();
+		document.body.appendChild(el);
+		await el.updateComplete;
+		// A real mount runs connectedCallback -> _initialize(), which awaits the
+		// device-list subscription (a bare resolved stub here, so it yields no
+		// devices) and then copies the controller's device list back onto the panel
+		// — swapping the live view, and the grid with it, out from under us. Let
+		// that settle, then re-seed the live view so the toggle below happens on a
+		// mounted grid.
+		await new Promise((r) => setTimeout(r, 0));
+		const a = el as any;
+		a._loading = false;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: true,
+				configured: true,
+				firmware_status: "compatible",
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._view = "live";
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		a._grid = initGridFromRoom(3000, 4000);
+		await el.updateComplete;
+
+		const grid = el.shadowRoot!.querySelector("epp-grid") as EppGrid;
+		expect(grid).not.toBeNull();
+		const spy = vi.spyOn(grid, "remeasure");
+
+		// Expanding the log changes the height of a SIBLING BELOW the grid, so none
+		// of the grid's properties change and Lit never runs its update cycle. The
+		// grid's own ResizeObserver would catch this correctly on its own — this
+		// explicit call is only a same-frame latency nudge, landing the re-fit in
+		// the paint the log opens in instead of one observer tick later.
+		a._showBackendDebugLog = true;
+		await el.updateComplete;
+		expect(spy).toHaveBeenCalled();
+
+		document.body.removeChild(el);
+	});
 });
 
 describe("_renderLiveGrid", () => {
