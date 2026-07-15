@@ -724,6 +724,29 @@ export class EppFlasherView extends LitElement {
 		if (changed.has("usbFlashState") && this.usbFlashState == null) {
 			this._cancelling = false;
 		}
+
+		// When an OTA error opens, its message renders in the row's flow — but
+		// the device list is a `max-height: 40vh; overflow-y: auto` scroll box,
+		// so a message opened past the fold is clipped (an in-flow bar is NOT
+		// immune to a scroll cap). Scroll `.device-list` itself to reveal the
+		// whole detail. We move the inner list directly rather than
+		// `detail.scrollIntoView()` (which would also scroll whichever ancestors
+		// it needed): confining the scroll to this shadow root keeps it
+		// non-composed, so it can't reach — and so can't trip — the window-scroll
+		// dismissal, with no dependency on any ancestor's overflow behaviour.
+		if (changed.has("_errorPopoverMac") && this._errorPopoverMac !== null) {
+			const list = this.shadowRoot?.querySelector(".device-list");
+			const detail = this.shadowRoot?.querySelector(".ota-error-detail");
+			if (list && detail) {
+				const listBox = list.getBoundingClientRect();
+				const detailBox = detail.getBoundingClientRect();
+				if (detailBox.bottom > listBox.bottom) {
+					list.scrollTop += detailBox.bottom - listBox.bottom;
+				} else if (detailBox.top < listBox.top) {
+					list.scrollTop -= listBox.top - detailBox.top;
+				}
+			}
+		}
 	}
 
 	/** Render a Cancel button that flips to "Cancelling…" while the

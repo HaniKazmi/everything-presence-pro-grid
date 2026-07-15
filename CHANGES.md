@@ -46,6 +46,9 @@ firmware downloads, see the
     with every new event.
 - **The target menu now opens on the target you clicked** instead of sometimes
     appearing well away from it.
+- **Firmware update error messages are no longer cut off.** When a device fails
+    to update, opening the error indicator now brings the full explanation into
+    view instead of clipping it against the bottom of a long device list.
 
 ## v1.5.1 — 2026-07-04
 
