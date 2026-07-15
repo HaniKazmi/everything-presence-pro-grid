@@ -1723,7 +1723,10 @@ describe("OTA inline rendering", () => {
 		// Regression: the error text used to be an absolutely-positioned popover
 		// (bottom: 100%) that the scrolling .device-list (overflow-y: auto)
 		// clipped for a device at the top of the list. It now renders in normal
-		// flow inside the row, so it can never be clipped.
+		// flow inside the row. (The list's 40vh scroll cap can still clip an
+		// opened message past the fold; updated() scrolls it into view — see
+		// flasher-ota-error-visibility.browser.test.ts, since clipping needs a
+		// real layout engine happy-dom lacks.)
 		const el = createView({
 			flashableDevices: [updatableDevice],
 			otaStates: {
