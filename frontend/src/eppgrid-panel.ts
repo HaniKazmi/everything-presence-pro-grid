@@ -519,10 +519,12 @@ export const layoutStyles = css`
      flex-resolved (definite), NOT content-derived — which is the whole point: if
      <epp-grid> had no definite height, its clientHeight would BE the map's content
      height and the budget would be a function of the map it produced (the map could
-     then shrink but never grow back). Against the content-sized mobile container
-     this resolves to \`auto\`, so the rule is desktop-only in effect. The overview
-     CARD has its own stylesheet and is deliberately NOT dragged into a height:100%
-     fill chain — that caused scroll-driven resize oscillation (see eppgrid-card.ts). */
+     then shrink but never grow back). This now holds on mobile too: the mobile card
+     is flex:1 of a flex-bounded (45vh) column, so it has a definite height there as
+     well and the map container-measures on both sides of the breakpoint (#338). The
+     overview CARD has its own stylesheet and is deliberately NOT dragged into a
+     height:100% fill chain — that caused scroll-driven resize oscillation (see
+     eppgrid-card.ts). */
   .grid-container > epp-grid {
     height: 100%;
   }
@@ -618,8 +620,9 @@ export const layoutStyles = css`
 
   @media (max-width: 819px) {
     /* Unified editor shell: stacks to a column on mobile (grid top, sheet below
-       filling height). The grid column is fixed-height (flex:0 0 auto) and the
-       inline <epp-sheet> fills the rest and owns its own scroll. */
+       filling height). The grid column is flex-bounded (max-height:45vh and
+       shrinkable, below) and the inline <epp-sheet> fills the rest and owns its
+       own scroll. */
     .editor-shell {
       display: flex;
       flex-direction: column;
@@ -627,26 +630,51 @@ export const layoutStyles = css`
       min-height: 0;
     }
     .editor-shell > .grid-column {
-      flex: 0 0 auto;
+      /* Bound the mobile grid column's height declaratively — this is what makes
+         #338 unreachable on a phone, and it replaces the old JS _viewportH*0.45 hard
+         cap the grid used to apply. The layout engine caps here; <epp-grid> just
+         measures whatever box it ends up with (no measured JS reserve).
+           - max-height:45vh is the soft cap: on a tall portrait phone it stops the
+             map eating the whole screen so the controls sheet keeps its share.
+           - flex-grow:1 lets the column actually REACH 45vh. With flex-grow:0 the
+             column would be content-sized, and because its map card is a flex:1
+             (basis-0) child the content basis excludes the map — so the column
+             collapsed to just the toggle+log and the portrait map shrank to a
+             sliver. Growing to the 45vh cap fixes that (the sheet's flex-basis:0,
+             below, is the other half: it stops the tall sidebar stealing the space).
+           - flex-shrink:1 + min-height:0 let the column shrink BELOW 45vh on a very
+             short landscape phone, so the map+toggle+log shrink to fit instead of
+             overflowing an overflow:hidden panel with nothing able to scroll to the
+             log. The map, as the card's flex remainder, shrinks toward its 1px-cell
+             floor; on a pathologically short landscape (≲430px tall) the card can
+             collapse under that floor and the map overhangs it by ~1px — the log
+             stays reachable, which is the #338 invariant that matters. */
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: 45vh;
       max-width: 100%;
     }
     .editor-shell > .editor-controls,
     .editor-shell > .live-controls {
-      flex: 1 1 auto;
+      /* flex-basis 0 (not auto): the sheet scrolls internally, so it must take
+         only the space LEFT OVER after the grid column — not demand its full
+         content height as its flex basis. With basis:auto the tall live sidebar
+         inflated the flex line and, in shrink mode, stole the map's 45vh so the
+         portrait map collapsed to a sliver. basis 0 lets the column reach its 45vh
+         and the sheet fills the remainder and scrolls. */
+      flex: 1 1 0;
       min-height: 0;
       max-width: none;
     }
-    /* No expansion-area card on mobile — the grid fills the screen. */
+    /* No expansion-area card on mobile — the grid fills the screen (drop the
+       surface, border and padding). It KEEPS the desktop flex:1;min-height:0
+       though: the mobile .grid-column is now flex-bounded (above), so the card must
+       fill it as the column's remainder — the box <epp-grid> measures (#338). (This
+       used to reset to flex:0 0 auto, back when the column was content-sized.) */
     .editor-shell .grid-container {
       background: none;
       border: none;
       padding: 0;
-      /* And it is CONTENT-sized here, not the column's remainder: mobile's
-         .grid-column is flex:0 0 auto, so a flex-basis:0 child contributes a
-         hypothetical main size of 0 and the card would collapse. Mobile keeps
-         capHeightToHalfViewport (see epp-grid._measureAvail) — measuring a
-         content-sized container would be circular. */
-      flex: 0 0 auto;
     }
     /* The hand-rolled sub-tabs aren't epp-* primitives, so they don't pick up
        the panel's mobile control height on their own. Size them to it (44px
@@ -3263,7 +3291,7 @@ export class EPPGridPanel extends LitElement {
 				.targetPrevXY=${this._zoneEngineState.targetPrevXY}
 				.localize=${this._localize}
 				.maxGridPx=${480}
-				?capHeightToHalfViewport=${this._isMobile}
+				?mobile=${this._isMobile}
 				.maxRangeMm=${this._computeMaxRangeMm()}
 				.heatmapCells=${this._heatmapCells}
 				?showHeatmap=${this._heatmapEnabled && this._heatmapAvailability() === "available"}
@@ -3636,7 +3664,7 @@ export class EPPGridPanel extends LitElement {
                 .targetPrevXY=${this._zoneEngineState.targetPrevXY}
                 .localize=${this._localize}
                 .maxGridPx=${480}
-                ?capHeightToHalfViewport=${this._isMobile}
+                ?mobile=${this._isMobile}
                 .maxRangeMm=${this._editorMaxRangeMm()}
                 .frozenBounds=${this._frozenBounds}
                 .dismissedTargets=${this._dismissedTargets}

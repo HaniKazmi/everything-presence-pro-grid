@@ -392,11 +392,14 @@ describe("layout styles", () => {
 		expect(match![1]).toMatch(/height:\s*100%/);
 	});
 
-	it("resets the card to content-sized on mobile, AFTER the base rule", () => {
-		// Mobile's .grid-column is flex:0 0 auto (content-sized), so a flex-basis:0
-		// card contributes a hypothetical main size of 0 and COLLAPSES. Mobile keeps
-		// capHeightToHalfViewport instead of container measurement. The override is
-		// dead if it precedes the base rule — @media does not raise specificity.
+	it("mobile card keeps the flex remainder (only chrome reset), AFTER the base rule", () => {
+		// Mobile now container-measures like desktop (#338): the .grid-column is
+		// flex-bounded (max-height:45vh, below), so the card must stay its flex:1
+		// remainder to be the box <epp-grid> measures. The mobile override therefore
+		// ONLY strips the card chrome (surface/border/padding) and must NOT reset the
+		// flex back to 0 0 auto (which is what content-sized it when the column was
+		// content-sized). The override is dead if it precedes the base rule — @media
+		// does not raise specificity.
 		const baseIdx = layoutCss.indexOf(".editor-shell .grid-container {");
 		const mediaIdx = layoutCss.indexOf("@media (max-width: 819px)");
 		expect(baseIdx).toBeGreaterThan(-1);
@@ -410,7 +413,26 @@ describe("layout styles", () => {
 			overrideIdx,
 			layoutCss.indexOf("}", overrideIdx),
 		);
-		expect(rule).toMatch(/flex:\s*0 0 auto/);
+		// Chrome reset kept…
+		expect(rule).toMatch(/background:\s*none/);
+		expect(rule).toMatch(/border:\s*none/);
+		expect(rule).toMatch(/padding:\s*0/);
+		// …but the flex:0 0 auto content-sizing is gone (inherits the flex:1 remainder).
+		expect(rule).not.toMatch(/flex:\s*0 0 auto/);
+	});
+
+	it("caps the mobile grid column at 45vh (the CSS soft cap that replaced the JS 0.45)", () => {
+		// The old JS height cap (viewportH*0.45, applied inside epp-grid) is gone;
+		// the layout engine now caps the map declaratively via max-height:45vh on the
+		// bounded mobile column, and <epp-grid> just measures the box it ends up with
+		// (#338). min-height:0 lets the column shrink BELOW 45vh on a short landscape
+		// phone so the log stays reachable. Scoped to the mobile @media block.
+		const mq = layoutCss.slice(layoutCss.indexOf("@media (max-width: 819px)"));
+		const start = mq.indexOf(".editor-shell > .grid-column");
+		expect(start).toBeGreaterThan(-1);
+		const rule = mq.slice(start, mq.indexOf("}", start));
+		expect(rule).toMatch(/max-height:\s*45vh/);
+		expect(rule).toMatch(/min-height:\s*0/);
 	});
 
 	it("gives the detection log a FIXED height, not a max-height", () => {

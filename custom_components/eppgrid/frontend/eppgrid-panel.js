@@ -2488,7 +2488,7 @@ const Ws={},Js=ii(class extends si{constructor(){super(...arguments),this.ot=Ws}
 			touch-action: none;
 			z-index: 3;
 		}
-	`,e([ue({attribute:!1})],js.prototype,"furniture",void 0),e([ue({attribute:!1})],js.prototype,"selectedFurnitureId",void 0),e([ue({type:Number})],js.prototype,"roomWidth",void 0),e([ue({type:Number})],js.prototype,"cellPx",void 0),e([ue({type:Number})],js.prototype,"gapPx",void 0),e([ue({type:Number})],js.prototype,"minCol",void 0),e([ue({type:Number})],js.prototype,"minRow",void 0),e([ue({type:Number})],js.prototype,"visCols",void 0),e([ue({type:Number})],js.prototype,"visRows",void 0),e([ue({attribute:!1})],js.prototype,"sidebarTab",void 0),e([ue({attribute:!1})],js.prototype,"localize",void 0),e([ue({attribute:!1})],js.prototype,"furnitureTones",void 0),e([ge()],js.prototype,"_isNarrow",void 0),customElements.get("epp-furniture-overlay")||customElements.define("epp-furniture-overlay",js);const Zs={[li]:`background-image: ${Qi(1,6)};`,[ci]:`background-image: ${Qi(2,5)};`,[hi]:`background-image: ${Qi(3,5)};`};class Vs extends ce{constructor(){super(...arguments),this.grid=new Uint8Array(0),this.zoneConfigs=[],this.targets=[],this.roomWidth=0,this.roomDepth=0,this.perspective=null,this.furniture=[],this.selectedFurnitureId=null,this.sidebarTab="zones",this.editable=!1,this.activeZone=null,this.occupancy={},this.targetPrevXY=[],this.localize=Wt,this.maxRangeMm=Ai,this.maxGridPx=480,this.showOverlays=!0,this.showDimensions=!0,this.plain=!1,this.fill=!1,this.fadeUncovered=!1,this.capHeightToHalfViewport=!1,this.dismissedTargets=new Map,this.frozenBounds=null,this.heatmapCells=[],this.showHeatmap=!1,this.trails=[],this._availPx=0,this._availHeightPx=0,this._viewportH="undefined"!=typeof window?window.innerHeight:0,this._onResize=()=>{this._viewportH=window.innerHeight,this._measureAvail()},this._fovCache=null,this._fovPerspective=Vs._FOV_UNCACHED,this._scanCache=null,this._lastEnterIdx=-1,this._onStrokeEnd=()=>{this._lastEnterIdx=-1,this.dispatchEvent(new CustomEvent("cell-paint",{detail:{action:"up"},bubbles:!0,composed:!0}))}}connectedCallback(){super.connectedCallback(),"undefined"!=typeof ResizeObserver&&(this._ro=new ResizeObserver(()=>{this._measureAvail()}),this._ro.observe(this)),window.addEventListener("resize",this._onResize)}disconnectedCallback(){super.disconnectedCallback(),this._ro?.disconnect(),window.removeEventListener("resize",this._onResize),void 0!==this._settleRaf&&(cancelAnimationFrame(this._settleRaf),this._settleRaf=void 0)}firstUpdated(){this._measureAvail(),"undefined"!=typeof requestAnimationFrame&&(this._settleRaf=requestAnimationFrame(()=>{this._settleRaf=void 0,this.isConnected&&this._measureAvail()}))}updated(e){this._measureAvail(),this._updateFurnitureTones(e)}_updateFurnitureTones(e){if(!this.furniture.length)return void(this._furnitureTones=void 0);if(!(e.has("furniture")||e.has("grid")||e.has("zoneConfigs")||e.has("roomColor")||e.has("roomWidth")||e.has("roomDepth")||e.has("plain")||e.has("perspective")||e.has("maxRangeMm")||e.has("frozenBounds"))&&void 0!==this._furnitureTones)return;this._furnitureTones=function(e,t,i,s){const r=new Map;for(const o of e){const e=zs(o.x+o.width/2,o.y+o.height/2,t,i);if(!e)continue;const a=Os(e);if(null===a)continue;const n=s(a);if(!n)continue;const{color:l,halo:c}=Ks(n);r.set(o.id,{color:l,halo:c})}return r}(this.furniture,this.roomWidth,this.roomDepth,e=>this._readCellRgb(e));const t=this.shadowRoot?.querySelector("epp-furniture-overlay");t&&(t.furnitureTones=this._furnitureTones)}_readCellRgb(e){const t=this.shadowRoot?.querySelector(`.cell[data-idx="${e}"]`);return t?Ls(getComputedStyle(t).backgroundColor):null}_measureAvail(){const e=this.clientWidth;if(e&&Math.abs(e-this._availPx)>=1&&(this._availPx=e),this.fill||this.capHeightToHalfViewport)return void(this._availHeightPx=0);const t=Math.floor(this.clientHeight-this._captionBlockPx()),i=this.clientWidth>0||this.clientHeight>0,s=t>0?t:i?1:0;Math.abs(s-this._availHeightPx)>=1&&(this._availHeightPx=s)}_captionBlockPx(){const e=this.shadowRoot?.querySelector(".grid-dimensions");return e?(this._captionMarginPx??=Number.parseFloat(getComputedStyle(e).marginTop)||0,e.offsetHeight+this._captionMarginPx):0}remeasure(){this._measureAvail()}willUpdate(e){if((e.has("targets")||e.has("dismissedTargets")||e.has("roomWidth")||e.has("roomDepth"))&&0!==this.dismissedTargets.size)for(const[e,t]of this.dismissedTargets){const i=this.targets[e];if(!i||"inactive"===i.status||null==i.x||null==i.y)continue;const s=zs(i.x,i.y,this.roomWidth,this.roomDepth);if(!s)continue;Os(s)!==t&&this.dispatchEvent(new CustomEvent("target-undismissed",{detail:{targetIndex:e},bubbles:!0,composed:!0}))}}render(){const e=this._getScan(),t=this.frozenBounds??e.bounds,i=t.minCol>t.maxCol,s=i?0:t.minCol,r=i?19:t.maxCol,o=i?0:t.minRow,a=i?19:t.maxRow,n=r-s+1,l=a-o+1,c=this.plain?0:1,h=this._availPx>0?4+(n-1)*c:0,d=!this.capHeightToHalfViewport,p=this.fill&&this._availPx>0,u=p?Number.POSITIVE_INFINITY:d?960:this.maxGridPx,g=p?Number.POSITIVE_INFINITY:d?48:32,A=this.fill?0:this.capHeightToHalfViewport?.45*this._viewportH:this._availHeightPx,_=A>0?4+(l-1)*c:0,f=function(e,t,i,s,r,o=32){const a=Math.min(Math.floor(e/s),Math.floor(e/r),o),n=t>0?Math.min(a,Math.floor(t/s)):a,l=i>0?Math.floor(i/r):Number.POSITIVE_INFINITY;return Math.max(1,Math.min(n,l,o))}(u,this._availPx>0?Math.max(1,this._availPx-h):this._availPx,A>0?Math.max(1,A-_):0,n,l,g);return N`
+	`,e([ue({attribute:!1})],js.prototype,"furniture",void 0),e([ue({attribute:!1})],js.prototype,"selectedFurnitureId",void 0),e([ue({type:Number})],js.prototype,"roomWidth",void 0),e([ue({type:Number})],js.prototype,"cellPx",void 0),e([ue({type:Number})],js.prototype,"gapPx",void 0),e([ue({type:Number})],js.prototype,"minCol",void 0),e([ue({type:Number})],js.prototype,"minRow",void 0),e([ue({type:Number})],js.prototype,"visCols",void 0),e([ue({type:Number})],js.prototype,"visRows",void 0),e([ue({attribute:!1})],js.prototype,"sidebarTab",void 0),e([ue({attribute:!1})],js.prototype,"localize",void 0),e([ue({attribute:!1})],js.prototype,"furnitureTones",void 0),e([ge()],js.prototype,"_isNarrow",void 0),customElements.get("epp-furniture-overlay")||customElements.define("epp-furniture-overlay",js);const Zs={[li]:`background-image: ${Qi(1,6)};`,[ci]:`background-image: ${Qi(2,5)};`,[hi]:`background-image: ${Qi(3,5)};`};class Vs extends ce{constructor(){super(...arguments),this.grid=new Uint8Array(0),this.zoneConfigs=[],this.targets=[],this.roomWidth=0,this.roomDepth=0,this.perspective=null,this.furniture=[],this.selectedFurnitureId=null,this.sidebarTab="zones",this.editable=!1,this.activeZone=null,this.occupancy={},this.targetPrevXY=[],this.localize=Wt,this.maxRangeMm=Ai,this.maxGridPx=480,this.showOverlays=!0,this.showDimensions=!0,this.plain=!1,this.fill=!1,this.fadeUncovered=!1,this.mobile=!1,this.dismissedTargets=new Map,this.frozenBounds=null,this.heatmapCells=[],this.showHeatmap=!1,this.trails=[],this._availPx=0,this._availHeightPx=0,this._onResize=()=>{this._measureAvail()},this._fovCache=null,this._fovPerspective=Vs._FOV_UNCACHED,this._scanCache=null,this._lastEnterIdx=-1,this._onStrokeEnd=()=>{this._lastEnterIdx=-1,this.dispatchEvent(new CustomEvent("cell-paint",{detail:{action:"up"},bubbles:!0,composed:!0}))}}connectedCallback(){super.connectedCallback(),"undefined"!=typeof ResizeObserver&&(this._ro=new ResizeObserver(()=>{this._measureAvail()}),this._ro.observe(this)),window.addEventListener("resize",this._onResize)}disconnectedCallback(){super.disconnectedCallback(),this._ro?.disconnect(),window.removeEventListener("resize",this._onResize),void 0!==this._settleRaf&&(cancelAnimationFrame(this._settleRaf),this._settleRaf=void 0)}firstUpdated(){this._measureAvail(),"undefined"!=typeof requestAnimationFrame&&(this._settleRaf=requestAnimationFrame(()=>{this._settleRaf=void 0,this.isConnected&&this._measureAvail()}))}updated(e){this._measureAvail(),this._updateFurnitureTones(e)}_updateFurnitureTones(e){if(!this.furniture.length)return void(this._furnitureTones=void 0);if(!(e.has("furniture")||e.has("grid")||e.has("zoneConfigs")||e.has("roomColor")||e.has("roomWidth")||e.has("roomDepth")||e.has("plain")||e.has("perspective")||e.has("maxRangeMm")||e.has("frozenBounds"))&&void 0!==this._furnitureTones)return;this._furnitureTones=function(e,t,i,s){const r=new Map;for(const o of e){const e=zs(o.x+o.width/2,o.y+o.height/2,t,i);if(!e)continue;const a=Os(e);if(null===a)continue;const n=s(a);if(!n)continue;const{color:l,halo:c}=Ks(n);r.set(o.id,{color:l,halo:c})}return r}(this.furniture,this.roomWidth,this.roomDepth,e=>this._readCellRgb(e));const t=this.shadowRoot?.querySelector("epp-furniture-overlay");t&&(t.furnitureTones=this._furnitureTones)}_readCellRgb(e){const t=this.shadowRoot?.querySelector(`.cell[data-idx="${e}"]`);return t?Ls(getComputedStyle(t).backgroundColor):null}_measureAvail(){const e=this.clientWidth;if(e&&Math.abs(e-this._availPx)>=1&&(this._availPx=e),this.fill)return void(this._availHeightPx=0);const t=Math.floor(this.clientHeight-this._captionBlockPx()),i=this.clientWidth>0||this.clientHeight>0,s=t>0?t:i?1:0;Math.abs(s-this._availHeightPx)>=1&&(this._availHeightPx=s)}_captionBlockPx(){const e=this.shadowRoot?.querySelector(".grid-dimensions");return e?(this._captionMarginPx??=Number.parseFloat(getComputedStyle(e).marginTop)||0,e.offsetHeight+this._captionMarginPx):0}remeasure(){this._measureAvail()}willUpdate(e){if((e.has("targets")||e.has("dismissedTargets")||e.has("roomWidth")||e.has("roomDepth"))&&0!==this.dismissedTargets.size)for(const[e,t]of this.dismissedTargets){const i=this.targets[e];if(!i||"inactive"===i.status||null==i.x||null==i.y)continue;const s=zs(i.x,i.y,this.roomWidth,this.roomDepth);if(!s)continue;Os(s)!==t&&this.dispatchEvent(new CustomEvent("target-undismissed",{detail:{targetIndex:e},bubbles:!0,composed:!0}))}}render(){const e=this._getScan(),t=this.frozenBounds??e.bounds,i=t.minCol>t.maxCol,s=i?0:t.minCol,r=i?19:t.maxCol,o=i?0:t.minRow,a=i?19:t.maxRow,n=r-s+1,l=a-o+1,c=this.plain?0:1,h=this._availPx>0?4+(n-1)*c:0,d=!this.mobile,p=this.fill&&this._availPx>0,u=p?Number.POSITIVE_INFINITY:d?960:this.maxGridPx,g=p?Number.POSITIVE_INFINITY:d?48:32,A=this.fill?0:this._availHeightPx,_=A>0?4+(l-1)*c:0,f=function(e,t,i,s,r,o=32){const a=Math.min(Math.floor(e/s),Math.floor(e/r),o),n=t>0?Math.min(a,Math.floor(t/s)):a,l=i>0?Math.floor(i/r):Number.POSITIVE_INFINITY;return Math.max(1,Math.min(n,l,o))}(u,this._availPx>0?Math.max(1,this._availPx-h):this._availPx,A>0?Math.max(1,A-_):0,n,l,g);return N`
 			<div class="grid-targets-wrapper">
 				<div
 					class="grid"
@@ -2706,7 +2706,7 @@ const Ws={},Js=ii(class extends si{constructor(){super(...arguments),this.ot=Ws}
 			color: var(--secondary-text-color, #757575);
 			margin-top: 8px;
 		}
-	`,Vs._FOV_UNCACHED={},e([ue({attribute:!1})],Vs.prototype,"grid",void 0),e([ue({attribute:!1})],Vs.prototype,"zoneConfigs",void 0),e([ue({attribute:!1})],Vs.prototype,"targets",void 0),e([ue({type:Number})],Vs.prototype,"roomWidth",void 0),e([ue({type:Number})],Vs.prototype,"roomDepth",void 0),e([ue({attribute:!1})],Vs.prototype,"perspective",void 0),e([ue({attribute:!1})],Vs.prototype,"furniture",void 0),e([ue({attribute:!1})],Vs.prototype,"selectedFurnitureId",void 0),e([ue({attribute:!1})],Vs.prototype,"sidebarTab",void 0),e([ue({type:Boolean,reflect:!0})],Vs.prototype,"editable",void 0),e([ue({attribute:!1})],Vs.prototype,"activeZone",void 0),e([ue({attribute:!1})],Vs.prototype,"occupancy",void 0),e([ue({attribute:!1})],Vs.prototype,"targetPrevXY",void 0),e([ue({attribute:!1})],Vs.prototype,"localize",void 0),e([ue({type:Number})],Vs.prototype,"maxRangeMm",void 0),e([ue({type:Number})],Vs.prototype,"maxGridPx",void 0),e([ue({type:Boolean})],Vs.prototype,"showOverlays",void 0),e([ue({type:Boolean})],Vs.prototype,"showDimensions",void 0),e([ue({type:Boolean,reflect:!0})],Vs.prototype,"plain",void 0),e([ue({attribute:!1})],Vs.prototype,"roomColor",void 0),e([ue({type:Boolean})],Vs.prototype,"fill",void 0),e([ue({type:Boolean})],Vs.prototype,"fadeUncovered",void 0),e([ue({type:Boolean})],Vs.prototype,"capHeightToHalfViewport",void 0),e([ue({attribute:!1})],Vs.prototype,"dismissedTargets",void 0),e([ue({attribute:!1})],Vs.prototype,"frozenBounds",void 0),e([ue({attribute:!1})],Vs.prototype,"heatmapCells",void 0),e([ue({type:Boolean})],Vs.prototype,"showHeatmap",void 0),e([ue({attribute:!1})],Vs.prototype,"trails",void 0),e([ge()],Vs.prototype,"_availPx",void 0),e([ge()],Vs.prototype,"_availHeightPx",void 0),e([ge()],Vs.prototype,"_viewportH",void 0),e([ge()],Vs.prototype,"_furnitureTones",void 0),customElements.get("epp-grid")||customElements.define("epp-grid",Vs);class Xs extends ce{constructor(){super(...arguments),this.items=[],this._open=!1,this._onReposition=()=>{this._open&&this._positionFallbackMenu()},this._onOutside=e=>{e.composedPath().includes(this)||(this._open=!1,this._dismiss.detach())},this._onKeydown=e=>{"Escape"===e.key&&(this._open=!1,this._dismiss.detach())},this._dismiss=new rs([{target:document,type:"pointerdown",listener:this._onOutside,options:!0},{target:document,type:"keydown",listener:this._onKeydown,options:!0},{target:window,type:"scroll",listener:this._onReposition,options:!0},{target:window,type:"resize",listener:this._onReposition}])}disconnectedCallback(){super.disconnectedCallback(),this._dismiss.detach()}updated(){this._open&&this._positionFallbackMenu()}_positionFallbackMenu(){const e=this.renderRoot.querySelector(".menu"),t=this.renderRoot.querySelector('[data-testid="kebab-trigger"]');if(!e||!t)return;const i=t.getBoundingClientRect(),s=e.offsetWidth||160,r=e.scrollHeight,o=window.innerHeight-i.bottom-8,a=i.top-8,n=r>o&&a>o,l=Math.max(96,n?a:o),c=Math.max(8,Math.min(i.right-s,window.innerWidth-s-8)),h=n?Math.max(8,i.top-Math.min(r,l)):i.bottom;e.style.top=`${h}px`,e.style.left=`${c}px`,e.style.maxHeight=`${l}px`,e.style.overflowY="auto"}render(){return N`
+	`,Vs._FOV_UNCACHED={},e([ue({attribute:!1})],Vs.prototype,"grid",void 0),e([ue({attribute:!1})],Vs.prototype,"zoneConfigs",void 0),e([ue({attribute:!1})],Vs.prototype,"targets",void 0),e([ue({type:Number})],Vs.prototype,"roomWidth",void 0),e([ue({type:Number})],Vs.prototype,"roomDepth",void 0),e([ue({attribute:!1})],Vs.prototype,"perspective",void 0),e([ue({attribute:!1})],Vs.prototype,"furniture",void 0),e([ue({attribute:!1})],Vs.prototype,"selectedFurnitureId",void 0),e([ue({attribute:!1})],Vs.prototype,"sidebarTab",void 0),e([ue({type:Boolean,reflect:!0})],Vs.prototype,"editable",void 0),e([ue({attribute:!1})],Vs.prototype,"activeZone",void 0),e([ue({attribute:!1})],Vs.prototype,"occupancy",void 0),e([ue({attribute:!1})],Vs.prototype,"targetPrevXY",void 0),e([ue({attribute:!1})],Vs.prototype,"localize",void 0),e([ue({type:Number})],Vs.prototype,"maxRangeMm",void 0),e([ue({type:Number})],Vs.prototype,"maxGridPx",void 0),e([ue({type:Boolean})],Vs.prototype,"showOverlays",void 0),e([ue({type:Boolean})],Vs.prototype,"showDimensions",void 0),e([ue({type:Boolean,reflect:!0})],Vs.prototype,"plain",void 0),e([ue({attribute:!1})],Vs.prototype,"roomColor",void 0),e([ue({type:Boolean})],Vs.prototype,"fill",void 0),e([ue({type:Boolean})],Vs.prototype,"fadeUncovered",void 0),e([ue({type:Boolean})],Vs.prototype,"mobile",void 0),e([ue({attribute:!1})],Vs.prototype,"dismissedTargets",void 0),e([ue({attribute:!1})],Vs.prototype,"frozenBounds",void 0),e([ue({attribute:!1})],Vs.prototype,"heatmapCells",void 0),e([ue({type:Boolean})],Vs.prototype,"showHeatmap",void 0),e([ue({attribute:!1})],Vs.prototype,"trails",void 0),e([ge()],Vs.prototype,"_availPx",void 0),e([ge()],Vs.prototype,"_availHeightPx",void 0),e([ge()],Vs.prototype,"_furnitureTones",void 0),customElements.get("epp-grid")||customElements.define("epp-grid",Vs);class Xs extends ce{constructor(){super(...arguments),this.items=[],this._open=!1,this._onReposition=()=>{this._open&&this._positionFallbackMenu()},this._onOutside=e=>{e.composedPath().includes(this)||(this._open=!1,this._dismiss.detach())},this._onKeydown=e=>{"Escape"===e.key&&(this._open=!1,this._dismiss.detach())},this._dismiss=new rs([{target:document,type:"pointerdown",listener:this._onOutside,options:!0},{target:document,type:"keydown",listener:this._onKeydown,options:!0},{target:window,type:"scroll",listener:this._onReposition,options:!0},{target:window,type:"resize",listener:this._onReposition}])}disconnectedCallback(){super.disconnectedCallback(),this._dismiss.detach()}updated(){this._open&&this._positionFallbackMenu()}_positionFallbackMenu(){const e=this.renderRoot.querySelector(".menu"),t=this.renderRoot.querySelector('[data-testid="kebab-trigger"]');if(!e||!t)return;const i=t.getBoundingClientRect(),s=e.offsetWidth||160,r=e.scrollHeight,o=window.innerHeight-i.bottom-8,a=i.top-8,n=r>o&&a>o,l=Math.max(96,n?a:o),c=Math.max(8,Math.min(i.right-s,window.innerWidth-s-8)),h=n?Math.max(8,i.top-Math.min(r,l)):i.bottom;e.style.top=`${h}px`,e.style.left=`${c}px`,e.style.maxHeight=`${l}px`,e.style.overflowY="auto"}render(){return N`
 			<epp-icon-button
 				data-testid="kebab-trigger"
 				icon="mdi:dots-vertical"
@@ -5348,10 +5348,12 @@ const Ws={},Js=ii(class extends si{constructor(){super(...arguments),this.ot=Ws}
      flex-resolved (definite), NOT content-derived — which is the whole point: if
      <epp-grid> had no definite height, its clientHeight would BE the map's content
      height and the budget would be a function of the map it produced (the map could
-     then shrink but never grow back). Against the content-sized mobile container
-     this resolves to \`auto\`, so the rule is desktop-only in effect. The overview
-     CARD has its own stylesheet and is deliberately NOT dragged into a height:100%
-     fill chain — that caused scroll-driven resize oscillation (see eppgrid-card.ts). */
+     then shrink but never grow back). This now holds on mobile too: the mobile card
+     is flex:1 of a flex-bounded (45vh) column, so it has a definite height there as
+     well and the map container-measures on both sides of the breakpoint (#338). The
+     overview CARD has its own stylesheet and is deliberately NOT dragged into a
+     height:100% fill chain — that caused scroll-driven resize oscillation (see
+     eppgrid-card.ts). */
   .grid-container > epp-grid {
     height: 100%;
   }
@@ -5447,8 +5449,9 @@ const Ws={},Js=ii(class extends si{constructor(){super(...arguments),this.ot=Ws}
 
   @media (max-width: 819px) {
     /* Unified editor shell: stacks to a column on mobile (grid top, sheet below
-       filling height). The grid column is fixed-height (flex:0 0 auto) and the
-       inline <epp-sheet> fills the rest and owns its own scroll. */
+       filling height). The grid column is flex-bounded (max-height:45vh and
+       shrinkable, below) and the inline <epp-sheet> fills the rest and owns its
+       own scroll. */
     .editor-shell {
       display: flex;
       flex-direction: column;
@@ -5456,26 +5459,51 @@ const Ws={},Js=ii(class extends si{constructor(){super(...arguments),this.ot=Ws}
       min-height: 0;
     }
     .editor-shell > .grid-column {
-      flex: 0 0 auto;
+      /* Bound the mobile grid column's height declaratively — this is what makes
+         #338 unreachable on a phone, and it replaces the old JS _viewportH*0.45 hard
+         cap the grid used to apply. The layout engine caps here; <epp-grid> just
+         measures whatever box it ends up with (no measured JS reserve).
+           - max-height:45vh is the soft cap: on a tall portrait phone it stops the
+             map eating the whole screen so the controls sheet keeps its share.
+           - flex-grow:1 lets the column actually REACH 45vh. With flex-grow:0 the
+             column would be content-sized, and because its map card is a flex:1
+             (basis-0) child the content basis excludes the map — so the column
+             collapsed to just the toggle+log and the portrait map shrank to a
+             sliver. Growing to the 45vh cap fixes that (the sheet's flex-basis:0,
+             below, is the other half: it stops the tall sidebar stealing the space).
+           - flex-shrink:1 + min-height:0 let the column shrink BELOW 45vh on a very
+             short landscape phone, so the map+toggle+log shrink to fit instead of
+             overflowing an overflow:hidden panel with nothing able to scroll to the
+             log. The map, as the card's flex remainder, shrinks toward its 1px-cell
+             floor; on a pathologically short landscape (≲430px tall) the card can
+             collapse under that floor and the map overhangs it by ~1px — the log
+             stays reachable, which is the #338 invariant that matters. */
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: 45vh;
       max-width: 100%;
     }
     .editor-shell > .editor-controls,
     .editor-shell > .live-controls {
-      flex: 1 1 auto;
+      /* flex-basis 0 (not auto): the sheet scrolls internally, so it must take
+         only the space LEFT OVER after the grid column — not demand its full
+         content height as its flex basis. With basis:auto the tall live sidebar
+         inflated the flex line and, in shrink mode, stole the map's 45vh so the
+         portrait map collapsed to a sliver. basis 0 lets the column reach its 45vh
+         and the sheet fills the remainder and scrolls. */
+      flex: 1 1 0;
       min-height: 0;
       max-width: none;
     }
-    /* No expansion-area card on mobile — the grid fills the screen. */
+    /* No expansion-area card on mobile — the grid fills the screen (drop the
+       surface, border and padding). It KEEPS the desktop flex:1;min-height:0
+       though: the mobile .grid-column is now flex-bounded (above), so the card must
+       fill it as the column's remainder — the box <epp-grid> measures (#338). (This
+       used to reset to flex:0 0 auto, back when the column was content-sized.) */
     .editor-shell .grid-container {
       background: none;
       border: none;
       padding: 0;
-      /* And it is CONTENT-sized here, not the column's remainder: mobile's
-         .grid-column is flex:0 0 auto, so a flex-basis:0 child contributes a
-         hypothetical main size of 0 and the card would collapse. Mobile keeps
-         capHeightToHalfViewport (see epp-grid._measureAvail) — measuring a
-         content-sized container would be circular. */
-      flex: 0 0 auto;
     }
     /* The hand-rolled sub-tabs aren't epp-* primitives, so they don't pick up
        the panel's mobile control height on their own. Size them to it (44px
@@ -5773,7 +5801,7 @@ const Ws={},Js=ii(class extends si{constructor(){super(...arguments),this.ot=Ws}
 				.targetPrevXY=${this._zoneEngineState.targetPrevXY}
 				.localize=${this._localize}
 				.maxGridPx=${480}
-				?capHeightToHalfViewport=${this._isMobile}
+				?mobile=${this._isMobile}
 				.maxRangeMm=${this._computeMaxRangeMm()}
 				.heatmapCells=${this._heatmapCells}
 				?showHeatmap=${this._heatmapEnabled&&"available"===this._heatmapAvailability()}
@@ -5902,7 +5930,7 @@ const Ws={},Js=ii(class extends si{constructor(){super(...arguments),this.ot=Ws}
                 .targetPrevXY=${this._zoneEngineState.targetPrevXY}
                 .localize=${this._localize}
                 .maxGridPx=${480}
-                ?capHeightToHalfViewport=${this._isMobile}
+                ?mobile=${this._isMobile}
                 .maxRangeMm=${this._editorMaxRangeMm()}
                 .frozenBounds=${this._frozenBounds}
                 .dismissedTargets=${this._dismissedTargets}

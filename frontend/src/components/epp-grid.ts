@@ -109,16 +109,15 @@ export class EppGrid extends LitElement {
 	 */
 	@property({ type: Boolean }) fadeUncovered = false;
 	/**
-	 * Mobile-only: cap the grid height to a fraction of the VIEWPORT (45%, see
-	 * render()) so the controls panel below it always has room. Mobile's column is
-	 * content-sized, so measuring our own box there would be circular.
-	 *
-	 * Desktop leaves this false — which does NOT mean "no height cap": it means the
-	 * cap is CONTAINER-measured instead (our own clientHeight, see _measureAvail).
-	 * This flag therefore selects WHICH height cap applies, never whether there is
-	 * one. It also gates _measureAvail: when true, no box is measured at all.
+	 * Mobile flag: use the compact mobile cell-size tier (see render(): a 480px /
+	 * 32px cell cap instead of the desktop 960px / 48px). It NO LONGER changes how
+	 * the height budget is derived — both desktop and mobile now container-measure
+	 * the box the panel gives us (see _measureAvail). On mobile the panel bounds that
+	 * box declaratively (a flex-shrinkable grid column capped at 45vh), so a sibling
+	 * rendered below the map — the detection log — simply takes its space and the map
+	 * shrinks to fit (#338), exactly as on desktop.
 	 */
-	@property({ type: Boolean }) capHeightToHalfViewport = false;
+	@property({ type: Boolean }) mobile = false;
 	/** Map of target index → dismissed cell index (ephemeral, not persisted) */
 	@property({ attribute: false }) dismissedTargets: Map<number, number> =
 		new Map();
@@ -140,19 +139,8 @@ export class EppGrid extends LitElement {
 
 	/** Measured content width of the host (px); 0 = unmeasured (e.g. unit tests). */
 	@state() private _availPx = 0;
-	/** Measured available height for the grid (px); 0 = unmeasured. Desktop only. */
+	/** Measured available height for the grid (px); 0 = unmeasured. */
 	@state() private _availHeightPx = 0;
-	/**
-	 * The viewport height, as REACTIVE state — mobile's height cap is a fraction of
-	 * it (see render()), and a cap read straight out of `window` would go stale the
-	 * moment the viewport changed height without anything else re-rendering (a mobile
-	 * URL bar collapsing; a rotation whose width change we happen not to notice).
-	 * Kept fresh by _onResize. It does not depend on layout, so writing it from a
-	 * resize can never feed back into a resize — and Lit's dirty-check makes a
-	 * no-change resize a no-op rather than a re-render.
-	 */
-	@state() private _viewportH =
-		typeof window !== "undefined" ? window.innerHeight : 0;
 	/** Per-item furniture tone, id → {color, halo}; memoised, recomputed only
 	 *  when a cell-background-affecting property changes (never on target moves). */
 	@state() private _furnitureTones?: Map<string, FurnitureItemTone>;
@@ -160,24 +148,15 @@ export class EppGrid extends LitElement {
 	/** Pending post-layout re-measure scheduled in firstUpdated (see below). */
 	private _settleRaf?: number;
 
-	// This is NOT a backstop for the ResizeObserver — on desktop it is strictly
-	// redundant with it (any viewport change that alters our box makes the observer
-	// fire, and one that doesn't alter our box doesn't affect the desktop budget
-	// either, which is measured from the box and never from the window).
-	//
-	// It earns its keep on MOBILE, where the height cap is a fraction of the VIEWPORT
-	// height (see render()). The mobile column is content-sized, so our own box need
-	// not change when the viewport does — the ResizeObserver can stay silent through a
-	// pure-height viewport change (a URL bar collapsing) — and _measureAvail() takes an
-	// early return on mobile anyway, writing nothing and re-rendering nothing. So the
-	// ONLY thing that can carry a fresh viewport height into render() is this handler
-	// writing it to reactive state, which is exactly what it does: `_viewportH` is
-	// @state, so a real change re-renders and the cap re-fits; an unchanged one is
-	// dirty-checked away.
-	//
-	// Detached on disconnect.
+	// Re-measure the box on a height-only viewport change. Our ResizeObserver keys
+	// off OUR box, and a pure-height viewport change (a mobile URL bar collapsing or
+	// the soft keyboard opening) reshapes that box without changing our WIDTH — the
+	// width-only RO comparison a naive observer runs would miss it. The RO is also
+	// documented as unreliable in the HA companion webview, so this window-resize
+	// hook is the caller-agnostic backstop that keeps the measured budget fresh on
+	// both axes. _measureAvail's own >=1px dirty-guards make a no-change measure a
+	// no-op, so over-calling costs nothing. Detached on disconnect.
 	private _onResize = (): void => {
-		this._viewportH = window.innerHeight;
 		this._measureAvail();
 	};
 
@@ -294,11 +273,13 @@ export class EppGrid extends LitElement {
 	private _measureAvail(): void {
 		const w = this.clientWidth;
 		if (w && Math.abs(w - this._availPx) >= 1) this._availPx = w;
-		// Fill mode (the overview card) fills the WIDTH and grows tall; mobile caps
-		// to a fraction of the viewport. Neither uses a measured height budget — so
-		// don't measure one, and zero it so a mode/breakpoint flip can never leave a
-		// stale desktop budget latched.
-		if (this.fill || this.capHeightToHalfViewport) {
+		// Fill mode (the dashboard overview card) fills the WIDTH and grows tall — it
+		// has no height budget at all, so don't measure one, and zero it so a mode
+		// flip can never leave a stale budget latched. Mobile does NOT early-return
+		// here any more: it container-measures the box just like desktop, because the
+		// panel now bounds the mobile box declaratively (a flex column capped at 45vh)
+		// instead of the grid guessing a viewport fraction (#338).
+		if (this.fill) {
 			this._availHeightPx = 0;
 			return;
 		}
@@ -592,8 +573,8 @@ export class EppGrid extends LitElement {
 		// The grid adds a 2px border (×2) + (visCols-1)×gap on top of the cells;
 		// subtract that from the measured width so the grid fits exactly.
 		const gridChromePx = this._availPx > 0 ? 4 + (visCols - 1) * gapPx : 0;
-		// Desktop allows a larger grid + bigger cells than the 480/32 mobile-era caps.
-		const isDesktop = !this.capHeightToHalfViewport;
+		// Desktop allows a larger grid + bigger cells than the 480/32 mobile caps.
+		const isDesktop = !this.mobile;
 		// Fill mode (card) lifts the caps once the width is measured so the grid
 		// grows to fill its container; the unmeasured first render keeps the small
 		// cap so it doesn't flash huge before the real width arrives.
@@ -608,23 +589,16 @@ export class EppGrid extends LitElement {
 		const effMaxCellPx = uncap ? Number.POSITIVE_INFINITY : isDesktop ? 48 : 32;
 		// The height budget, by mode:
 		//  - fill (card): none — it fills the width and the dashboard scrolls.
-		//  - mobile: 45% of the viewport (not 50%: the tab bar + device dropdown sit
-		//    above the panel, so half the viewport is ~55-60% of the usable area).
-		//    Read from _viewportH (reactive state, refreshed by _onResize) rather than
-		//    window.innerHeight directly, so a viewport height change actually re-fits
-		//    the map instead of leaving the cap pinned to the old viewport.
-		//  - desktop: the measured box. Any positive value IS the truth — the box
-		//    really is that small — so the map simply fits it. There is deliberately
-		//    no minimum: a floor that dropped the budget to 0 below its threshold is
-		//    what made #339 invert (smaller box → width-fit → 3x BIGGER map).
-		//    _measureAvail() guarantees 0 here means "never measured" and NOTHING
-		//    else, so the width-fit fallback below can only fire on an unmeasured
-		//    host — never on a small one.
-		const availHeightPx = this.fill
-			? 0
-			: this.capHeightToHalfViewport
-				? this._viewportH * 0.45
-				: this._availHeightPx;
+		//  - everything else (desktop AND mobile): the measured box. Any positive
+		//    value IS the truth — the box really is that small — so the map simply
+		//    fits it. There is deliberately no minimum: a floor that dropped the
+		//    budget to 0 below its threshold is what made #339 invert (smaller box →
+		//    width-fit → 3x BIGGER map). _measureAvail() guarantees 0 here means
+		//    "never measured" and NOTHING else, so the width-fit fallback below can
+		//    only fire on an unmeasured host — never on a small one. The panel bounds
+		//    the mobile box (a flex column capped at 45vh) just as it bounds the
+		//    desktop one, so the same measured budget now serves both (#338).
+		const availHeightPx = this.fill ? 0 : this._availHeightPx;
 		// Vertical chrome mirrors the width chrome: 2px border (×2) + (visRows-1)
 		// ×gap. Subtract it so the cells fit the height budget exactly.
 		const gridChromeHpx = availHeightPx > 0 ? 4 + (visRows - 1) * gapPx : 0;

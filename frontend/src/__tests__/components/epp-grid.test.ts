@@ -1996,11 +1996,12 @@ describe("epp-grid cell sizing (measured available width)", () => {
 	});
 
 	it("re-measures on a window resize and detaches the handler when removed", async () => {
-		// This is not a backstop for the ResizeObserver, which already covers both
-		// width and height on desktop via the host's own box. The window 'resize'
-		// hook exists to refresh the MOBILE height cap (a fraction of the viewport
-		// height), the one value nothing else in the component re-reads. It must
-		// detach on disconnect so a removed grid doesn't keep re-measuring.
+		// The window 'resize' hook re-measures the box on a height-only viewport
+		// change (a mobile URL bar collapsing, the soft keyboard opening) that a
+		// width-only ResizeObserver comparison would miss — and the RO is documented
+		// as unreliable in the HA companion webview, so this is the caller-agnostic
+		// backstop. It must detach on disconnect so a removed grid doesn't keep
+		// re-measuring.
 		const el = createGrid();
 		document.body.appendChild(el);
 		await el.updateComplete;
@@ -2017,48 +2018,6 @@ describe("epp-grid cell sizing (measured available width)", () => {
 		measureSpy.mockClear();
 		window.dispatchEvent(new Event("resize"));
 		expect(measureSpy).not.toHaveBeenCalled();
-	});
-
-	it("re-fits the MOBILE cap when the viewport height changes (the resize hook's actual job)", async () => {
-		// The whole point of the window 'resize' hook. On mobile the height cap is a
-		// fraction of the VIEWPORT, and _measureAvail() takes an early return there —
-		// it writes nothing, so nothing re-renders. If the cap were read straight out
-		// of `window.innerHeight` in render(), a viewport height change (a URL bar
-		// collapsing, a rotation) would leave the map fitted to the OLD viewport until
-		// something unrelated happened to re-render it. The handler therefore writes
-		// the viewport height to reactive state, and render() reads that.
-		const realH = window.innerHeight;
-		try {
-			Object.defineProperty(window, "innerHeight", {
-				value: 900,
-				configurable: true,
-			});
-			// Constructed AFTER the patch, so _viewportH seeds from the tall viewport.
-			const el = createGrid({ capHeightToHalfViewport: true }) as any;
-			expect(el._viewportH).toBe(900);
-			document.body.appendChild(el);
-			await el.updateComplete;
-			const tall = cellPx(el);
-			expect(tall).toBeGreaterThan(0);
-
-			// The viewport gets shorter; nothing else about the grid changes.
-			Object.defineProperty(window, "innerHeight", {
-				value: 400,
-				configurable: true,
-			});
-			window.dispatchEvent(new Event("resize"));
-			await el.updateComplete;
-
-			expect(el._viewportH).toBe(400);
-			// The cap moved with it: a shorter viewport means a smaller map.
-			expect(cellPx(el)).toBeLessThan(tall);
-			document.body.removeChild(el);
-		} finally {
-			Object.defineProperty(window, "innerHeight", {
-				value: realH,
-				configurable: true,
-			});
-		}
 	});
 
 	it("reads the caption's constant margin-top only once (it is off the 10Hz hot path)", async () => {
@@ -2312,14 +2271,16 @@ describe("epp-grid height budget (container measurement)", () => {
 		document.body.removeChild(el);
 	});
 
-	it("skips the height budget on mobile (capHeightToHalfViewport owns it)", async () => {
-		const el = createGrid({ capHeightToHalfViewport: true }) as any;
+	it("container-measures the box on mobile too (no viewport cap any more)", async () => {
+		// Mobile now measures the box the panel gives it, exactly like desktop — the
+		// panel bounds that box declaratively (a flex column capped at 45vh) so the
+		// old circular "measuring a content-sized container" concern is gone (#338).
+		// `mobile` now selects only the compact cell tier, never the height source.
+		const el = createGrid({ mobile: true }) as any;
 		stubBox(el, 400, 0);
 		document.body.appendChild(el);
 		await el.updateComplete;
-		// Mobile's column is content-sized, so measuring it would be circular; the
-		// 45%-of-viewport cap in render() owns the height there.
-		expect(el._availHeightPx).toBe(0);
+		expect(el._availHeightPx).toBe(400);
 		document.body.removeChild(el);
 	});
 
