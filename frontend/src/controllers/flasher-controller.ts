@@ -272,7 +272,7 @@ export class FlasherController implements ReactiveController {
 		this._resetOtaTimeout(mac);
 		this._otaTimeouts[mac] = setTimeout(() => {
 			const ota = this.otaStates[mac];
-			if (!ota || ota.state !== "updating") return;
+			if (ota?.state !== "updating") return;
 			if (ota.progress != null && ota.progress > 0) {
 				// Had progress then stopped — connection lost
 				this._setOtaState(mac, {

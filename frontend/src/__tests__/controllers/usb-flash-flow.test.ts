@@ -920,24 +920,27 @@ describe("_handleWifiProvision", () => {
 	it.each([
 		["needs_auth", { type: "needs_auth" }],
 		["failed with reason", { type: "failed", reason: "invalid_auth" }],
-	])("transitions to complete with haAdd=%s from addEsphomeDevice", async (_label: string, outcome: any) => {
-		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
-			"192.168.1.42",
-		);
-		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue(outcome);
-		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+	])(
+		"transitions to complete with haAdd=%s from addEsphomeDevice",
+		async (_label: string, outcome: any) => {
+			(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+				"192.168.1.42",
+			);
+			vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue(outcome);
+			const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
-		await flushProvision("MySSID", "s3cr3t");
+			await flushProvision("MySSID", "s3cr3t");
 
-		const completeCall = (updateSpy.mock.calls as any[][]).find(
-			(c) => c[0].step === "complete",
-		);
-		expect(completeCall?.[0]).toMatchObject({
-			step: "complete",
-			ip: "192.168.1.42",
-			haAdd: outcome,
-		});
-	});
+			const completeCall = (updateSpy.mock.calls as any[][]).find(
+				(c) => c[0].step === "complete",
+			);
+			expect(completeCall?.[0]).toMatchObject({
+				step: "complete",
+				ip: "192.168.1.42",
+				haAdd: outcome,
+			});
+		},
+	);
 
 	it("transitions to complete with haAdd=failed when addEsphomeDevice throws", async () => {
 		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(

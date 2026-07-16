@@ -142,23 +142,21 @@ describe("_changePlacement — calibration wizard navigation", () => {
 // draggable on the live overview after a save from the furniture editor,
 // where a 0-delta drag dirtied the panel.
 describe("_sidebarTab invariant: meaningful only inside editor view", () => {
-	it.each([
-		"live",
-		"settings",
-		"tutorial",
-		"calibrate",
-	] as const)("resets _sidebarTab to default when _view becomes %s", async (view) => {
-		const el = createPanel();
-		document.body.appendChild(el);
-		const a = el as any;
-		a._view = "editor";
-		a._sidebarTab = "furniture";
-		await el.updateComplete;
-		a._view = view;
-		await el.updateComplete;
-		expect(a._sidebarTab).toBe("zones");
-		el.remove();
-	});
+	it.each(["live", "settings", "tutorial", "calibrate"] as const)(
+		"resets _sidebarTab to default when _view becomes %s",
+		async (view) => {
+			const el = createPanel();
+			document.body.appendChild(el);
+			const a = el as any;
+			a._view = "editor";
+			a._sidebarTab = "furniture";
+			await el.updateComplete;
+			a._view = view;
+			await el.updateComplete;
+			expect(a._sidebarTab).toBe("zones");
+			el.remove();
+		},
+	);
 
 	it("leaves _sidebarTab alone when staying inside editor view", async () => {
 		const el = createPanel();
