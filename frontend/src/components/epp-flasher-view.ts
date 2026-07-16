@@ -693,7 +693,7 @@ export class EppFlasherView extends LitElement {
 		device: FlashableDevice,
 	): typeof nothing | ReturnType<typeof html> {
 		const ota = this.otaStates[device.mac];
-		if (!ota || ota.state !== "error" || this._errorPopoverMac !== device.mac) {
+		if (ota?.state !== "error" || this._errorPopoverMac !== device.mac) {
 			return nothing;
 		}
 		return html`<div class="ota-error-detail" role="alert">${ota.errorKey ? this.localize(ota.errorKey, ota.errorParams) : ""}</div>`;
