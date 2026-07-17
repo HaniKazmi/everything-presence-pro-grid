@@ -2,6 +2,8 @@ import { css, html, LitElement, nothing } from "lit";
 import { state } from "lit/decorators.js";
 import "./components/epp-grid.js";
 import "./components/epp-live-sidebar.js";
+import "./ui/epp-toggle.js";
+import "./ui/epp-tooltip.js";
 import { DeviceSubscription } from "./card/device-subscription.js";
 import { subscribeHeatmap } from "./card/heatmap-store.js";
 import {
@@ -13,6 +15,10 @@ import type { SensorState } from "./components/epp-live-sidebar.js";
 import { parseConfig } from "./lib/config-serialization.js";
 import { isRgbTriple } from "./lib/furniture-contrast.js";
 import { MAX_RANGE } from "./lib/grid.js";
+import {
+	persistCardHeatmapEnabled,
+	readCardHeatmapEnabled,
+} from "./lib/storage.js";
 import { createTrails, updateTrails } from "./lib/target-trails.js";
 import {
 	checkForNewBundle,
@@ -227,6 +233,20 @@ export class EppGridCard extends LitElement {
 			.overview--horizontal .sensors {
 				flex: 0 0 var(--epp-card-sensors-width);
 			}
+			.map {
+				position: relative;
+			}
+			.heatmap-overlay {
+				position: absolute;
+				right: var(--epp-space-2);
+				bottom: var(--epp-space-2);
+				display: inline-flex;
+				align-items: center;
+				padding: var(--epp-space-1) var(--epp-space-2);
+				background: var(--epp-surface);
+				border: 1px solid var(--epp-border);
+				border-radius: var(--epp-radius-pill);
+			}
 			.content {
 				padding: var(--epp-space-3);
 			}
@@ -342,6 +362,12 @@ export class EppGridCard extends LitElement {
 	setConfig(config: EppGridCardConfig): void {
 		this._config = config;
 		this._resolved = applyCardDefaults(config);
+		// Seed the runtime heatmap switch from the card-only per-device
+		// preference (only meaningful in "toggle" mode; default off).
+		this._heatmapOn =
+			this._resolved.show_heatmap === "toggle" && config.device_id
+				? readCardHeatmapEnabled(config.device_id)
+				: false;
 		const rawPres = config?.sensors?.presence;
 		this._presenceKeys = rawPres
 			? (Object.keys(rawPres).filter(
@@ -546,6 +572,29 @@ export class EppGridCard extends LitElement {
 		);
 	}
 
+	private _onHeatmapToggle = (e: CustomEvent<{ value: boolean }>): void => {
+		this._heatmapOn = e.detail.value;
+		const id = this._config?.device_id;
+		if (id) persistCardHeatmapEnabled(id, this._heatmapOn);
+		// Re-evaluate the subscription gate so the stream opens/closes on demand.
+		this._heatmapSub.ensure();
+	};
+
+	// Bare switch overlaid bottom-right of the map (no visible label — the
+	// epp-toggle primitive omits the label span when empty). epp-tooltip supplies
+	// the accessible name / hint (design system forbids raw title=).
+	private _renderHeatmapToggle() {
+		return html`<epp-tooltip
+			class="heatmap-overlay"
+			content=${this._localize("card.heatmap_toggle")}
+		>
+			<epp-toggle
+				.checked=${this._heatmapOn}
+				@value-changed=${this._onHeatmapToggle}
+			></epp-toggle>
+		</epp-tooltip>`;
+	}
+
 	private _renderMap(cfg: ResolvedCardConfig) {
 		if (this._data.snapshot == null) {
 			return html`<div class="placeholder">${this._localize("card.loading")}</div>`;
@@ -583,6 +632,7 @@ export class EppGridCard extends LitElement {
 				.trails=${heatmapVisible ? this._targetTrails : []}
 				?showHeatmap=${heatmapVisible}
 			></epp-grid>
+			${cfg.show_heatmap === "toggle" ? this._renderHeatmapToggle() : nothing}
 		`;
 	}
 
