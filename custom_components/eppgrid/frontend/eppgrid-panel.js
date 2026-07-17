@@ -514,8 +514,9 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
     --mdc-typography-subtitle1-font-weight: 500;
     min-width: 200px;
   }
-`;class ke extends ce{constructor(){super(...arguments),this.label="",this.checked=!1,this.disabled=!1,this._onChange=e=>{e.stopPropagation();const t=e.target.checked;this.checked=t,this.dispatchEvent(new CustomEvent("value-changed",{detail:{value:t},bubbles:!0,composed:!0}))}}render(){const e=customElements.get("ha-switch")?N`<ha-switch
+`;class ke extends ce{constructor(){super(...arguments),this.label="",this.checked=!1,this.disabled=!1,this.controlLabel="",this._onChange=e=>{e.stopPropagation();const t=e.target.checked;this.checked=t,this.dispatchEvent(new CustomEvent("value-changed",{detail:{value:t},bubbles:!0,composed:!0}))}}render(){const e=customElements.get("ha-switch")?N`<ha-switch
           data-toggle-control
+          aria-label=${this.controlLabel||W}
           .checked=${this.checked}
           .disabled=${this.disabled}
           @change=${this._onChange}
@@ -523,6 +524,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
           <input
             type="checkbox"
             data-toggle-control
+            aria-label=${this.controlLabel||W}
             .checked=${this.checked}
             .disabled=${this.disabled}
             @change=${this._onChange}
@@ -540,7 +542,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
         font-size: var(--epp-font-base, 14px);
         color: var(--epp-text, var(--primary-text-color, #212121));
       }
-    `],e([ue({type:String})],ke.prototype,"label",void 0),e([ue({type:Boolean})],ke.prototype,"checked",void 0),e([ue({type:Boolean})],ke.prototype,"disabled",void 0),customElements.get("epp-toggle")||customElements.define("epp-toggle",ke);class Te extends ce{constructor(){super(...arguments),this.heading="",this.elevated=!1,this._onActionsSlotChange=()=>this.requestUpdate()}get _hasActions(){return null!==this.querySelector('[slot="actions"]')}render(){return N`
+    `],e([ue({type:String})],ke.prototype,"label",void 0),e([ue({type:Boolean})],ke.prototype,"checked",void 0),e([ue({type:Boolean})],ke.prototype,"disabled",void 0),e([ue({attribute:"control-label"})],ke.prototype,"controlLabel",void 0),customElements.get("epp-toggle")||customElements.define("epp-toggle",ke);class Te extends ce{constructor(){super(...arguments),this.heading="",this.elevated=!1,this._onActionsSlotChange=()=>this.requestUpdate()}get _hasActions(){return null!==this.querySelector('[slot="actions"]')}render(){return N`
       <div class="card ${this.elevated?"elevated":""}">
         ${this.heading?N`<div class="card-heading">${this.heading}</div>`:W}
         <slot></slot>
