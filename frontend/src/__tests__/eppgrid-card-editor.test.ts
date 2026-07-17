@@ -223,6 +223,16 @@ describe("eppgrid-card-editor", () => {
 		expect(entry.selector).toEqual({ boolean: {} });
 	});
 
+	it("buildSchema omits show_grid when hideShowGrid is true (floor plan makes it inert)", () => {
+		const schema = buildSchema([], true) as any[];
+		expect(schema.find((s) => s.name === "show_grid")).toBeUndefined();
+	});
+
+	it("buildSchema includes show_grid by default (hideShowGrid omitted)", () => {
+		const schema = buildSchema([]) as any[];
+		expect(schema.find((s) => s.name === "show_grid")).toBeTruthy();
+	});
+
 	it("buildSchema has a show_heatmap mode dropdown (off/on/toggle)", () => {
 		const schema = buildSchema([]) as any[];
 		const entry = schema.find((s) => s.name === "show_heatmap");
@@ -414,5 +424,204 @@ describe("eppgrid-card-editor", () => {
 		const cfg = got.mock.calls.at(-1)?.[0];
 		expect("room_color" in cfg).toBe(false);
 		expect(cfg.primary).toBe("X");
+	});
+
+	it("shows the crop-ratio hint from the selected device's calibration", async () => {
+		const callWS = vi.fn(async () => [
+			{
+				device_id: "d1",
+				name: "Living Room",
+				room_width: 4200,
+				room_depth: 3000,
+			},
+		]);
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "d1" } as any);
+		el.hass = { callWS, locale: { language: "en" } } as any;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		await Promise.resolve();
+		await el.updateComplete;
+		const hint = el.shadowRoot!.querySelector(".fp-ratio-hint")!.textContent!;
+		expect(hint).toContain("4.2");
+		expect(hint).toContain("3.0");
+		expect(hint).toContain("1.40");
+	});
+
+	it("prompts to calibrate when the device has no room dimensions", async () => {
+		const callWS = vi.fn(async () => [
+			{ device_id: "d1", name: "Bedroom", room_width: 0, room_depth: 0 },
+		]);
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "d1" } as any);
+		el.hass = { callWS, locale: { language: "en" } } as any;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		await Promise.resolve();
+		await el.updateComplete;
+		const hint = el.shadowRoot!.querySelector(".fp-ratio-hint")!.textContent!;
+		expect(hint.toLowerCase()).toContain("calibrate");
+	});
+
+	it("normalises the crop ratio so the smaller side is 1 (portrait room)", async () => {
+		const callWS = vi.fn(async () => [
+			{ device_id: "d1", name: "Hallway", room_width: 3000, room_depth: 4200 },
+		]);
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "d1" } as any);
+		el.hass = { callWS, locale: { language: "en" } } as any;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		await Promise.resolve();
+		await el.updateComplete;
+		const hint = el.shadowRoot!.querySelector(".fp-ratio-hint")!.textContent!;
+		// larger/smaller = 4200/3000 = 1.40, always >= 1 regardless of orientation
+		expect(hint).toContain("1.40");
+		expect(hint).not.toContain("0.71");
+	});
+
+	it("falls back to a URL field when ha-picture-upload is unavailable and writes floor_plan", async () => {
+		const callWS = vi.fn(async () => [
+			{
+				device_id: "d1",
+				name: "Living Room",
+				room_width: 4200,
+				room_depth: 3000,
+			},
+		]);
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.setConfig({ type: "custom:eppgrid-card", device_id: "d1" } as any);
+		el.hass = { callWS, locale: { language: "en" } } as any;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		await Promise.resolve();
+		await el.updateComplete;
+
+		const field = el.shadowRoot!.querySelector(
+			"epp-field.fp-url",
+		) as HTMLElement;
+		expect(field).toBeTruthy();
+
+		const got = vi.fn();
+		el.addEventListener("config-changed", (e: any) => got(e.detail.config));
+		field.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "/local/plan.png" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		expect(got).toHaveBeenCalledWith(
+			expect.objectContaining({ floor_plan: "/local/plan.png" }),
+		);
+	});
+
+	it("clearing the URL removes floor_plan and floor_plan_opacity", () => {
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "d1",
+			floor_plan: "/local/plan.png",
+			floor_plan_opacity: 50,
+		} as any);
+		const got = vi.fn();
+		el.addEventListener("config-changed", (e: any) => got(e.detail.config));
+		// Simulate the upload/URL control emitting an empty value.
+		(el as any)._writeFloorPlan(undefined);
+		const cfg = got.mock.calls[0][0];
+		expect(cfg.floor_plan).toBeUndefined();
+		expect(cfg.floor_plan_opacity).toBeUndefined();
+	});
+
+	it("shows an opacity slider only when a plan is set, and writes floor_plan_opacity", async () => {
+		const callWS = vi.fn(async () => [
+			{
+				device_id: "d1",
+				name: "Living Room",
+				room_width: 4200,
+				room_depth: 3000,
+			},
+		]);
+		// No plan set → no slider.
+		const noPlan = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		noPlan.setConfig({ type: "custom:eppgrid-card", device_id: "d1" } as any);
+		noPlan.hass = { callWS, locale: { language: "en" } } as any;
+		document.body.appendChild(noPlan);
+		await noPlan.updateComplete;
+		await Promise.resolve();
+		await noPlan.updateComplete;
+		expect(noPlan.shadowRoot!.querySelector("input.fp-opacity")).toBeNull();
+
+		// Plan set → slider present and writes opacity.
+		const withPlan = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		withPlan.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "d1",
+			floor_plan: "/local/plan.png",
+		} as any);
+		withPlan.hass = { callWS, locale: { language: "en" } } as any;
+		document.body.appendChild(withPlan);
+		await withPlan.updateComplete;
+		await Promise.resolve();
+		await withPlan.updateComplete;
+		const slider = withPlan.shadowRoot!.querySelector(
+			"input.fp-opacity",
+		) as HTMLInputElement;
+		expect(slider).toBeTruthy();
+
+		const got = vi.fn();
+		withPlan.addEventListener("config-changed", (e: any) =>
+			got(e.detail.config),
+		);
+		slider.value = "40";
+		slider.dispatchEvent(new Event("input"));
+		expect(got).toHaveBeenCalledWith(
+			expect.objectContaining({ floor_plan_opacity: 40 }),
+		);
+	});
+
+	it("clamps an out-of-range floor_plan_opacity for display (hand-edited YAML)", async () => {
+		const callWS = vi.fn(async () => [
+			{
+				device_id: "d1",
+				name: "Living Room",
+				room_width: 4200,
+				room_depth: 3000,
+			},
+		]);
+		const el = document.createElement(
+			"eppgrid-card-editor",
+		) as EppGridCardEditor;
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "d1",
+			floor_plan: "/local/plan.png",
+			floor_plan_opacity: 250,
+		} as any);
+		el.hass = { callWS, locale: { language: "en" } } as any;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		await Promise.resolve();
+		await el.updateComplete;
+		const valEl = el.shadowRoot!.querySelector(".fp-opacity-val");
+		expect(valEl!.textContent).toBe("100%");
+		const slider = el.shadowRoot!.querySelector(
+			"input.fp-opacity",
+		) as HTMLInputElement;
+		expect(slider.value).toBe("100");
 	});
 });

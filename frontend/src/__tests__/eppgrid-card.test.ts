@@ -3,6 +3,7 @@ import "../eppgrid-card.js";
 import {
 	__resetEntitySuggestionCache,
 	applyCardDefaults,
+	clampOpacity,
 	EppGridCard,
 	getEntitySuggestion,
 	rgbCss,
@@ -193,6 +194,36 @@ describe("applyCardDefaults", () => {
 		expect(applyCardDefaults({ show_heatmap: "toggle" }).show_heatmap).toBe(
 			"toggle",
 		);
+	});
+
+	it("defaults floor_plan to undefined and opacity to 100", () => {
+		const result = applyCardDefaults({});
+		expect(result.floor_plan).toBeUndefined();
+		expect(result.floor_plan_opacity).toBe(100);
+	});
+
+	it("passes floor_plan through and clamps opacity", () => {
+		expect(
+			applyCardDefaults({ floor_plan: "/api/image/serve/x/original" })
+				.floor_plan,
+		).toBe("/api/image/serve/x/original");
+		expect(
+			applyCardDefaults({ floor_plan_opacity: 60 }).floor_plan_opacity,
+		).toBe(60);
+		expect(
+			applyCardDefaults({ floor_plan_opacity: 250 }).floor_plan_opacity,
+		).toBe(100);
+		expect(
+			applyCardDefaults({ floor_plan_opacity: -5 }).floor_plan_opacity,
+		).toBe(0);
+	});
+
+	it("clampOpacity clamps and defaults", () => {
+		expect(clampOpacity(undefined)).toBe(100);
+		expect(clampOpacity(50)).toBe(50);
+		expect(clampOpacity(999)).toBe(100);
+		expect(clampOpacity(-1)).toBe(0);
+		expect(clampOpacity(Number.NaN)).toBe(100);
 	});
 });
 
@@ -402,6 +433,20 @@ describe("eppgrid-card rendering", () => {
 		expect(grid.plain).toBe(true);
 	});
 
+	it("forces the clean map (epp-grid plain) when a floor plan is set, even with show_grid defaulted on", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "card-grid-floorplan",
+			floor_plan: "/api/image/serve/xyz/original",
+			// show_grid intentionally omitted — defaults to true.
+		});
+		const grid = el.shadowRoot!.querySelector("epp-grid") as unknown as {
+			plain: boolean;
+		};
+		expect(grid).toBeTruthy();
+		expect(grid.plain).toBe(true);
+	});
+
 	it("tells epp-grid to fill the available width", async () => {
 		const el = await mount({
 			type: "custom:eppgrid-card",
@@ -445,6 +490,21 @@ describe("eppgrid-card rendering", () => {
 			roomColor?: string;
 		};
 		expect(grid.roomColor).toBeUndefined();
+	});
+
+	it("passes floor_plan and normalised opacity to epp-grid", async () => {
+		const el = await mount({
+			type: "custom:eppgrid-card",
+			device_id: "d1",
+			floor_plan: "/api/image/serve/xyz/original",
+			floor_plan_opacity: 40,
+		} as any);
+		const grid = el.shadowRoot!.querySelector("epp-grid") as unknown as {
+			floorPlan?: string;
+			floorPlanOpacity: number;
+		};
+		expect(grid.floorPlan).toBe("/api/image/serve/xyz/original");
+		expect(grid.floorPlanOpacity).toBeCloseTo(0.4);
 	});
 
 	it("stacks map over sensors by default (vertical layout)", async () => {

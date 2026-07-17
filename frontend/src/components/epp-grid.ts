@@ -2,6 +2,7 @@ import { css, html, LitElement, nothing, type PropertyValues, svg } from "lit";
 import { property, state } from "lit/decorators.js";
 import { MAX_TARGETS, TARGET_COLORS } from "../constants.js";
 import { mapTargetToGridCell, targetCellIndex } from "../lib/coordinates.js";
+import { planRectPct } from "../lib/floor-plan.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import { parseRgb } from "../lib/furniture-contrast.js";
 import {
@@ -136,6 +137,12 @@ export class EppGrid extends LitElement {
 	@property({ attribute: false }) trails: Array<
 		Array<{ x: number; y: number }>
 	> = [];
+	/** Floor-plan background image URL; undefined → no plan layer. */
+	@property({ attribute: false }) floorPlan?: string;
+	/** Floor-plan opacity, 0..1. */
+	@property({ type: Number }) floorPlanOpacity = 1;
+	/** Set when the plan image fails to load, so we drop the layer this render. */
+	@state() private _planError = false;
 
 	/** Measured content width of the host (px); 0 = unmeasured (e.g. unit tests). */
 	@state() private _availPx = 0;
@@ -420,6 +427,22 @@ export class EppGrid extends LitElement {
 			overflow: hidden;
 		}
 
+		/* Floor-plan background layer. Positioned in the same percentage space
+		   as the target dots (see planRectPct) so plan and targets align; sits
+		   below the grid (z 1) and the furniture/target overlays (15/20). */
+		.floor-plan {
+			position: absolute;
+			z-index: 0;
+			overflow: hidden;
+			pointer-events: none;
+		}
+		.floor-plan img {
+			width: 100%;
+			height: 100%;
+			object-fit: fill;
+			display: block;
+		}
+
 		.grid {
 			display: grid;
 			gap: 1px;
@@ -428,6 +451,8 @@ export class EppGrid extends LitElement {
 			border-radius: 8px;
 			overflow: hidden;
 			user-select: none;
+			position: relative;
+			z-index: 1;
 		}
 
 		/* Clean-map mode: no gridlines. The 1px gaps + divider background that
@@ -523,6 +548,7 @@ export class EppGrid extends LitElement {
 	`;
 
 	willUpdate(changedProperties: PropertyValues) {
+		if (changedProperties.has("floorPlan")) this._planError = false;
 		// Detect targets that have moved off their dismissed cell and dispatch
 		// `target-undismissed` events. Mutation of `this.dismissedTargets` lives
 		// in the parent (panel) — the child only signals the transition.
@@ -621,6 +647,7 @@ export class EppGrid extends LitElement {
 
 		return html`
 			<div class="grid-targets-wrapper">
+				${this._renderFloorPlan(scan.rawBounds, minCol, minRow, visCols, visRows)}
 				<div
 					class="grid"
 					style="grid-template-columns: repeat(${visCols}, ${cellPx}px); grid-template-rows: repeat(${visRows}, ${cellPx}px);"
@@ -769,6 +796,7 @@ export class EppGrid extends LitElement {
 		// Overview fade is a wash of the room colour — the same for every cell,
 		// so build it once here rather than per cell in the loop below.
 		const faded = this.fadeUncovered ? fadedRoomColor(this.roomColor) : "";
+		const planActive = this._planActive;
 		// fadeUncovered fills the room's bounding RECTANGLE (rawBounds), keyed on
 		// the rectangle rather than each cell's room bit: a footprint that drops
 		// the out-of-cone cells still has them inside the rectangle, so they read
@@ -787,6 +815,7 @@ export class EppGrid extends LitElement {
 				const cellStatus = status[idx];
 				const inRange = cellStatus === "in_range";
 				const inside = cellIsInside(cellVal);
+				const inRoom = inRoomRect(c, r);
 				let bg: string;
 				if (inRange) {
 					bg = cellBg(cellVal);
@@ -795,7 +824,7 @@ export class EppGrid extends LitElement {
 					// cone / beyond max range) fade to a wash of the room colour so the
 					// room reads as a clean rectangle; cells beyond the rectangle keep
 					// the plain outside colour.
-					bg = inRoomRect(c, r) ? faded : cellBg(cellVal);
+					bg = inRoom ? faded : cellBg(cellVal);
 				} else if (cellStatus === "beyond_max_range" && inside) {
 					// Only inside-room cells get the hatch-on-white "configured out"
 					// decoration; outside-room padding rendered as plain outside so
@@ -805,6 +834,14 @@ export class EppGrid extends LitElement {
 					bg = cellBg(cellVal);
 				} else {
 					bg = CELL_BG_OUT_OF_RANGE;
+				}
+				// A floor plan replaces the flat room fill in clean (plain) mode:
+				// make in-room-rectangle cells transparent so the plan (a layer
+				// below the grid) shows through and blends against the card, not the
+				// room colour. Out-of-rectangle cells keep their outside shading; the
+				// plan layer is clipped to the same rectangle.
+				if (planActive && plain && inRoom) {
+					bg = "transparent";
 				}
 				let occupancyStyle = "";
 				// Plain mode drops the occupancy glow (a detection-zone cue).
@@ -1044,6 +1081,46 @@ export class EppGrid extends LitElement {
 					`
 					: nothing
 			}
+		`;
+	}
+
+	private _onPlanError = (): void => {
+		this._planError = true;
+	};
+
+	/** A floor plan is set and its image hasn't failed to load. */
+	private get _planActive(): boolean {
+		return !!this.floorPlan && !this._planError;
+	}
+
+	private _renderFloorPlan(
+		rawBounds: {
+			minCol: number;
+			maxCol: number;
+			minRow: number;
+			maxRow: number;
+		},
+		minCol: number,
+		minRow: number,
+		visCols: number,
+		visRows: number,
+	) {
+		// Gated on `plain` to match the transparent-cell override in
+		// _renderVisibleCells: the plan only shows through in clean mode, so both
+		// gates agree (the card forces `plain` whenever a floor plan is set). This
+		// keeps the component self-consistent — no plan drawn behind opaque cells.
+		if (!this._planActive || !this.plain) return nothing;
+		// No room rectangle (uncalibrated / empty grid) → nothing to anchor to.
+		if (rawBounds.minCol > rawBounds.maxCol) return nothing;
+		const r = planRectPct(rawBounds, minCol, minRow, visCols, visRows);
+		const op = Math.max(0, Math.min(1, this.floorPlanOpacity));
+		return html`
+			<div
+				class="floor-plan"
+				style="left:${r.leftPct}%;top:${r.topPct}%;width:${r.widthPct}%;height:${r.heightPct}%;opacity:${op};"
+			>
+				<img src=${this.floorPlan} alt="" @error=${this._onPlanError} />
+			</div>
 		`;
 	}
 
