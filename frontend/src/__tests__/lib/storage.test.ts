@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	isLangRequestDismissed,
+	persistCardHeatmapEnabled,
 	persistDismissedLangRequest,
 	persistHeatmapEnabled,
 	persistSelectedMac,
+	readCardHeatmapEnabled,
 	readHeatmapEnabled,
 	readStoredMac,
 	STORAGE_KEY_CARD_HEATMAP_ENABLED,
 	STORAGE_KEY_LANG_REQUEST_DISMISSED,
 	STORAGE_KEY_SELECTED_MAC,
-	persistCardHeatmapEnabled,
-	readCardHeatmapEnabled,
 } from "../../lib/storage.js";
 
 describe("lib/storage", () => {
@@ -128,7 +128,7 @@ describe("lib/storage", () => {
 			persistCardHeatmapEnabled("dev-1", true);
 			expect(readCardHeatmapEnabled("dev-1")).toBe(true);
 			expect(
-				localStorage.getItem(STORAGE_KEY_CARD_HEATMAP_ENABLED + "dev-1"),
+				localStorage.getItem(`${STORAGE_KEY_CARD_HEATMAP_ENABLED}dev-1`),
 			).toBe("1");
 		});
 
