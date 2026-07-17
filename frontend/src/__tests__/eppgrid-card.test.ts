@@ -166,9 +166,18 @@ describe("applyCardDefaults", () => {
 		expect(result.secondary).toBe("sub");
 	});
 
-	it("show_heatmap defaults to false and passes through when true", () => {
-		expect(applyCardDefaults({}).show_heatmap).toBe(false);
-		expect(applyCardDefaults({ show_heatmap: true }).show_heatmap).toBe(true);
+	it("show_heatmap defaults to 'off' and normalizes legacy booleans", () => {
+		expect(applyCardDefaults({}).show_heatmap).toBe("off");
+		expect(applyCardDefaults({ show_heatmap: false }).show_heatmap).toBe("off");
+		expect(applyCardDefaults({ show_heatmap: true }).show_heatmap).toBe("on");
+	});
+
+	it("show_heatmap passes through mode strings", () => {
+		expect(applyCardDefaults({ show_heatmap: "off" }).show_heatmap).toBe("off");
+		expect(applyCardDefaults({ show_heatmap: "on" }).show_heatmap).toBe("on");
+		expect(applyCardDefaults({ show_heatmap: "toggle" }).show_heatmap).toBe(
+			"toggle",
+		);
 	});
 });
 

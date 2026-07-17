@@ -42,6 +42,21 @@ type PresenceKey =
 	| "target_presence"
 	| "mmwave";
 
+export type HeatmapMode = "off" | "on" | "toggle";
+
+/**
+ * Normalize the config's `show_heatmap` (boolean for backward compat, or a mode
+ * string going forward) to a `HeatmapMode`. Legacy `true` → "on"; `false`,
+ * `undefined`, and anything unexpected → "off".
+ */
+export function normalizeHeatmapMode(
+	v: boolean | HeatmapMode | undefined,
+): HeatmapMode {
+	if (v === true || v === "on") return "on";
+	if (v === "toggle") return "toggle";
+	return "off";
+}
+
 export interface EppGridCardConfig {
 	type: string;
 	device_id: string;
@@ -60,7 +75,7 @@ export interface EppGridCardConfig {
 	};
 	show_furniture?: boolean;
 	show_overlays?: boolean;
-	show_heatmap?: boolean;
+	show_heatmap?: boolean | HeatmapMode;
 	/**
 	 * HA-managed keys the card itself never reads but must preserve through the
 	 * editor round-trip (see `EppGridCardEditor._valueChanged`): `grid_options`
@@ -89,7 +104,7 @@ type ResolvedCardConfig = Omit<EppGridCardConfig, "sensors"> & {
 	layout: "horizontal" | "vertical";
 	show_furniture: boolean;
 	show_overlays: boolean;
-	show_heatmap: boolean;
+	show_heatmap: HeatmapMode;
 	primary: string;
 	secondary: string;
 	sensors: {
@@ -136,7 +151,7 @@ export function applyCardDefaults(
 		layout: config.layout ?? "vertical",
 		show_furniture: config.show_furniture !== false,
 		show_overlays: config.show_overlays !== false,
-		show_heatmap: config.show_heatmap === true,
+		show_heatmap: normalizeHeatmapMode(config.show_heatmap),
 		sensors: {
 			presence: {
 				// presence absent entirely → all on; presence present → only keys explicitly true
@@ -274,6 +289,11 @@ export class EppGridCard extends LitElement {
 	private _heatmapCells: number[] = [];
 	private _targetTrails = createTrails();
 
+	// Viewer's runtime heatmap choice, used only in "toggle" mode. Seeded from
+	// (and persisted to) a card-only per-device localStorage key in setConfig /
+	// the toggle handler. Irrelevant in "on"/"off" mode.
+	@state() private _heatmapOn = false;
+
 	private _overviewSub = new DeviceSubscription<OverviewState>({
 		getHass: () => this.__hass,
 		getDeviceId: () => this._config?.device_id,
@@ -300,8 +320,9 @@ export class EppGridCard extends LitElement {
 		getHass: () => this.__hass,
 		getDeviceId: () => this._config?.device_id,
 		enabled: () =>
-			this._resolved?.show_heatmap === true &&
-			this._resolved?.show_map === true,
+			this._resolved != null &&
+			this._heatmapVisible(this._resolved) &&
+			this._resolved.show_map === true,
 		subscribeFn: subscribeHeatmap,
 		onData: (cells) => {
 			this._heatmapCells = cells;
@@ -513,6 +534,18 @@ export class EppGridCard extends LitElement {
 		`;
 	}
 
+	/**
+	 * Effective "is the heatmap being shown right now" — the single boolean that
+	 * gates the subscription and the render. "on" is always visible; "toggle"
+	 * follows the viewer's runtime switch; "off" is never visible.
+	 */
+	private _heatmapVisible(cfg: ResolvedCardConfig): boolean {
+		return (
+			cfg.show_heatmap === "on" ||
+			(cfg.show_heatmap === "toggle" && this._heatmapOn)
+		);
+	}
+
 	private _renderMap(cfg: ResolvedCardConfig) {
 		if (this._data.snapshot == null) {
 			return html`<div class="placeholder">${this._localize("card.loading")}</div>`;
@@ -526,6 +559,7 @@ export class EppGridCard extends LitElement {
 			? MAX_RANGE
 			: Math.round(parsed.settings.targetMaxDistance * 1000);
 		// maxGridPx=480: map is aspect-locked and width-fit; a height:100% fill chain caused scroll-driven resize oscillation
+		const heatmapVisible = this._heatmapVisible(cfg);
 		return html`
 			<epp-grid
 				.grid=${parsed.grid}
@@ -545,9 +579,9 @@ export class EppGridCard extends LitElement {
 				.roomColor=${rgbCss(cfg.room_color)}
 				.fill=${true}
 				.fadeUncovered=${true}
-				.heatmapCells=${cfg.show_heatmap ? this._heatmapCells : []}
-				.trails=${cfg.show_heatmap ? this._targetTrails : []}
-				?showHeatmap=${cfg.show_heatmap}
+				.heatmapCells=${heatmapVisible ? this._heatmapCells : []}
+				.trails=${heatmapVisible ? this._targetTrails : []}
+				?showHeatmap=${heatmapVisible}
 			></epp-grid>
 		`;
 	}
