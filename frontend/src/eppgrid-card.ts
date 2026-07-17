@@ -339,10 +339,7 @@ export class EppGridCard extends LitElement {
 	private _heatmapSub = new DeviceSubscription<number[]>({
 		getHass: () => this.__hass,
 		getDeviceId: () => this._config?.device_id,
-		enabled: () =>
-			this._resolved != null &&
-			this._heatmapVisible(this._resolved) &&
-			this._resolved.show_map === true,
+		enabled: () => this._heatmapVisible() && this._resolved?.show_map === true,
 		subscribeFn: subscribeHeatmap,
 		onData: (cells) => {
 			this._heatmapCells = cells;
@@ -565,10 +562,12 @@ export class EppGridCard extends LitElement {
 	 * gates the subscription and the render. "on" is always visible; "toggle"
 	 * follows the viewer's runtime switch; "off" is never visible.
 	 */
-	private _heatmapVisible(cfg: ResolvedCardConfig): boolean {
+	private _heatmapVisible(): boolean {
+		const cfg = this._resolved;
 		return (
-			cfg.show_heatmap === "on" ||
-			(cfg.show_heatmap === "toggle" && this._heatmapOn)
+			cfg != null &&
+			(cfg.show_heatmap === "on" ||
+				(cfg.show_heatmap === "toggle" && this._heatmapOn))
 		);
 	}
 
@@ -608,7 +607,7 @@ export class EppGridCard extends LitElement {
 			? MAX_RANGE
 			: Math.round(parsed.settings.targetMaxDistance * 1000);
 		// maxGridPx=480: map is aspect-locked and width-fit; a height:100% fill chain caused scroll-driven resize oscillation
-		const heatmapVisible = this._heatmapVisible(cfg);
+		const heatmapVisible = this._heatmapVisible();
 		return html`
 			<epp-grid
 				.grid=${parsed.grid}
