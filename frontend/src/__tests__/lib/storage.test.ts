@@ -6,8 +6,11 @@ import {
 	persistSelectedMac,
 	readHeatmapEnabled,
 	readStoredMac,
+	STORAGE_KEY_CARD_HEATMAP_ENABLED,
 	STORAGE_KEY_LANG_REQUEST_DISMISSED,
 	STORAGE_KEY_SELECTED_MAC,
+	persistCardHeatmapEnabled,
+	readCardHeatmapEnabled,
 } from "../../lib/storage.js";
 
 describe("lib/storage", () => {
@@ -113,6 +116,47 @@ describe("lib/storage", () => {
 			expect(readHeatmapEnabled("CC:DD")).toBe(false);
 			persistHeatmapEnabled("AA:BB", false);
 			expect(readHeatmapEnabled("AA:BB")).toBe(false);
+		});
+	});
+
+	describe("card heatmap preference", () => {
+		it("returns false when nothing is stored", () => {
+			expect(readCardHeatmapEnabled("dev-1")).toBe(false);
+		});
+
+		it("round-trips a per-device preference", () => {
+			persistCardHeatmapEnabled("dev-1", true);
+			expect(readCardHeatmapEnabled("dev-1")).toBe(true);
+			expect(
+				localStorage.getItem(STORAGE_KEY_CARD_HEATMAP_ENABLED + "dev-1"),
+			).toBe("1");
+		});
+
+		it("keeps preferences separate per device", () => {
+			persistCardHeatmapEnabled("dev-1", true);
+			expect(readCardHeatmapEnabled("dev-2")).toBe(false);
+		});
+
+		it("is independent of the panel heatmap key", () => {
+			persistCardHeatmapEnabled("dev-1", true);
+			// panel key is epp_heatmap_enabled_<mac>; must not be touched
+			expect(localStorage.getItem("epp_heatmap_enabled_dev-1")).toBeNull();
+		});
+
+		it("returns false when localStorage throws on read", () => {
+			const spy = vi.spyOn(localStorage, "getItem").mockImplementation(() => {
+				throw new Error("blocked");
+			});
+			expect(readCardHeatmapEnabled("dev-1")).toBe(false);
+			spy.mockRestore();
+		});
+
+		it("swallows write errors", () => {
+			const spy = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+				throw new Error("blocked");
+			});
+			expect(() => persistCardHeatmapEnabled("dev-1", true)).not.toThrow();
+			spy.mockRestore();
 		});
 	});
 

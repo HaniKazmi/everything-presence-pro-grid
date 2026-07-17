@@ -87,3 +87,33 @@ export function persistHeatmapEnabled(mac: string, enabled: boolean): void {
 		/* localStorage unavailable */
 	}
 }
+
+// Card-only, per-device heatmap preference for the "toggle on card" mode.
+// Deliberately a SEPARATE key from the panel's STORAGE_KEY_HEATMAP_ENABLED
+// (which is keyed by MAC): the card keeps its own preference keyed by
+// device_id, so the card and panel never share heatmap state.
+export const STORAGE_KEY_CARD_HEATMAP_ENABLED = "epp_card_heatmap_enabled_";
+
+export function readCardHeatmapEnabled(deviceId: string): boolean {
+	try {
+		return (
+			localStorage.getItem(STORAGE_KEY_CARD_HEATMAP_ENABLED + deviceId) === "1"
+		);
+	} catch {
+		return false;
+	}
+}
+
+export function persistCardHeatmapEnabled(
+	deviceId: string,
+	enabled: boolean,
+): void {
+	try {
+		localStorage.setItem(
+			STORAGE_KEY_CARD_HEATMAP_ENABLED + deviceId,
+			enabled ? "1" : "0",
+		);
+	} catch {
+		/* localStorage unavailable */
+	}
+}
