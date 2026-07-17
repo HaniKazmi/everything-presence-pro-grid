@@ -101,6 +101,11 @@ describe("lib/storage", () => {
 			expect(() => persistDismissedLangRequest("fr")).not.toThrow();
 			spy.mockRestore();
 		});
+
+		it("returns false for a non-array stored value", () => {
+			localStorage.setItem(STORAGE_KEY_LANG_REQUEST_DISMISSED, "null");
+			expect(isLangRequestDismissed("fr")).toBe(false);
+		});
 	});
 
 	describe("heatmap-enabled persistence", () => {
@@ -116,6 +121,27 @@ describe("lib/storage", () => {
 			expect(readHeatmapEnabled("CC:DD")).toBe(false);
 			persistHeatmapEnabled("AA:BB", false);
 			expect(readHeatmapEnabled("AA:BB")).toBe(false);
+		});
+
+		it("returns false when localStorage throws on read", () => {
+			const spy = vi.spyOn(localStorage, "getItem").mockImplementation(() => {
+				throw new Error("blocked");
+			});
+			expect(readHeatmapEnabled("AA:BB")).toBe(false);
+			spy.mockRestore();
+		});
+
+		it("swallows errors when localStorage throws on write", () => {
+			const spy = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
+				throw new Error("blocked");
+			});
+			expect(() => persistHeatmapEnabled("AA:BB", true)).not.toThrow();
+			spy.mockRestore();
+		});
+
+		it("writes '0' for false when localStorage is available", () => {
+			persistHeatmapEnabled("AA:BB", false);
+			expect(localStorage.getItem("epp_heatmap_enabled_AA:BB")).toBe("0");
 		});
 	});
 
@@ -157,6 +183,13 @@ describe("lib/storage", () => {
 			});
 			expect(() => persistCardHeatmapEnabled("dev-1", true)).not.toThrow();
 			spy.mockRestore();
+		});
+
+		it("writes '0' for false when localStorage is available", () => {
+			persistCardHeatmapEnabled("dev-1", false);
+			expect(
+				localStorage.getItem(`${STORAGE_KEY_CARD_HEATMAP_ENABLED}dev-1`),
+			).toBe("0");
 		});
 	});
 
