@@ -60,7 +60,23 @@ describe("epp-toggle", () => {
 		expect(el.shadowRoot!.querySelector(".label")).toBeNull();
 	});
 
-	it("omits aria-label on the control when controlLabel is unset", async () => {
+	it("falls back to the visible label as the control's accessible name", async () => {
+		const el = await fixture(); // label = "Track this zone", no controlLabel
+		const control = el.shadowRoot!.querySelector("[data-toggle-control]")!;
+		expect(control.getAttribute("aria-label")).toBe("Track this zone");
+	});
+
+	it("prefers controlLabel over the visible label for the accessible name", async () => {
+		const el = document.createElement("epp-toggle") as EppToggle;
+		el.label = "Visible";
+		el.controlLabel = "Accessible";
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const control = el.shadowRoot!.querySelector("[data-toggle-control]")!;
+		expect(control.getAttribute("aria-label")).toBe("Accessible");
+	});
+
+	it("omits aria-label on the control when both controlLabel and label are empty", async () => {
 		const el = document.createElement("epp-toggle") as EppToggle;
 		document.body.appendChild(el);
 		await el.updateComplete;

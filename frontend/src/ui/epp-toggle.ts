@@ -8,10 +8,12 @@ export class EppToggle extends LitElement {
 	@property({ type: Boolean }) checked = false;
 	@property({ type: Boolean }) disabled = false;
 	/**
-	 * Accessible name applied as `aria-label` on the underlying control. Use for a
-	 * bare switch (no visible `label`) so screen readers still announce it — a
-	 * visible label is not programmatically associated with the control. Omitted
-	 * from the DOM when empty.
+	 * Accessible name for the underlying control, applied as `aria-label`. The
+	 * accessible name falls back to the visible `label` when this is empty (the
+	 * visible label span is not otherwise programmatically associated with the
+	 * control). Set `controlLabel` for a bare switch with no visible label, or to
+	 * override the visible label's text. `aria-label` is omitted entirely when
+	 * both are empty.
 	 */
 	@property({ attribute: "control-label" }) controlLabel = "";
 
@@ -52,7 +54,7 @@ export class EppToggle extends LitElement {
 		const control = customElements.get("ha-switch")
 			? html`<ha-switch
           data-toggle-control
-          aria-label=${this.controlLabel || nothing}
+          aria-label=${this.controlLabel || this.label || nothing}
           .checked=${this.checked}
           .disabled=${this.disabled}
           @change=${this._onChange}
@@ -61,7 +63,7 @@ export class EppToggle extends LitElement {
           <input
             type="checkbox"
             data-toggle-control
-            aria-label=${this.controlLabel || nothing}
+            aria-label=${this.controlLabel || this.label || nothing}
             .checked=${this.checked}
             .disabled=${this.disabled}
             @change=${this._onChange}
