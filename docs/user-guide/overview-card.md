@@ -66,11 +66,11 @@ sidebar.
 
 ### Map layers
 
-| Option             | Default | Description                                                                                                 |
-| ------------------ | ------- | ----------------------------------------------------------------------------------------------------------- |
-| **Show furniture** | on      | Overlay furniture icons on the grid.                                                                        |
-| **Show overlays**  | on      | Show Entry/Exit, Interference, and Suppress cell markings.                                                  |
-| **Show heatmap**   | off     | Show the activity heatmap and live movement trails on the map. Requires firmware that supports the heatmap. |
+| Option             | Default | Description                                                                                                                                                                                                                                                                    |
+| ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Show furniture** | on      | Overlay furniture icons on the grid.                                                                                                                                                                                                                                           |
+| **Show overlays**  | on      | Show Entry/Exit, Interference, and Suppress cell markings.                                                                                                                                                                                                                     |
+| **Heatmap**        | Off     | Show the activity heatmap and live movement trails on the map. Choose **Off**, **On**, or **Toggle on card** — the last adds a small switch on the map so viewers can show or hide the heatmap themselves, remembered per device. Requires firmware that supports the heatmap. |
 
 ### Templated text
 

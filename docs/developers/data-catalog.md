@@ -345,14 +345,14 @@ Errors: `device_not_found` when the `device_id` doesn't match a known device.
 
 Streams the on-device activity heatmap for one device — the non-admin,
 `device_id`-based counterpart of the admin `subscribe_heatmap` command, used by
-the dashboard card's **Show heatmap** option. Like `overview/subscribe` it
-registers a durable state stream (so it also recovers automatically after the
-device flaps) and counts under `heatmap_subs` (the subscriber counter that turns
-on the firmware's `heatmap_interval` emission). Its wire contract is
-deliberately unchanged from before durable streams, though: it never relays live
-`available` events, because already-deployed card bundles treat any message
-without a `cells` field as an empty heatmap — see architecture.md → *Durable
-frontend state streams*.
+the dashboard card's **Heatmap** option. Like `overview/subscribe` it registers
+a durable state stream (so it also recovers automatically after the device
+flaps) and counts under `heatmap_subs` (the subscriber counter that turns on the
+firmware's `heatmap_interval` emission). Its wire contract is deliberately
+unchanged from before durable streams, though: it never relays live `available`
+events, because already-deployed card bundles treat any message without a
+`cells` field as an empty heatmap — see architecture.md → *Durable frontend
+state streams*.
 
 **Request:**
 `{ "type": "eppgrid/overview/subscribe_heatmap", "device_id": str }`
