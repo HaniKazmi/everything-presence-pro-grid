@@ -48,4 +48,23 @@ describe("epp-toggle", () => {
 		// No empty flex item / gap artifact when an enclosing row owns the label.
 		expect(el.shadowRoot!.querySelector(".label")).toBeNull();
 	});
+
+	it("gives a bare switch an accessible name via controlLabel (aria-label on the control)", async () => {
+		const el = document.createElement("epp-toggle") as EppToggle;
+		el.controlLabel = "Heatmap";
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const control = el.shadowRoot!.querySelector("[data-toggle-control]")!;
+		expect(control.getAttribute("aria-label")).toBe("Heatmap");
+		// controlLabel is the accessible name only — it does not add a visible label.
+		expect(el.shadowRoot!.querySelector(".label")).toBeNull();
+	});
+
+	it("omits aria-label on the control when controlLabel is unset", async () => {
+		const el = document.createElement("epp-toggle") as EppToggle;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const control = el.shadowRoot!.querySelector("[data-toggle-control]")!;
+		expect(control.hasAttribute("aria-label")).toBe(false);
+	});
 });
