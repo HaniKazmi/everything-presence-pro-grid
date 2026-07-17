@@ -8,6 +8,11 @@ firmware downloads, see the
 
 ### New features
 
+- **Show or hide the heatmap from the dashboard card.** The card's heatmap
+    setting now has a third option, **Toggle on card**, alongside off and on.
+    Choose it and a small switch appears on the map, so you can show or hide the
+    heatmap without editing the card — and each device remembers its own choice.
+    Cards set to plain on or off are unchanged.
 - **WiFi drop diagnostics.** If a device keeps going offline while never
     rebooting, the **WiFi Signal** reading alone often can't explain it — plenty
     of drops happen on a strong signal because the *router* ended the
