@@ -516,7 +516,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
   }
 `;class ke extends ce{constructor(){super(...arguments),this.label="",this.checked=!1,this.disabled=!1,this.controlLabel="",this._onChange=e=>{e.stopPropagation();const t=e.target.checked;this.checked=t,this.dispatchEvent(new CustomEvent("value-changed",{detail:{value:t},bubbles:!0,composed:!0}))}}render(){const e=customElements.get("ha-switch")?N`<ha-switch
           data-toggle-control
-          aria-label=${this.controlLabel||W}
+          aria-label=${this.controlLabel||this.label||W}
           .checked=${this.checked}
           .disabled=${this.disabled}
           @change=${this._onChange}
@@ -524,7 +524,7 @@ const de={attribute:!0,type:String,converter:w,reflect:!1,hasChanged:v},pe=(e=de
           <input
             type="checkbox"
             data-toggle-control
-            aria-label=${this.controlLabel||W}
+            aria-label=${this.controlLabel||this.label||W}
             .checked=${this.checked}
             .disabled=${this.disabled}
             @change=${this._onChange}
