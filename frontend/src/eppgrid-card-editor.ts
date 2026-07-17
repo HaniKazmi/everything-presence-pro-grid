@@ -39,7 +39,19 @@ export function buildSchema(devices: DeviceOption[]): unknown[] {
 		{ name: "show_grid", selector: { boolean: {} } },
 		{ name: "show_furniture", selector: { boolean: {} } },
 		{ name: "show_overlays", selector: { boolean: {} } },
-		{ name: "show_heatmap", selector: { boolean: {} } },
+		{
+			name: "show_heatmap",
+			selector: {
+				select: {
+					mode: "dropdown",
+					options: [
+						{ value: "off", label: "Off" },
+						{ value: "on", label: "On" },
+						{ value: "toggle", label: "Toggle on card" },
+					],
+				},
+			},
+		},
 		// show_sensors sits directly above the sensors config dropdown it gates.
 		{ name: "show_sensors", selector: { boolean: {} } },
 		{

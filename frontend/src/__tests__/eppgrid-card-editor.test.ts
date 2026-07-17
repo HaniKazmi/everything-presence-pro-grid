@@ -223,14 +223,19 @@ describe("eppgrid-card-editor", () => {
 		expect(entry.selector).toEqual({ boolean: {} });
 	});
 
-	it("buildSchema has a show_heatmap boolean toggle", () => {
+	it("buildSchema has a show_heatmap mode dropdown (off/on/toggle)", () => {
 		const schema = buildSchema([]) as any[];
 		const entry = schema.find((s) => s.name === "show_heatmap");
 		expect(entry).toBeTruthy();
-		expect(entry.selector).toEqual({ boolean: {} });
+		expect(entry.selector.select.mode).toBe("dropdown");
+		expect(entry.selector.select.options.map((o: any) => o.value)).toEqual([
+			"off",
+			"on",
+			"toggle",
+		]);
 	});
 
-	it("toggling show_heatmap round-trips config-changed with show_heatmap: true", () => {
+	it("changing show_heatmap round-trips config-changed with the mode string", () => {
 		const el = document.createElement(
 			"eppgrid-card-editor",
 		) as EppGridCardEditor;
@@ -243,12 +248,12 @@ describe("eppgrid-card-editor", () => {
 				value: {
 					type: "custom:eppgrid-card",
 					device_id: "d1",
-					show_heatmap: true,
+					show_heatmap: "toggle",
 				},
 			},
 		} as any);
 		const cfg = got.mock.calls.at(-1)![0];
-		expect(cfg.show_heatmap).toBe(true);
+		expect(cfg.show_heatmap).toBe("toggle");
 	});
 
 	it("_computeLabel returns localized label for show_heatmap", () => {
@@ -260,7 +265,7 @@ describe("eppgrid-card-editor", () => {
 			locale: { language: "en" },
 		} as any;
 		const result = (el as any)._computeLabel({ name: "show_heatmap" });
-		expect(result).toBe("Show heatmap");
+		expect(result).toBe("Heatmap");
 	});
 
 	it("buildSchema places show_sensors immediately before the sensors dropdown", () => {
