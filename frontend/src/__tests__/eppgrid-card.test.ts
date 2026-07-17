@@ -1052,7 +1052,10 @@ describe("heatmap toggle-on-card", () => {
 		const el = await mount({ device_id: "hm-t1", show_heatmap: "toggle" });
 		const overlay = el.shadowRoot!.querySelector(".heatmap-overlay");
 		expect(overlay).toBeTruthy();
-		expect(overlay!.querySelector("epp-toggle")).toBeTruthy();
+		const toggle = overlay!.querySelector("epp-toggle");
+		expect(toggle).toBeTruthy();
+		// The bare switch carries an accessible name for screen readers.
+		expect((toggle as any).controlLabel).toBeTruthy();
 		const grid = el.shadowRoot!.querySelector("epp-grid") as any;
 		expect(grid.showHeatmap).toBe(false);
 	});

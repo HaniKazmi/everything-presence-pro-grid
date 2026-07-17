@@ -580,18 +580,23 @@ export class EppGridCard extends LitElement {
 	};
 
 	// Bare switch overlaid bottom-right of the map (no visible label — the
-	// epp-toggle primitive omits the label span when empty). epp-tooltip supplies
-	// the accessible name / hint (design system forbids raw title=).
+	// epp-toggle primitive omits the label span when empty). The switch's
+	// accessible name is supplied via controlLabel (an aria-label on the
+	// control); epp-tooltip adds the visible hover hint (design system forbids
+	// raw title=). The positioned `.heatmap-overlay` wrapper is a plain div in
+	// this card's own shadow tree, so its `position: absolute` never depends on
+	// cross-shadow-boundary cascade order against epp-tooltip's own `:host` rule.
 	private _renderHeatmapToggle() {
-		return html`<epp-tooltip
-			class="heatmap-overlay"
-			content=${this._localize("card.heatmap_toggle")}
-		>
-			<epp-toggle
-				.checked=${this._heatmapOn}
-				@value-changed=${this._onHeatmapToggle}
-			></epp-toggle>
-		</epp-tooltip>`;
+		const label = this._localize("card.heatmap_toggle");
+		return html`<div class="heatmap-overlay">
+			<epp-tooltip content=${label}>
+				<epp-toggle
+					.controlLabel=${label}
+					.checked=${this._heatmapOn}
+					@value-changed=${this._onHeatmapToggle}
+				></epp-toggle>
+			</epp-tooltip>
+		</div>`;
 	}
 
 	private _renderMap(cfg: ResolvedCardConfig) {
