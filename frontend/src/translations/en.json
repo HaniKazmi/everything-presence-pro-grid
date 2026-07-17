@@ -536,6 +536,7 @@
 		"uncalibrated": "This device isn't calibrated yet. Open the Everything Presence Pro Grid panel to set up the room.",
 		"no_device": "Select a device in the card editor.",
 		"nothing_to_show": "Enable the map or sensors to show this card.",
+		"heatmap_toggle": "Heatmap",
 		"editor": {
 			"device_id": "Device",
 			"primary": "Primary information",
@@ -546,7 +547,7 @@
 			"show_grid": "Show grid",
 			"show_furniture": "Show furniture",
 			"show_overlays": "Show overlays",
-			"show_heatmap": "Show heatmap",
+			"show_heatmap": "Heatmap",
 			"room_color": "Rest-of-room colour",
 			"reset_room_color": "Reset to auto",
 			"presence": "Presence",

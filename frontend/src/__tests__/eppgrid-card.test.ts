@@ -7,6 +7,11 @@ import {
 	getEntitySuggestion,
 	rgbCss,
 } from "../eppgrid-card.js";
+import {
+	persistCardHeatmapEnabled,
+	readCardHeatmapEnabled,
+	STORAGE_KEY_CARD_HEATMAP_ENABLED,
+} from "../lib/storage.js";
 
 // A calibrated snapshot so the map renders (parseConfig needs a perspective).
 // NOTE: parseCalibration requires exactly 8 numbers — [1, 0, 0, 0, 1, 0, 0, 0]
@@ -22,14 +27,24 @@ const CALIBRATED = {
 // Each test uses a UNIQUE device_id — the OverviewStore registry is a
 // module-level singleton that persists across tests in this file.
 function makeHass() {
-	let cb: ((msg: unknown) => void) | undefined;
-	const subscribeMessage = vi.fn(async (c: (msg: unknown) => void) => {
-		cb = c;
-		return vi.fn();
-	});
+	const subs: { params: any; cb: (msg: unknown) => void }[] = [];
+	const subscribeMessage = vi.fn(
+		async (cb: (msg: unknown) => void, params: any) => {
+			subs.push({ params, cb });
+			return vi.fn();
+		},
+	);
 	return {
 		hass: { connection: { subscribeMessage }, locale: { language: "en" } },
-		emit: (m: unknown) => cb?.(m),
+		// Routed to the overview subscription specifically — some configs (e.g.
+		// show_heatmap: "on"/pre-seeded "toggle") also open a heatmap subscription
+		// on this same fake connection, and a plain "last subscriber wins" callback
+		// would misroute snapshot/data messages to it instead of the overview one.
+		emit: (m: unknown) =>
+			subs
+				.filter((s) => s.params?.type === "eppgrid/overview/subscribe")
+				.at(-1)
+				?.cb(m),
 		subscribeMessage,
 	};
 }
@@ -166,9 +181,18 @@ describe("applyCardDefaults", () => {
 		expect(result.secondary).toBe("sub");
 	});
 
-	it("show_heatmap defaults to false and passes through when true", () => {
-		expect(applyCardDefaults({}).show_heatmap).toBe(false);
-		expect(applyCardDefaults({ show_heatmap: true }).show_heatmap).toBe(true);
+	it("show_heatmap defaults to 'off' and normalizes legacy booleans", () => {
+		expect(applyCardDefaults({}).show_heatmap).toBe("off");
+		expect(applyCardDefaults({ show_heatmap: false }).show_heatmap).toBe("off");
+		expect(applyCardDefaults({ show_heatmap: true }).show_heatmap).toBe("on");
+	});
+
+	it("show_heatmap passes through mode strings", () => {
+		expect(applyCardDefaults({ show_heatmap: "off" }).show_heatmap).toBe("off");
+		expect(applyCardDefaults({ show_heatmap: "on" }).show_heatmap).toBe("on");
+		expect(applyCardDefaults({ show_heatmap: "toggle" }).show_heatmap).toBe(
+			"toggle",
+		);
 	});
 });
 
@@ -1006,6 +1030,97 @@ describe("eppgrid-card heatmap wiring", () => {
 			trails: Array<Array<{ x: number; y: number }>>;
 		};
 		expect(grid.trails.every((t) => t.length === 0)).toBe(true);
+	});
+});
+
+describe("heatmap toggle-on-card", () => {
+	beforeEach(() => localStorage.clear());
+
+	it("renders no overlay toggle in 'on' mode but still shows the heatmap", async () => {
+		const el = await mount({ device_id: "hm-on", show_heatmap: "on" });
+		expect(el.shadowRoot!.querySelector(".heatmap-overlay")).toBeNull();
+		const grid = el.shadowRoot!.querySelector("epp-grid") as any;
+		expect(grid.showHeatmap).toBe(true);
+	});
+
+	it("renders no overlay toggle in 'off' mode", async () => {
+		const el = await mount({ device_id: "hm-off", show_heatmap: "off" });
+		expect(el.shadowRoot!.querySelector(".heatmap-overlay")).toBeNull();
+	});
+
+	it("renders the overlay toggle in 'toggle' mode, off by default", async () => {
+		const el = await mount({ device_id: "hm-t1", show_heatmap: "toggle" });
+		const overlay = el.shadowRoot!.querySelector(".heatmap-overlay");
+		expect(overlay).toBeTruthy();
+		const toggle = overlay!.querySelector("epp-toggle");
+		expect(toggle).toBeTruthy();
+		// The bare switch carries an accessible name for screen readers.
+		expect((toggle as any).controlLabel).toBeTruthy();
+		const grid = el.shadowRoot!.querySelector("epp-grid") as any;
+		expect(grid.showHeatmap).toBe(false);
+	});
+
+	it("seeds the toggle from the persisted per-device preference", async () => {
+		persistCardHeatmapEnabled("hm-t2", true);
+		const el = await mount({ device_id: "hm-t2", show_heatmap: "toggle" });
+		const grid = el.shadowRoot!.querySelector("epp-grid") as any;
+		expect(grid.showHeatmap).toBe(true);
+	});
+
+	it("flipping the switch shows the heatmap and persists the choice", async () => {
+		const el = await mount({ device_id: "hm-t3", show_heatmap: "toggle" });
+		const toggle = el.shadowRoot!.querySelector(
+			".heatmap-overlay epp-toggle",
+		) as HTMLElement;
+		toggle.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: true },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		await el.updateComplete;
+		const grid = el.shadowRoot!.querySelector("epp-grid") as any;
+		expect(grid.showHeatmap).toBe(true);
+		expect(readCardHeatmapEnabled("hm-t3")).toBe(true);
+		expect(
+			localStorage.getItem(`${STORAGE_KEY_CARD_HEATMAP_ENABLED}hm-t3`),
+		).toBe("1");
+	});
+
+	it("treats legacy show_heatmap: true as 'on' — heatmap shown, no overlay switch", async () => {
+		const el = await mount({ device_id: "hm-legacy-true", show_heatmap: true });
+		expect(el.shadowRoot!.querySelector(".heatmap-overlay")).toBeNull();
+		const grid = el.shadowRoot!.querySelector("epp-grid") as any;
+		expect(grid.showHeatmap).toBe(true);
+	});
+
+	it("re-seeds the toggle from storage when the device changes in toggle mode", async () => {
+		persistCardHeatmapEnabled("hm-dev-a", true);
+		persistCardHeatmapEnabled("hm-dev-b", false);
+		const h = makeHass();
+		const el = await mount(
+			{ device_id: "hm-dev-a", show_heatmap: "toggle" },
+			h,
+		);
+		expect((el.shadowRoot!.querySelector("epp-grid") as any).showHeatmap).toBe(
+			true,
+		);
+
+		// Reconfigure to a second device whose stored preference is off. setConfig
+		// unconditionally re-seeds _heatmapOn, so the runtime state must follow the
+		// new device rather than stay stuck on device A's "on".
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "hm-dev-b",
+			show_heatmap: "toggle",
+		});
+		await el.updateComplete;
+		h.emit({ snapshot: CALIBRATED });
+		await el.updateComplete;
+		expect((el.shadowRoot!.querySelector("epp-grid") as any).showHeatmap).toBe(
+			false,
+		);
 	});
 });
 
