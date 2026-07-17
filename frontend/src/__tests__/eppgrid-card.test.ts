@@ -1084,6 +1084,41 @@ describe("heatmap toggle-on-card", () => {
 			localStorage.getItem(`${STORAGE_KEY_CARD_HEATMAP_ENABLED}hm-t3`),
 		).toBe("1");
 	});
+
+	it("treats legacy show_heatmap: true as 'on' — heatmap shown, no overlay switch", async () => {
+		const el = await mount({ device_id: "hm-legacy-true", show_heatmap: true });
+		expect(el.shadowRoot!.querySelector(".heatmap-overlay")).toBeNull();
+		const grid = el.shadowRoot!.querySelector("epp-grid") as any;
+		expect(grid.showHeatmap).toBe(true);
+	});
+
+	it("re-seeds the toggle from storage when the device changes in toggle mode", async () => {
+		persistCardHeatmapEnabled("hm-dev-a", true);
+		persistCardHeatmapEnabled("hm-dev-b", false);
+		const h = makeHass();
+		const el = await mount(
+			{ device_id: "hm-dev-a", show_heatmap: "toggle" },
+			h,
+		);
+		expect((el.shadowRoot!.querySelector("epp-grid") as any).showHeatmap).toBe(
+			true,
+		);
+
+		// Reconfigure to a second device whose stored preference is off. setConfig
+		// unconditionally re-seeds _heatmapOn, so the runtime state must follow the
+		// new device rather than stay stuck on device A's "on".
+		el.setConfig({
+			type: "custom:eppgrid-card",
+			device_id: "hm-dev-b",
+			show_heatmap: "toggle",
+		});
+		await el.updateComplete;
+		h.emit({ snapshot: CALIBRATED });
+		await el.updateComplete;
+		expect((el.shadowRoot!.querySelector("epp-grid") as any).showHeatmap).toBe(
+			false,
+		);
+	});
 });
 
 describe("getEntitySuggestion", () => {
