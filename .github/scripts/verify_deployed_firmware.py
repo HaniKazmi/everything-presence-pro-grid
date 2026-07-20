@@ -34,6 +34,14 @@ from urllib.request import urlopen
 # filenames it publishes are {variant}.json.
 VARIANTS = ("wifi-ble-co2", "ethernet-ble-co2")
 
+# GitHub Pages serves these manifests with `cache-control: max-age=600`, so an
+# edge that cached the *previous* release's fw/latest manifest can keep serving
+# it for up to 600s after the deploy. The default grace period must outlast that
+# TTL, or a perfectly good deploy fails the release run: v1.6.0 polled for 300s,
+# reported the stale 1.5.1, and failed while the deploy itself was fine.
+PAGES_CDN_MAX_AGE_SECONDS = 600
+DEFAULT_TIMEOUT_SECONDS = PAGES_CDN_MAX_AGE_SECONDS + 300  # TTL + propagation margin
+
 Fetch = Callable[[str], "tuple[int, str]"]
 
 
@@ -125,7 +133,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", required=True, help="Pinned FIRMWARE_VERSION (fw/v{version}/)")
     parser.add_argument("--latest-version", default="", help="Version behind fw/latest/ (optional)")
     parser.add_argument("--variants", default=",".join(VARIANTS), help="Comma-separated variants")
-    parser.add_argument("--timeout", type=float, default=300.0, help="Total grace period (s)")
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=float(DEFAULT_TIMEOUT_SECONDS),
+        help="Total grace period (s); must outlast the Pages CDN max-age",
+    )
     parser.add_argument("--interval", type=float, default=15.0, help="Poll interval (s)")
     args = parser.parse_args(argv)
 

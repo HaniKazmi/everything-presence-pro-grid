@@ -137,6 +137,32 @@ def test_verify_fails_after_timeout_when_never_live():
     assert "a" in failures and "404" in failures["a"]
 
 
+def test_default_timeout_outlasts_the_pages_cdn_cache_ttl(monkeypatch):
+    """The default grace period must be able to ride out a stale cached manifest.
+
+    GitHub Pages serves these manifests with ``cache-control: max-age=600``, so
+    an edge still holding the previous release's ``fw/latest`` manifest can keep
+    serving it for up to 600s after a deploy. A default grace period shorter
+    than that TTL can fail a release run whose deploy was actually fine — as it
+    did for v1.6.0, where a 300s poll reported 1.5.1 and the manifests were
+    correct on their own shortly after.
+    """
+    # 600 is the observed upstream max-age, asserted as an external fact rather
+    # than read back from the module under test.
+    pages_cdn_max_age = 600
+    seen = {}
+
+    def _fake_verify(manifests, fetch, sleep, monotonic, timeout, interval):
+        seen["timeout"] = timeout
+        return True, {}
+
+    monkeypatch.setattr(vdf, "verify", _fake_verify)
+    rc = vdf.main(["--base-url", "https://example.test", "--version", "1.6.0"])
+
+    assert rc == 0
+    assert seen["timeout"] > pages_cdn_max_age
+
+
 def test_verify_succeeds_once_manifest_becomes_live():
     clock = _Clock()
     calls = {"n": 0}
