@@ -6295,9 +6295,10 @@ class TestAdminGateAllCommands:
                 await call_async_handler(hass, handler, connection, msg_payload)
         connection.send_result.assert_not_called()
 
-    # Commands that are intentionally NOT admin-gated — read-only display data
-    # meant for shared (non-admin) dashboards. Add new non-admin commands here
-    # along with a comment explaining why they're exempt.
+    # Commands that are intentionally NOT admin-gated — display data (or, for
+    # clear_heatmap, a single display-data reset) meant for shared (non-admin)
+    # dashboards. Add new non-admin commands here along with a comment
+    # explaining why they're exempt.
     _NON_ADMIN_COMMANDS: frozenset[str] = frozenset(
         {
             # overview card picker — display-only, no config mutation
@@ -6309,6 +6310,10 @@ class TestAdminGateAllCommands:
             # frontend bundle-version check — read-only content hashes so an open
             # panel or (non-admin) dashboard card can self-reload on a stale bundle
             "websocket_frontend_version",
+            # overview card heatmap-clear action — resets display data (the
+            # on-device heatmap), never device config; card-facing, shared
+            # dashboards need it to work for non-admin viewers too
+            "websocket_clear_heatmap",
         }
     )
 

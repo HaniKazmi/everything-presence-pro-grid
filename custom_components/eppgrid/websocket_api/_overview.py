@@ -1,8 +1,9 @@
-"""Read-only, non-admin WebSocket commands powering the dashboard overview card.
+"""Card-facing WebSocket commands powering the dashboard overview card.
 
 Unlike every other eppgrid command, these are NOT @require_admin: the overview
 card is meant for shared dashboards viewed by household (non-admin) users. They
-expose ONLY display data and cannot mutate device config.
+expose display data and permit one display-data reset (eppgrid/clear_heatmap);
+they never mutate device *configuration*.
 """
 
 from __future__ import annotations
@@ -18,6 +19,8 @@ from homeassistant.core import callback
 
 from ..const import DOMAIN
 from . import _require_manager
+from . import _send_exception
+from . import _send_no_session
 from ._devices import _make_grid_target_on_state
 from ._devices import _make_heatmap_on_state
 from ._durable_stream import start_durable_stream
@@ -157,3 +160,45 @@ async def websocket_overview_subscribe_heatmap(
         send_snapshot=False,
         protocol="closed_only",
     )
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/clear_heatmap",
+        vol.Required("device_id"): str,
+    }
+)
+@websocket_api.async_response
+@_require_manager
+async def websocket_clear_heatmap(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+    manager: Any,
+) -> None:
+    """Clear a device's heatmap (RAM + NVS) (non-admin).
+
+    A display-data reset, not a config mutation — see this module's
+    docstring. Resolves the card's device_id to a mac server-side, same as
+    the other overview commands, so the client never handles a mac directly.
+    """
+    mac = manager.mac_for_device_id(msg["device_id"])
+    if mac is None:
+        connection.send_error(
+            msg["id"],
+            "device_not_found",
+            "Device not found",
+            translation_domain=DOMAIN,
+            translation_key="device_not_found",
+        )
+        return
+    session = manager.get_session(mac)
+    if session is None:
+        _send_no_session(connection, msg["id"])
+        return
+    try:
+        await session.async_clear_heatmap()
+    except Exception as err:
+        _send_exception(connection, msg["id"], "clear_heatmap_failed", err)
+        return
+    connection.send_result(msg["id"])
