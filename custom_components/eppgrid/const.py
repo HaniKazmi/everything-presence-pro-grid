@@ -54,7 +54,7 @@ FIRMWARE_VERSION = "1.6.0"
 
 # Original EPP firmware identifiers (for device discovery)
 EPP_MANUFACTURER = "EverythingSmartTechnology"
-EPP_MODEL = "Everything Presence Pro"
+EPP_MODELS = ("Everything Presence Pro", "Everything Presence Lite")
 
 # Browser-side firmware artifacts (ESP Web Flasher) — GitHub release
 # assets for v{FIRMWARE_VERSION}. The ESP Web Tools manifest there has

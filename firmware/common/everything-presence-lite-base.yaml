@@ -1,0 +1,1184 @@
+esphome:
+  # Floor for DIY adopters who build from package_import_url with their own
+  # ESPHome — the CI pin (firmware/requirements.txt) can't reach them. Set to
+  # the build pin as policy: we declare the version we actually validate against,
+  # not the lowest that merely compiles. The state_class fix itself needs no
+  # floor (it's set explicitly below), so this is deliberately conservative.
+  # Kept consistent with the pin (min_version <= pin) by
+  # tests/test_firmware_esphome_pin.py.
+  min_version: "2026.5.3"
+  project:
+    name: EverythingSmartTechnology.Everything Presence Lite
+    version: "1.6.0"
+  on_boot:
+    - priority: 200
+      then:
+        - lambda: |-
+            auto &logger = *id(logger_id);
+            logger.set_log_level(ESPHOME_LOG_LEVEL_NONE);
+            // `system` is the global default level (set_log_level with no
+            // tag), which ESPHome uses as the fallback for any tag WITHOUT
+            // an explicit override. Pin every category tag to NONE here so
+            // raising `system` to Debug only surfaces genuinely
+            // uncategorised tags (api, ota, uart, light, switch, ...) and
+            // never leaks epp/sensor/led/networking/ble/co2 logs the user
+            // didn't enable. Keep this list in sync with the
+            // epp_set_log_level category mapping below (enforced by
+            // tests/test_firmware_log_category_mapping.py).
+            for (const char *tag : {
+                   "epp", "sensor", "text_sensor", "binary_sensor",
+                   "control_leds",
+                   "wifi", "esp_netif", "dhcp", "eth", "esp_eth", "phy",
+                   "bt", "btm", "bta", "hci", "gap", "controller",
+                   "esp32_ble_tracker", "bluetooth_proxy",
+                   "scd4x"}) {
+              logger.set_log_level(tag, ESPHOME_LOG_LEVEL_NONE);
+            }
+    - priority: 375
+      then:
+        - delay: 200ms
+        # Start loading animation and keep it until API connects
+        - light.turn_on:
+            id: led_rgb
+            brightness: 30%
+            red: 0%
+            green: 60%
+            blue: 100%
+            white: 0%
+            effect: "Network Connecting"
+
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [epp]
+
+epp:
+  id: epp_component
+  device_tracking:
+    name: "Target Presence"
+    device_class: occupancy
+    disabled_by_default: true
+  firmware_version:
+    name: "Firmware Version"
+    entity_category: diagnostic
+  zone_occupancy:
+    zone_0:
+      name: "Zone 0 Presence"
+      device_class: occupancy
+      disabled_by_default: true
+    zone_1:
+      name: "Zone 1 Presence"
+      device_class: occupancy
+      disabled_by_default: true
+    zone_2:
+      name: "Zone 2 Presence"
+      device_class: occupancy
+      disabled_by_default: true
+    zone_3:
+      name: "Zone 3 Presence"
+      device_class: occupancy
+      disabled_by_default: true
+    zone_4:
+      name: "Zone 4 Presence"
+      device_class: occupancy
+      disabled_by_default: true
+    zone_5:
+      name: "Zone 5 Presence"
+      device_class: occupancy
+      disabled_by_default: true
+    zone_6:
+      name: "Zone 6 Presence"
+      device_class: occupancy
+      disabled_by_default: true
+    zone_7:
+      name: "Zone 7 Presence"
+      device_class: occupancy
+      disabled_by_default: true
+  target_positions:
+    target_0:
+      name: "Target 1 Position"
+      disabled_by_default: true
+      entity_category: diagnostic
+    target_1:
+      name: "Target 2 Position"
+      disabled_by_default: true
+      entity_category: diagnostic
+    target_2:
+      name: "Target 3 Position"
+      disabled_by_default: true
+      entity_category: diagnostic
+  raw_target_positions:
+    target_0:
+      name: "Raw Target 1"
+      disabled_by_default: true
+      entity_category: diagnostic
+    target_1:
+      name: "Raw Target 2"
+      disabled_by_default: true
+      entity_category: diagnostic
+    target_2:
+      name: "Raw Target 3"
+      disabled_by_default: true
+      entity_category: diagnostic
+  zone_state:
+    name: "Zone State"
+    disabled_by_default: true
+    entity_category: diagnostic
+  heatmap:
+    name: "Heatmap"
+    disabled_by_default: true
+    entity_category: diagnostic
+  target_entities:
+    target_1:
+      x:
+        name: "Target 1 X"
+        disabled_by_default: true
+        unit_of_measurement: "mm"
+        accuracy_decimals: 0
+      y:
+        name: "Target 1 Y"
+        disabled_by_default: true
+        unit_of_measurement: "mm"
+        accuracy_decimals: 0
+      signal:
+        name: "Target 1 Signal"
+        disabled_by_default: true
+        accuracy_decimals: 0
+        state_class: measurement
+      active:
+        name: "Target 1 Active"
+        device_class: occupancy
+        disabled_by_default: true
+      zone:
+        name: "Target 1 Zone"
+        disabled_by_default: true
+        accuracy_decimals: 0
+        state_class: measurement
+    target_2:
+      x:
+        name: "Target 2 X"
+        disabled_by_default: true
+        unit_of_measurement: "mm"
+        accuracy_decimals: 0
+      y:
+        name: "Target 2 Y"
+        disabled_by_default: true
+        unit_of_measurement: "mm"
+        accuracy_decimals: 0
+      signal:
+        name: "Target 2 Signal"
+        disabled_by_default: true
+        accuracy_decimals: 0
+        state_class: measurement
+      active:
+        name: "Target 2 Active"
+        device_class: occupancy
+        disabled_by_default: true
+      zone:
+        name: "Target 2 Zone"
+        disabled_by_default: true
+        accuracy_decimals: 0
+        state_class: measurement
+    target_3:
+      x:
+        name: "Target 3 X"
+        disabled_by_default: true
+        unit_of_measurement: "mm"
+        accuracy_decimals: 0
+      y:
+        name: "Target 3 Y"
+        disabled_by_default: true
+        unit_of_measurement: "mm"
+        accuracy_decimals: 0
+      signal:
+        name: "Target 3 Signal"
+        disabled_by_default: true
+        accuracy_decimals: 0
+        state_class: measurement
+      active:
+        name: "Target 3 Active"
+        device_class: occupancy
+        disabled_by_default: true
+      zone:
+        name: "Target 3 Zone"
+        disabled_by_default: true
+        accuracy_decimals: 0
+        state_class: measurement
+  zone_target_counts:
+    zone_0:
+      name: "Zone 0 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_1:
+      name: "Zone 1 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_2:
+      name: "Zone 2 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_3:
+      name: "Zone 3 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_4:
+      name: "Zone 4 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_5:
+      name: "Zone 5 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_6:
+      name: "Zone 6 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_7:
+      name: "Zone 7 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+  target_count:
+    name: "Target Count"
+    disabled_by_default: true
+    accuracy_decimals: 0
+    state_class: measurement
+  static_presence_output:
+    name: "Static Presence"
+    device_class: occupancy
+    disabled_by_default: true
+  motion_presence_output:
+    name: "Motion Presence"
+    device_class: motion
+    disabled_by_default: true
+  occupancy_output:
+    id: epp_occupancy
+    name: "Occupancy"
+    device_class: occupancy
+  mmwave_output:
+    name: "mmWave Presence"
+    device_class: occupancy
+    disabled_by_default: true
+
+# Enable logging
+logger:
+  id: logger_id
+  runtime_tag_levels: true
+
+globals:
+  - id: env_temp_offset
+    type: float
+    initial_value: '0'
+  - id: env_humidity_offset
+    type: float
+    initial_value: '0'
+  - id: env_illuminance_offset
+    type: float
+    initial_value: '0'
+  - id: current_connection_count
+    type: int
+    initial_value: '0'
+  - id: presence_color_red
+    type: float
+    restore_value: true
+    initial_value: '0.8'
+  - id: presence_color_green
+    type: float
+    restore_value: true
+    initial_value: '0.2'
+  - id: presence_color_blue
+    type: float
+    restore_value: true
+    initial_value: '1.0'
+
+# Enable Home Assistant API
+api:
+  id: api_id
+  actions:
+    - action: set_update_manifest
+      variables:
+        url: string
+      then:
+        - lambda: |-
+            ESP_LOGI("fw", "Setting update manifest URL: %s", url.c_str());
+            id(update_http_request).set_source_url(url);
+        - component.update: update_http_request
+        # component.update fetches + parses the manifest in a background task on
+        # ESP32, so update_info.firmware_url stays empty until that lands. Wait
+        # for it rather than racing a fixed delay: under load (several devices
+        # flashing at once) the fetch can outlast any fixed wait, and forcing
+        # perform then starts the OTA with an empty URL ("URL not set; cannot
+        # start update"). Bounded by a timeout so a failed fetch can't hang.
+        - wait_until:
+            condition:
+              lambda: 'return !id(update_http_request).update_info.firmware_url.empty();'
+            timeout: 30s
+        - if:
+            condition:
+              lambda: 'return !id(update_http_request).update_info.firmware_url.empty();'
+            then:
+              - update.perform:
+                  id: update_http_request
+                  force_update: true
+            else:
+              - lambda: 'ESP_LOGE("fw", "OTA manifest did not load in time; not starting update");'
+    - action: epp_set_perspective
+      variables:
+        perspective: string
+        room_width: float
+        room_depth: float
+      then:
+        - lambda: |-
+            id(epp_component).set_perspective(perspective, room_width, room_depth);
+    - action: epp_set_grid
+      variables:
+        grid_data: string
+        origin_x: float
+        origin_y: float
+      then:
+        - lambda: |-
+            id(epp_component).set_grid(grid_data, origin_x, origin_y);
+    - action: epp_set_zones
+      variables:
+        zones_json: string
+      then:
+        - lambda: |-
+            id(epp_component).set_zones(zones_json);
+    - action: epp_dismiss_target
+      variables:
+        target_index: int
+        cell_index: int
+      then:
+        - lambda: |-
+            id(epp_component).dismiss_target(target_index, cell_index);
+    - action: epp_set_env_calibration
+      variables:
+        temperature_offset: float
+        humidity_offset: float
+        illuminance_offset: float
+      then:
+        - lambda: |-
+            ESP_LOGI("epp", "epp_set_env_calibration: temperature_offset=%.1f humidity_offset=%.1f illuminance_offset=%.1f",
+                     temperature_offset, humidity_offset, illuminance_offset);
+            id(env_temp_offset) = temperature_offset;
+            id(env_humidity_offset) = humidity_offset;
+            id(env_illuminance_offset) = illuminance_offset;
+            id(shtc3_sensor).update();
+            id(illuminance_sensor).update();
+    - action: epp_set_motion_timeout
+      variables:
+        timeout: float
+      then:
+        - lambda: |-
+            ESP_LOGI("epp", "epp_set_motion_timeout: timeout=%.1f", timeout);
+            // The PIR's debounce is a fixed 1s delayed_off (see pir_motion);
+            // the real timeout is managed by the zone engine.
+            id(epp_component).set_motion_timeout(timeout);
+    - action: epp_set_stuck_target_timeout
+      variables:
+        timeout: float
+      then:
+        - lambda: |-
+            ESP_LOGI("epp", "epp_set_stuck_target_timeout: timeout=%.1fs", timeout);
+            id(epp_component).set_stuck_target_timeout(timeout);
+    - action: epp_set_assisted_clear
+      variables:
+        enabled: bool
+        timeout: float
+      then:
+        - lambda: |-
+            ESP_LOGI("epp", "epp_set_assisted_clear: enabled=%s timeout=%.1f", enabled ? "true" : "false", timeout);
+            id(epp_component).set_assisted_clear(enabled, timeout);
+    - action: epp_set_tracking
+      variables:
+        max_range: float
+      then:
+        - lambda: |-
+            ESP_LOGI("epp", "epp_set_tracking: max_range=%.0f", max_range);
+            id(tracking_max_range) = max_range;
+    - action: epp_set_static_presence
+      variables:
+        min_range: float
+        max_range: float
+        trigger_range: float
+        sustain_sensitivity: int
+        trigger_sensitivity: int
+        on_delay: float
+        led_enabled: bool
+      then:
+        - lambda: |-
+            ESP_LOGI("epp", "epp_set_static_presence: min_range=%.1f max_range=%.1f trigger_range=%.1f sustain_sensitivity=%d trigger_sensitivity=%d on_delay=%.2f led_enabled=%s",
+                     min_range, max_range, trigger_range, sustain_sensitivity, trigger_sensitivity, on_delay, led_enabled ? "true" : "false");
+        - uart.write:
+            id: uart_bus_dfrobot
+            data: "sensorStop\r\n"
+        - delay: 1s
+        - uart.write:
+            id: uart_bus_dfrobot
+            data: !lambda |-
+              auto ms = str_sprintf("setRange %.1f %.1f\r\n", min_range, max_range);
+              return std::vector<unsigned char>(ms.begin(), ms.end());
+        - delay: 1s
+        - uart.write:
+            id: uart_bus_dfrobot
+            data: !lambda |-
+              auto ms = str_sprintf("setTrigRange %.1f\r\n", trigger_range);
+              return std::vector<unsigned char>(ms.begin(), ms.end());
+        - delay: 1s
+        - uart.write:
+            id: uart_bus_dfrobot
+            data: !lambda |-
+              auto ms = str_sprintf("setSensitivity %d %d\r\n", sustain_sensitivity, trigger_sensitivity);
+              return std::vector<unsigned char>(ms.begin(), ms.end());
+        - delay: 1s
+        - uart.write:
+            id: uart_bus_dfrobot
+            data: !lambda |-
+              // Hardware timeout fixed at 1s for debounce; the real timeout
+              // is managed by the zone engine via set_static_timeout()
+              auto ms = str_sprintf("setLatency %.2f 1\r\n", on_delay);
+              return std::vector<unsigned char>(ms.begin(), ms.end());
+        - delay: 1s
+        - uart.write:
+            id: uart_bus_dfrobot
+            data: !lambda |-
+              return led_enabled
+                ? std::vector<unsigned char>{'s','e','t','L','e','d','M','o','d','e',' ','1',' ','0','\r','\n'}
+                : std::vector<unsigned char>{'s','e','t','L','e','d','M','o','d','e',' ','1',' ','1','\r','\n'};
+        - delay: 1s
+        - uart.write:
+            id: uart_bus_dfrobot
+            data: "saveConfig\r\n"
+        - delay: 1s
+        - uart.write:
+            id: uart_bus_dfrobot
+            data: "sensorStart\r\n"
+    - action: epp_set_static_timeout
+      variables:
+        timeout: float
+      then:
+        - lambda: |-
+            ESP_LOGI("epp", "epp_set_static_timeout: timeout=%.1f", timeout);
+            // The DFRobot's hardware latency is fixed at 1s (see setLatency in
+            // epp_set_static_presence); the real static timeout is a live
+            // zone-engine value applied here WITHOUT any UART, so a timeout
+            // change never triggers the ~8s sensor reconfigure/restart.
+            id(epp_component).set_static_timeout(timeout);
+    - action: epp_set_led
+      variables:
+        mode: string
+        brightness: float
+        presence_red: float
+        presence_green: float
+        presence_blue: float
+      then:
+        - lambda: |-
+            ESP_LOGI("control_leds", "epp_set_led: mode=%s brightness=%.2f color=(%.2f, %.2f, %.2f)",
+                     mode.c_str(), brightness, presence_red, presence_green, presence_blue);
+
+            // Update presence color globals
+            id(presence_color_red) = presence_red;
+            id(presence_color_green) = presence_green;
+            id(presence_color_blue) = presence_blue;
+
+            // Update brightness
+            auto call = id(led_brightness_multiplier).make_call();
+            call.set_value(brightness);
+            call.perform();
+
+            // Update mode (triggers control_leds via on_value)
+            auto mode_call = id(led_mode_select).make_call();
+            mode_call.set_option(mode);
+            mode_call.perform();
+    - action: epp_set_relay
+      variables:
+        trigger_mode: string
+        contact_mode: string
+      then:
+        - lambda: |-
+            id(epp_component).set_relay(trigger_mode, contact_mode);
+    - action: epp_set_pipeline
+      variables:
+        entity_target_interval: int
+        entity_zone_interval: int
+        display_interval: int
+        zone_state_interval: int
+        heatmap_interval: int
+      then:
+        - lambda: |-
+            id(epp_component).set_entity_target_interval(entity_target_interval);
+            id(epp_component).set_entity_zone_interval(entity_zone_interval);
+            id(epp_component).set_display_interval(display_interval);
+            id(epp_component).set_zone_state_interval(zone_state_interval);
+            id(epp_component).set_heatmap_interval(heatmap_interval);
+    - action: epp_set_log_level
+      variables:
+        category: string
+        level: string
+      then:
+        - lambda: |-
+            int log_level;
+            if (level == "None") log_level = ESPHOME_LOG_LEVEL_NONE;
+            else if (level == "Error") log_level = ESPHOME_LOG_LEVEL_ERROR;
+            else if (level == "Warning") log_level = ESPHOME_LOG_LEVEL_WARN;
+            else if (level == "Info") log_level = ESPHOME_LOG_LEVEL_INFO;
+            else log_level = ESPHOME_LOG_LEVEL_DEBUG;
+
+            auto &logger = *id(logger_id);
+            if (category == "system") {
+              logger.set_log_level(log_level);
+            } else if (category == "epp") {
+              logger.set_log_level("epp", log_level);
+              // Zone/target/motion entity states ('Zone N Target Count',
+              // 'Target N Position', 'Motion Presence') are emitted under
+              // ESPHome's shared framework tags, not the `epp` tag. Group
+              // them with the zone engine so they appear here and NOT under
+              // `system`.
+              logger.set_log_level("sensor", log_level);
+              logger.set_log_level("text_sensor", log_level);
+              logger.set_log_level("binary_sensor", log_level);
+            } else if (category == "led") {
+              logger.set_log_level("control_leds", log_level);
+            } else if (category == "networking") {
+              logger.set_log_level("wifi", log_level);
+              logger.set_log_level("esp_netif", log_level);
+              logger.set_log_level("dhcp", log_level);
+              logger.set_log_level("eth", log_level);
+              logger.set_log_level("esp_eth", log_level);
+              logger.set_log_level("phy", log_level);
+            } else if (category == "ble") {
+              // ESP-IDF BLE controller layers
+              logger.set_log_level("bt", log_level);
+              logger.set_log_level("btm", log_level);
+              logger.set_log_level("bta", log_level);
+              logger.set_log_level("hci", log_level);
+              logger.set_log_level("gap", log_level);
+              logger.set_log_level("controller", log_level);
+              // ESPHome layers — without these the user sees nothing useful
+              // from the panel's "BLE → Debug" toggle (no scan results, no
+              // proxy connection events, etc).
+              logger.set_log_level("esp32_ble_tracker", log_level);
+              logger.set_log_level("bluetooth_proxy", log_level);
+            } else if (category == "co2") {
+              logger.set_log_level("scd4x", log_level);
+            }
+    - action: get_build_flags
+      then:
+        - api.respond:
+            data: !lambda |-
+              root["ethernet_enabled"]  = ${ device_config.ethernet_enabled | lower };
+              root["co2_enabled"]       = ${ device_config.co2_enabled | lower };
+              root["bluetooth_enabled"] = ${ device_config.bluetooth_enabled | lower };
+              root["board_revision"]    = "${ device_config.board_revision }";
+              root["sensor_variant"]    = "${ device_config.sensor_variant }";
+              root["firmware_channel"]  = "${ device_config.firmware_channel }";
+              root["model"]             = "${ device_config.model }";
+              root["heatmap"]           = EPP_HEATMAP_ENABLED != 0;
+
+  on_client_connected:
+    then:
+      - lambda: |-
+          id(current_connection_count) += 1;
+          id(current_connection_count_sensor).publish_state(id(current_connection_count));
+      # Wait until client has subscribed
+      - wait_until:
+          condition:
+            api.connected:
+              state_subscription_only: true
+          timeout: 3s
+      - if:
+          condition:
+            lambda: 'return id(led_mode_select).current_option() != "Manual Control";'
+          then:
+            # Stop any effects first
+            - light.turn_on:
+                id: led_rgb
+                effect: none
+            # Smooth celebration sequence with flowing colors
+            - light.turn_on:
+                id: led_rgb
+                brightness: 60%
+                red: 0%
+                green: 100%
+                blue: 100%
+                white: 0%
+                transition_length: 400ms
+            - delay: 400ms
+            - light.turn_on:
+                id: led_rgb
+                brightness: 65%
+                red: 0%
+                green: 70%
+                blue: 100%
+                white: 0%
+                transition_length: 350ms
+            - delay: 350ms
+            - light.turn_on:
+                id: led_rgb
+                brightness: 70%
+                red: 50%
+                green: 0%
+                blue: 100%
+                white: 0%
+                transition_length: 350ms
+            - delay: 350ms
+            - light.turn_on:
+                id: led_rgb
+                brightness: 65%
+                red: 100%
+                green: 100%
+                blue: 100%
+                white: 0%
+                transition_length: 400ms
+            - delay: 500ms
+      # Always restore to current mode, even if Manual Control
+      - script.execute: control_leds
+
+  on_client_disconnected:
+    then:
+      - lambda: |-
+          id(current_connection_count) -= 1;
+          if (id(current_connection_count) < 0) id(current_connection_count) = 0;
+          id(current_connection_count_sensor).publish_state(id(current_connection_count));
+      - script.execute: control_leds
+
+http_request:
+  verify_ssl: false
+
+ota:
+  - platform: esphome
+  - platform: http_request
+    id: ota_http_request
+    # OTA hooks that pause BLE scan for the duration of the download live in
+    # `bluetooth-base.yaml` (extending this id) so the dependency on
+    # esp32_ble_tracker is colocated with the component that defines it.
+
+debug:
+  update_interval: 60s
+
+sensor:
+  - platform: debug
+    # state_class is set explicitly: ESPHome's debug platform only began
+    # defaulting state_class on these heap sensors in 2026.4.0 (PR #15486).
+    # Builds compiled with an older ESPHome ship them with no state_class, so
+    # HA silently drops long-term statistics ("no longer has a state class").
+    free:
+      name: "Heap Free"
+      id: heap_free
+      entity_category: diagnostic
+      state_class: measurement
+    block:
+      name: "Heap Largest Block"
+      id: heap_largest_block
+      entity_category: diagnostic
+      state_class: measurement
+    loop_time:
+      name: "Loop Time"
+      id: loop_time
+      entity_category: diagnostic
+      state_class: measurement
+
+  - platform: template
+    name: "Heap Min Free"
+    id: heap_min_free
+    entity_category: diagnostic
+    unit_of_measurement: "B"
+    accuracy_decimals: 0
+    state_class: measurement
+    update_interval: 60s
+    lambda: |-
+      return (float) heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT);
+
+  - platform: template
+    name: "Current Connections"
+    id: current_connection_count_sensor
+    accuracy_decimals: 0
+    entity_category: diagnostic
+
+  - platform: uptime
+    name: "Uptime"
+    id: uptime_sensor
+    entity_category: diagnostic
+    update_interval: 60s
+
+  - platform: shtcx
+    id: "shtc3_sensor"
+    i2c_id: bus_a
+    temperature:
+      name: Temperature
+      id: temperature_sensor
+      disabled_by_default: true
+      filters:
+        - lambda: "return x + id(env_temp_offset);"
+    humidity:
+      name: Humidity
+      id: humidity_sensor
+      disabled_by_default: true
+      filters:
+        - lambda: "return x + id(env_humidity_offset);"
+    address: 0x70
+    update_interval: 30s
+
+  - platform: bh1750
+    name: Illuminance
+    id: illuminance_sensor
+    disabled_by_default: true
+    i2c_id: bus_a
+    address: 0x23
+    update_interval: 2s
+    filters:
+      - lambda: "return x + id(env_illuminance_offset);"
+      - or:
+          - throttle: 30s
+          - delta: 2
+      - clamp:
+          min_value: 0
+
+text_sensor:
+  - platform: debug
+    reset_reason:
+      name: "Reset Reason"
+      id: reset_reason
+      entity_category: diagnostic
+
+i2c:
+  - id: bus_a
+    scl: GPIO27
+    sda: GPIO26
+    scan: true
+
+binary_sensor:
+
+  # Mirror zone engine occupancy to trigger LED updates on state change
+  - platform: template
+    id: occupancy_led_trigger
+    internal: true
+    lambda: 'return id(epp_occupancy).state;'
+    on_state:
+      then:
+        - if:
+            condition:
+              lambda: 'return id(led_mode_select).current_option() == "Presence" || id(led_mode_select).current_option() == "Environmental + Presence";'
+            then:
+              - script.execute: control_leds
+
+
+light:
+  - platform: esp32_rmt_led_strip
+    id: led_rgb
+    rgb_order: GRB
+    pin:
+      number: GPIO2
+      ignore_strapping_warning: true
+    num_leds: 1
+    chipset: sk6812
+    name: "LED"
+    effects:
+      # Gentle breathing effects
+      - pulse:
+          name: "Slow Breathe"
+          transition_length: 3s
+          update_interval: 3s
+          min_brightness: 5%
+          max_brightness: 50%
+      - pulse:
+          name: "Medium Breathe"
+          transition_length: 2s
+          update_interval: 2s
+          min_brightness: 10%
+          max_brightness: 60%
+      - pulse:
+          name: "Fast Breathe"
+          transition_length: 1s
+          update_interval: 1s
+          min_brightness: 15%
+          max_brightness: 70%
+
+      # Presence detection effects - subtle, calming pulse
+      - pulse:
+          name: "Presence Glow"
+          transition_length: 4s
+          update_interval: 4s
+          min_brightness: 40%
+          max_brightness: 55%
+      - pulse:
+          name: "Presence Active"
+          transition_length: 2.5s
+          update_interval: 2.5s
+          min_brightness: 45%
+          max_brightness: 65%
+
+      # Network status effects
+      - pulse:
+          name: "Network Connecting"
+          transition_length: 1s
+          update_interval: 1s
+          min_brightness: 20%
+          max_brightness: 60%
+      - strobe:
+          name: "API Disconnected"
+          colors:
+            - state: true
+              brightness: 20%
+              red: 100%
+              green: 0%
+              blue: 100%
+              white: 0%
+              duration: 500ms
+            - state: false
+              duration: 2500ms
+
+      # Environmental feedback effects
+      # Good: No effect - steady glow
+      - pulse:
+          name: "Environmental Warning"
+          transition_length: 1.5s
+          update_interval: 1.5s
+          min_brightness: 20%
+          max_brightness: 50%
+      - pulse:
+          name: "Environmental Alert"
+          transition_length: 800ms
+          update_interval: 800ms
+          min_brightness: 30%
+          max_brightness: 65%
+
+      # Smooth transition effects
+      - pulse:
+          name: "Gentle Fade"
+          transition_length: 2s
+          update_interval: 2s
+          min_brightness: 0%
+          max_brightness: 100%
+
+select:
+  - platform: template
+    name: "LED Mode"
+    id: led_mode_select
+    internal: true
+    entity_category: config
+    optimistic: true
+    options:
+      - "Manual Control"
+      - "Environmental"
+      - "Presence"
+      - "Environmental + Presence"
+    initial_option: "Manual Control"
+    restore_value: true
+    icon: mdi:led-variant
+    on_value:
+      then:
+        - script.execute: control_leds
+
+script:
+  - id: control_leds
+    mode: restart
+    then:
+      - lambda: |
+          ESP_LOGD("control_leds", "Called - api_connected (subscribed): %d, led_mode: %s",
+                   id(api_id).is_connected(), id(led_mode_select).current_option().c_str());
+
+          // No API connection
+          if (!id(api_id).is_connected()) {
+            ESP_LOGD("control_leds", "Executing control_leds_connecting (no API)");
+            id(control_leds_connecting).execute();
+          }
+          // Manual control mode
+          else if (id(led_mode_select).current_option() == "Manual Control") {
+            ESP_LOGD("control_leds", "Executing control_leds_manual");
+            id(control_leds_manual).execute();
+          }
+          // Environmental mode
+          else if (id(led_mode_select).current_option() == "Environmental") {
+            ESP_LOGD("control_leds", "Executing control_leds_environmental");
+            id(control_leds_environmental).execute();
+          }
+          // Presence mode
+          else if (id(led_mode_select).current_option() == "Presence") {
+            ESP_LOGD("control_leds", "Executing control_leds_presence");
+            id(control_leds_presence).execute();
+          }
+          // Environmental + Presence combined mode
+          else if (id(led_mode_select).current_option() == "Environmental + Presence") {
+            ESP_LOGD("control_leds", "Executing control_leds_environmental_presence");
+            id(control_leds_environmental_presence).execute();
+          }
+
+  # Connection state - blue pulsing
+  - id: control_leds_connecting
+    then:
+      - light.turn_on:
+          id: led_rgb
+          brightness: !lambda 'return 0.30 * id(led_brightness_multiplier).state;'
+          red: 0%
+          green: 60%
+          blue: 100%
+          white: 0%
+          transition_length: 500ms
+      - delay: 550ms
+      # Only latch the looping effect if the API is STILL down. An ESPHome
+      # config-entry reload (settings save that flips an entity's disabled_by)
+      # produces a disconnect immediately followed by a reconnect; during this
+      # 550ms delay a mode script (control_leds_manual/_presence/...) may have
+      # already set the final LED state. Applying the effect unconditionally
+      # would land after it and leave the LED stuck on "Network Connecting"
+      # until the next client connect/disconnect. Re-checking here closes that
+      # race — control_leds' `mode: restart` can't cancel this in-flight delay.
+      - if:
+          condition:
+            lambda: 'return !id(api_id).is_connected();'
+          then:
+            - light.turn_on:
+                id: led_rgb
+                effect: "Network Connecting"
+
+  # Manual control - turn off
+  - id: control_leds_manual
+    then:
+      - logger.log: "control_leds_manual: Turning off LED"
+      - light.turn_on:
+          id: led_rgb
+          effect: none
+      - delay: 50ms
+      - light.turn_on:
+          id: led_rgb
+          brightness: 1%
+          transition_length: 500ms
+      - delay: 500ms
+      - light.turn_off: led_rgb
+      - logger.log: "control_leds_manual: LED turned off"
+
+  # Environmental mode
+  - id: control_leds_environmental
+    then:
+      - script.execute: update_environmental_led
+
+  # Presence mode
+  - id: control_leds_presence
+    then:
+      - if:
+          condition:
+            lambda: 'return id(epp_occupancy).state;'
+          then:
+            # Presence detected - warm purple/magenta glow
+            - light.turn_on:
+                id: led_rgb
+                effect: none
+            - delay: 50ms
+            - light.turn_on:
+                id: led_rgb
+                brightness: !lambda 'return 0.55 * id(led_brightness_multiplier).state;'
+                red: !lambda 'return id(presence_color_red);'
+                green: !lambda 'return id(presence_color_green);'
+                blue: !lambda 'return id(presence_color_blue);'
+                white: 0%
+                transition_length: 600ms
+            - delay: 650ms
+            - light.turn_on:
+                id: led_rgb
+                effect: "Presence Glow"
+          else:
+            # No presence - turn off
+            - light.turn_on:
+                id: led_rgb
+                brightness: 1%
+                transition_length: 500ms
+            - delay: 500ms
+            - light.turn_off: led_rgb
+
+  # Placeholder for Environmental + Presence combined mode
+  # Real implementation is in co2-base.yaml for CO2-enabled builds
+  - id: control_leds_environmental_presence
+    then:
+      # Default: just show presence (no CO2 sensor)
+      - script.execute: control_leds_presence
+
+  # Placeholder for alternating presence and environmental display
+  # Real implementation is in co2-base.yaml for CO2-enabled builds
+  - id: alternate_presence_environmental
+    mode: restart
+    then:
+      # Default: just show presence (no CO2 sensor)
+      - script.execute: control_leds_presence
+
+  # DEPRECATED - kept for backwards compatibility with CO2
+  # Smooth transition helper - fades out before changing state
+  - id: led_smooth_transition
+    parameters:
+      target_brightness: float
+      target_red: float
+      target_green: float
+      target_blue: float
+      target_effect: string
+    then:
+      # Always clear effects first to prevent them from continuing
+      - light.turn_on:
+          id: led_rgb
+          effect: none
+      - if:
+          condition:
+            light.is_on: led_rgb
+          then:
+            # Fade to 50% brightness first for smooth transition
+            - light.turn_on:
+                id: led_rgb
+                brightness: !lambda 'return 0.5 * id(led_brightness_multiplier).state;'
+                transition_length: 300ms
+            - delay: 300ms
+      # Now transition to target state with brightness multiplier applied
+      - light.turn_on:
+          id: led_rgb
+          brightness: !lambda 'return target_brightness * id(led_brightness_multiplier).state;'
+          red: !lambda 'return target_red;'
+          green: !lambda 'return target_green;'
+          blue: !lambda 'return target_blue;'
+          white: 0%
+          transition_length: 600ms
+      - delay: 650ms
+      - if:
+          condition:
+            lambda: 'return target_effect != "none";'
+          then:
+            - light.turn_on:
+                id: led_rgb
+                effect: !lambda 'return target_effect;'
+
+  # Smooth fade out helper
+  - id: led_fade_out
+    then:
+      - if:
+          condition:
+            light.is_on: led_rgb
+          then:
+            - light.turn_on:
+                id: led_rgb
+                brightness: 1%
+                transition_length: 500ms
+            - delay: 500ms
+            - light.turn_off: led_rgb
+
+  # Smooth fade in helper
+  - id: led_fade_in
+    parameters:
+      brightness: float
+      red: float
+      green: float
+      blue: float
+      effect: string
+    then:
+      # Clear any running effects first
+      - light.turn_on:
+          id: led_rgb
+          effect: none
+      - light.turn_on:
+          id: led_rgb
+          brightness: 1%
+          red: !lambda 'return red;'
+          green: !lambda 'return green;'
+          blue: !lambda 'return blue;'
+          white: 0%
+          transition_length: 0s
+      - delay: 50ms
+      - light.turn_on:
+          id: led_rgb
+          brightness: !lambda 'return brightness * id(led_brightness_multiplier).state;'
+          transition_length: 700ms
+      - delay: 750ms
+      - if:
+          condition:
+            lambda: 'return effect != "none";'
+          then:
+            - light.turn_on:
+                id: led_rgb
+                effect: !lambda 'return effect;'
+
+  - id: update_led_state
+    then:
+      - if:
+          condition:
+            lambda: 'return id(led_mode_select).current_option() == "Manual Control";'
+          then:
+            - logger.log: "Setting LED to Manual Control mode"
+            - script.execute: led_fade_out
+
+      - if:
+          condition:
+            lambda: 'return id(led_mode_select).current_option() == "Environmental";'
+          then:
+            - logger.log: "Setting LED to Environmental mode"
+            - script.execute: update_environmental_led
+
+      - if:
+          condition:
+            lambda: 'return id(led_mode_select).current_option() == "Presence";'
+          then:
+            - logger.log: "Setting LED to Presence mode"
+            # Check current occupancy and set appropriate state
+            - if:
+                condition:
+                  lambda: 'return id(epp_occupancy).state;'
+                then:
+                  - script.execute:
+                      id: led_fade_in
+                      brightness: 0.55
+                      red: !lambda 'return id(presence_color_red);'
+                      green: !lambda 'return id(presence_color_green);'
+                      blue: !lambda 'return id(presence_color_blue);'
+                      effect: "Presence Glow"
+                else:
+                  - script.execute: led_fade_out
+
+  # Placeholder script for environmental LED updates
+  # Real implementation is in co2-base.yaml for CO2-enabled builds
+  - id: update_environmental_led
+    then:
+      # Default: turn off LED (no CO2 sensor available)
+      - lambda: |-
+          ESP_LOGD("control_leds", "update_environmental_led: no CO2 sensor, turning off");
+      - light.turn_on:
+          id: led_rgb
+          effect: none
+      - delay: 50ms
+      - light.turn_on:
+          id: led_rgb
+          brightness: 1%
+          transition_length: 500ms
+      - delay: 500ms
+      - light.turn_off: led_rgb
+
+number:
+  - platform: template
+    name: "LED Brightness"
+    id: led_brightness_multiplier
+    internal: true
+    icon: mdi:brightness-6
+    entity_category: config
+    min_value: 0.1
+    max_value: 1.0
+    initial_value: 1.0
+    optimistic: true
+    step: 0.05
+    restore_value: true
+    mode: slider
+    on_value:
+      then:
+        # Refresh LED state when brightness changes
+        - if:
+            condition:
+              lambda: 'return id(led_mode_select).current_option() != "Manual Control" && id(api_id).is_connected();'
+            then:
+              - script.execute: control_leds
+
+button:
+  - platform: restart
+    name: "Restart Device"
+    entity_category: config
+

@@ -502,6 +502,7 @@ export class EppFlasherView extends LitElement {
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
 	@state() private _selectedVariant: "wifi" | "ethernet" = "wifi";
+	@state() private _selectedModel: "pro" | "lite" = "pro";
 	@property() firmwareVersion = "";
 	@property() integrationVersion = "";
 	@property({ attribute: false }) usbFlashState: UsbFlashState | null = null;
@@ -1162,6 +1163,9 @@ export class EppFlasherView extends LitElement {
 	}
 
 	private _getFirmwareVariant(): string {
+		if (this._selectedModel === "lite") {
+			return "wifi-ble-lite";
+		}
 		return this._selectedVariant === "wifi"
 			? "wifi-ble-co2"
 			: "ethernet-ble-co2";
@@ -1389,23 +1393,44 @@ export class EppFlasherView extends LitElement {
 						${this.firmwareVersion ? html`<code>${this.firmwareVersion}</code>` : nothing}
 					</div>
 					<div class="card-content">
-						<p class="usb-select-label">${this.localize("flasher.select_variant")}</p>
-						<div class="variant-selector">
+						<p class="usb-select-label">Select Model</p>
+						<div class="variant-selector" style="margin-bottom: 16px;">
 							<epp-button
-								class="${this._selectedVariant === "wifi" ? "selected" : "unselected"}"
-								variant="${this._selectedVariant === "wifi" ? "primary" : "neutral"}"
+								class="${this._selectedModel === "pro" ? "selected" : "unselected"}"
+								variant="${this._selectedModel === "pro" ? "primary" : "neutral"}"
 								@click=${() => {
+									this._selectedModel = "pro";
+								}}
+							>Pro</epp-button>
+							<epp-button
+								class="${this._selectedModel === "lite" ? "selected" : "unselected"}"
+								variant="${this._selectedModel === "lite" ? "primary" : "neutral"}"
+								@click=${() => {
+									this._selectedModel = "lite";
 									this._selectedVariant = "wifi";
 								}}
-							>${this.localize("flasher.wifi")}</epp-button>
-							<epp-button
-								class="${this._selectedVariant === "ethernet" ? "selected" : "unselected"}"
-								variant="${this._selectedVariant === "ethernet" ? "primary" : "neutral"}"
-								@click=${() => {
-									this._selectedVariant = "ethernet";
-								}}
-							>${this.localize("flasher.ethernet")}</epp-button>
+							>Lite</epp-button>
 						</div>
+
+						${this._selectedModel === "pro" ? html`
+							<p class="usb-select-label">${this.localize("flasher.select_variant")}</p>
+							<div class="variant-selector">
+								<epp-button
+									class="${this._selectedVariant === "wifi" ? "selected" : "unselected"}"
+									variant="${this._selectedVariant === "wifi" ? "primary" : "neutral"}"
+									@click=${() => {
+										this._selectedVariant = "wifi";
+									}}
+								>${this.localize("flasher.wifi")}</epp-button>
+								<epp-button
+									class="${this._selectedVariant === "ethernet" ? "selected" : "unselected"}"
+									variant="${this._selectedVariant === "ethernet" ? "primary" : "neutral"}"
+									@click=${() => {
+										this._selectedVariant = "ethernet";
+									}}
+								>${this.localize("flasher.ethernet")}</epp-button>
+							</div>
+						` : nothing}
 						<div class="confirm-actions">
 							${this._renderCancelButton()}
 							<epp-button variant="primary" @click=${this._dispatchUsbFlash}>

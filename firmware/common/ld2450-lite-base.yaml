@@ -1,0 +1,73 @@
+globals:
+  - id: tracking_max_range
+    type: float
+    restore_value: False
+    initial_value: '6000'
+
+
+button:
+  - platform: template
+    name: "Reboot Tracking Sensor"
+    id: reboot_ld2450_sensor
+    disabled_by_default: true
+    entity_category: config
+    on_press:
+      then:
+        - uart.write:
+            id: uart_bus
+            data: [0xFD, 0xFC, 0xFB, 0xFA, 0x04, 0x00, 0xFF, 0x00, 0x01, 0x00, 0x04, 0x03, 0x02, 0x01]
+        - delay: 1s
+        - uart.write:
+            id: uart_bus
+            data: [0xFD, 0xFC, 0xFB, 0xFA, 0x02, 0x00, 0xA3, 0x00, 0x04, 0x03, 0x02, 0x01]
+
+uart:
+  - id: uart_bus
+    tx_pin:
+      number: GPIO17
+      mode:
+        input: true
+        pullup: true
+    rx_pin:
+      number: GPIO16
+      mode:
+        input: true
+        pullup: true
+    baud_rate: 256000
+    parity: NONE
+    stop_bits: 1
+    data_bits: 8
+    debug:
+      direction: RX
+      dummy_receiver: True
+      after:
+        delimiter: [0X55, 0XCC]
+      sequence:
+      - lambda: |-
+          if (bytes.size() != 30) return;
+
+          float max_distance = id(tracking_max_range);
+          const static int16_t MIN_INT16_VAL = -32768;
+
+          auto parse_target = [&](int offset, float &ex, float &ey) -> bool {
+            bool detected = *((uint16_t *)(&bytes[offset + 6])) != 0;
+            if (!detected) return false;
+            // LD2450 sign decoding (matches old default non-upside-down behavior)
+            int16_t px = *((int16_t *)(&bytes[offset]));
+            if (px < 0) px += MIN_INT16_VAL; else px = -px;
+            px = -px;  // default mounting orientation flip
+            int16_t py = *((int16_t *)(&bytes[offset + 2]));
+            if (py < 0) py += MIN_INT16_VAL; else py = -py;
+            float dist = sqrt(px * px + py * py);
+            if (dist > max_distance) return false;
+            ex = px; ey = py;
+            return true;
+          };
+
+          float xy[3][2] = {{0,0},{0,0},{0,0}};
+          bool detected[3] = {false, false, false};
+          detected[0] = parse_target(4,  xy[0][0], xy[0][1]);
+          detected[1] = parse_target(12, xy[1][0], xy[1][1]);
+          detected[2] = parse_target(20, xy[2][0], xy[2][1]);
+
+          id(epp_component).feed_targets(xy, detected);

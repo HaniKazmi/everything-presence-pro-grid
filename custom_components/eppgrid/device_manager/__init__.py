@@ -729,7 +729,12 @@ class DeviceManager:
                 translation_key="build_flags_unavailable",
             )
         network = "ethernet" if flags.get("ethernet_enabled") else "wifi"
-        variant = FIRMWARE_VARIANTS.get(network)
+        
+        if dev.model == "Everything Presence Lite":
+            variant = "wifi-ble-lite"
+        else:
+            variant = FIRMWARE_VARIANTS.get(network)
+            
         if variant is None:
             raise HomeAssistantError(
                 f"No firmware variant for network type: {network}",
