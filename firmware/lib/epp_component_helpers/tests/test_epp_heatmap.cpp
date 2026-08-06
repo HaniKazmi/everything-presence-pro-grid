@@ -52,6 +52,19 @@ TEST_CASE("reset zeroes everything") {
   CHECK(h.value(7) == doctest::Approx(0.0f));
 }
 
+TEST_CASE("reset then serialize yields an all-zero blob") {
+  Heatmap h;
+  h.bump(3);
+  h.bump(3);
+  h.bump(199);
+  h.reset();
+  uint8_t blob[Heatmap::blob_size()];
+  h.serialize(blob);
+  for (size_t i = 0; i < Heatmap::blob_size(); i++) {
+    CHECK(blob[i] == 0);
+  }
+}
+
 TEST_CASE("serialize round-trips through deserialize") {
   Heatmap h;
   h.bump(1); h.bump(1); h.bump(2);

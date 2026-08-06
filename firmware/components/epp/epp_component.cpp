@@ -1015,6 +1015,12 @@ void EPPComponent::reset_heatmap_() {
   heatmap_.reset();
 }
 
+void EPPComponent::clear_heatmap() {
+  reset_heatmap_();          // zero the RAM accumulator (cells_)
+  save_heatmap_to_nvs_();    // persist the zeroed accumulator to NVS ("heatmap")
+  ESP_LOGI(TAG, "Heatmap cleared (RAM + NVS)");
+}
+
 void EPPComponent::save_heatmap_to_nvs_() {
   nvs_handle_t handle;
   if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
