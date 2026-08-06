@@ -6,6 +6,9 @@ import {
 	clampOpacity,
 	EppGridCard,
 	getEntitySuggestion,
+	heatmapHasClear,
+	heatmapHasToggle,
+	normalizeHeatmapMode,
 	rgbCss,
 } from "../eppgrid-card.js";
 import {
@@ -1561,5 +1564,27 @@ describe("card stale-bundle auto-reload", () => {
 				value: original,
 			});
 		}
+	});
+});
+
+describe("heatmap mode helpers", () => {
+	it("normalizes toggle_and_clear", () => {
+		expect(normalizeHeatmapMode("toggle_and_clear")).toBe("toggle_and_clear");
+	});
+	it("keeps legacy mappings", () => {
+		expect(normalizeHeatmapMode(true)).toBe("on");
+		expect(normalizeHeatmapMode("toggle")).toBe("toggle");
+		expect(normalizeHeatmapMode(false)).toBe("off");
+		expect(normalizeHeatmapMode(undefined)).toBe("off");
+	});
+	it("heatmapHasToggle is true for toggle and toggle_and_clear", () => {
+		expect(heatmapHasToggle("toggle")).toBe(true);
+		expect(heatmapHasToggle("toggle_and_clear")).toBe(true);
+		expect(heatmapHasToggle("on")).toBe(false);
+		expect(heatmapHasToggle("off")).toBe(false);
+	});
+	it("heatmapHasClear is true only for toggle_and_clear", () => {
+		expect(heatmapHasClear("toggle_and_clear")).toBe(true);
+		expect(heatmapHasClear("toggle")).toBe(false);
 	});
 });

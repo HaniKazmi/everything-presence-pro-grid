@@ -48,7 +48,7 @@ type PresenceKey =
 	| "target_presence"
 	| "mmwave";
 
-export type HeatmapMode = "off" | "on" | "toggle";
+export type HeatmapMode = "off" | "on" | "toggle" | "toggle_and_clear";
 
 /**
  * Normalize the config's `show_heatmap` (boolean for backward compat, or a mode
@@ -60,7 +60,18 @@ export function normalizeHeatmapMode(
 ): HeatmapMode {
 	if (v === true || v === "on") return "on";
 	if (v === "toggle") return "toggle";
+	if (v === "toggle_and_clear") return "toggle_and_clear";
 	return "off";
+}
+
+/** True when the mode shows the runtime enable toggle. */
+export function heatmapHasToggle(m: HeatmapMode): boolean {
+	return m === "toggle" || m === "toggle_and_clear";
+}
+
+/** True when the mode shows the "Clear heatmap" button. */
+export function heatmapHasClear(m: HeatmapMode): boolean {
+	return m === "toggle_and_clear";
 }
 
 export interface EppGridCardConfig {
