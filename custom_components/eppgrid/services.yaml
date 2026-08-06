@@ -1,0 +1,6 @@
+clear_heatmap:
+  target:
+    device:
+      integration: eppgrid
+    entity:
+      integration: eppgrid
