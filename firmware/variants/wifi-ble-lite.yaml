@@ -86,7 +86,7 @@ update:
   - platform: http_request
     id: update_http_request
     name: Firmware Update
-    source: https://clintongormley.github.io/everything-presence-pro-grid/fw/latest/wifi-ble-co2.json
+    source: https://HaniKazmi.github.io/everything-presence-pro-grid/fw/latest/wifi-ble-lite.json
     # The eppgrid integration pins FIRMWARE_VERSION and surfaces version
     # mismatches via HA Repairs, so device-side polling (default 6h) is
     # redundant. set_update_manifest action and the OTA button still drive

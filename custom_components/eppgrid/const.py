@@ -62,7 +62,7 @@ EPP_MODELS = ("Everything Presence Pro", "Everything Presence Lite")
 # at /api/eppgrid/firmware/{filename} fetches these server-side so the
 # browser doesn't need direct GitHub connectivity.
 MANIFEST_BASE_URL = (
-    f"https://github.com/clintongormley/everything-presence-pro-grid/releases/download/v{FIRMWARE_VERSION}"
+    f"https://github.com/HaniKazmi/everything-presence-pro-grid/releases/download/v{FIRMWARE_VERSION}"
 )
 
 # Pinned-version manifest for the integration's OTA button (Path B) on
@@ -81,7 +81,7 @@ MANIFEST_BASE_URL = (
 #
 # ESPHome's own update entity uses fw/latest/ on the same Pages site as
 # the "always-newest" channel; this URL is the per-version pin.
-OTA_MANIFEST_BASE_URL = f"https://clintongormley.github.io/everything-presence-pro-grid/fw/v{FIRMWARE_VERSION}"
+OTA_MANIFEST_BASE_URL = f"https://HaniKazmi.github.io/everything-presence-pro-grid/fw/v{FIRMWARE_VERSION}"
 
 # Map UI network choice to firmware variant filename (matches fw/ filenames)
 FIRMWARE_VARIANTS = {
