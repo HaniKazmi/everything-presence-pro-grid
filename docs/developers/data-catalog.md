@@ -291,11 +291,10 @@ firmware-side accumulator and gating.
 
 ### Overview Card Commands
 
-These commands power the `custom:eppgrid-card` dashboard card. Unlike all
+These two commands power the `custom:eppgrid-card` dashboard card. Unlike all
 other eppgrid commands they are **not** `@require_admin` — the card is designed
-for shared dashboards viewed by non-admin household users. They expose display
-data and permit one display-data reset (`eppgrid/clear_heatmap`); they never
-mutate device *configuration*.
+for shared dashboards viewed by non-admin household users. They are read-only
+and cannot mutate device config.
 
 #### `eppgrid/overview/list_devices`
 
@@ -371,24 +370,6 @@ overlay is already frozen for good, its backend stream gone with no frame ever
 coming.
 
 Errors: `device_not_found` when the `device_id` doesn't match a known device.
-
-#### `eppgrid/clear_heatmap`
-
-Clears a device's accumulated activity heatmap (RAM + NVS) — the card's
-"Clear heatmap" action. Non-admin, like the other overview commands: it resets
-*display data* only (the accumulated heatmap the card renders), never device
-configuration. Resolves `device_id` to a MAC server-side, same as
-`overview/subscribe` and `overview/subscribe_heatmap`, then sends the
-`epp_clear_heatmap` ESPHome action via the device's active session.
-
-**Request:** `{ "type": "eppgrid/clear_heatmap", "device_id": str }`
-
-**Response:** empty result on success.
-
-Errors: `device_not_found` when the `device_id` doesn't match a known device;
-`no_session` when the device has no active session (offline);
-`clear_heatmap_failed` when the firmware action itself raises (e.g. firmware
-predates the action).
 
 #### Card configuration keys
 
