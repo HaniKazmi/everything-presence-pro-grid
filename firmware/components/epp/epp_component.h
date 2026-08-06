@@ -196,7 +196,7 @@ class EPPComponent : public esphome::Component {
   void save_grid_to_nvs_();
   void save_zones_to_nvs_(const std::string &zones_json);
   void save_relay_to_nvs_();
-  void save_heatmap_to_nvs_();
+  bool save_heatmap_to_nvs_();
 
   // Heatmap
   void reset_heatmap_();

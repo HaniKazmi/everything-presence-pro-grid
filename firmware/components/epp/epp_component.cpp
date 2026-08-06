@@ -1017,15 +1017,18 @@ void EPPComponent::reset_heatmap_() {
 
 void EPPComponent::clear_heatmap() {
   reset_heatmap_();          // zero the RAM accumulator (cells_)
-  save_heatmap_to_nvs_();    // persist the zeroed accumulator to NVS ("heatmap")
-  ESP_LOGI(TAG, "Heatmap cleared (RAM + NVS)");
+  if (save_heatmap_to_nvs_()) {    // persist the zeroed accumulator to NVS ("heatmap")
+    ESP_LOGI(TAG, "Heatmap cleared (RAM + NVS)");
+  } else {
+    ESP_LOGW(TAG, "Heatmap cleared (RAM only); NVS persist failed — may return after reboot");
+  }
 }
 
-void EPPComponent::save_heatmap_to_nvs_() {
+bool EPPComponent::save_heatmap_to_nvs_() {
   nvs_handle_t handle;
   if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
     ESP_LOGE(TAG, "Failed to open NVS for writing");
-    return;
+    return false;
   }
 
   uint8_t buf[epp::Heatmap::blob_size()];
@@ -1036,9 +1039,10 @@ void EPPComponent::save_heatmap_to_nvs_() {
   nvs_close(handle);
   if (err != ESP_OK) {
     ESP_LOGE(TAG, "Failed to save heatmap to NVS: %s", esp_err_to_name(err));
-    return;
+    return false;
   }
   ESP_LOGD(TAG, "Heatmap saved to NVS (%d bytes)", (int)sizeof(buf));
+  return true;
 }
 
 void EPPComponent::save_zones_to_nvs_(const std::string &zones_json) {
