@@ -415,52 +415,8 @@ api:
         led_enabled: bool
       then:
         - lambda: |-
-            ESP_LOGI("epp", "epp_set_static_presence: min_range=%.1f max_range=%.1f trigger_range=%.1f sustain_sensitivity=%d trigger_sensitivity=%d on_delay=%.2f led_enabled=%s",
+            ESP_LOGI("epp", "epp_set_static_presence: min_range=%.1f max_range=%.1f trigger_range=%.1f sustain_sensitivity=%d trigger_sensitivity=%d on_delay=%.2f led_enabled=%s (No-Op for Lite LD2450)",
                      min_range, max_range, trigger_range, sustain_sensitivity, trigger_sensitivity, on_delay, led_enabled ? "true" : "false");
-        - uart.write:
-            id: uart_bus_dfrobot
-            data: "sensorStop\r\n"
-        - delay: 1s
-        - uart.write:
-            id: uart_bus_dfrobot
-            data: !lambda |-
-              auto ms = str_sprintf("setRange %.1f %.1f\r\n", min_range, max_range);
-              return std::vector<unsigned char>(ms.begin(), ms.end());
-        - delay: 1s
-        - uart.write:
-            id: uart_bus_dfrobot
-            data: !lambda |-
-              auto ms = str_sprintf("setTrigRange %.1f\r\n", trigger_range);
-              return std::vector<unsigned char>(ms.begin(), ms.end());
-        - delay: 1s
-        - uart.write:
-            id: uart_bus_dfrobot
-            data: !lambda |-
-              auto ms = str_sprintf("setSensitivity %d %d\r\n", sustain_sensitivity, trigger_sensitivity);
-              return std::vector<unsigned char>(ms.begin(), ms.end());
-        - delay: 1s
-        - uart.write:
-            id: uart_bus_dfrobot
-            data: !lambda |-
-              // Hardware timeout fixed at 1s for debounce; the real timeout
-              // is managed by the zone engine via set_static_timeout()
-              auto ms = str_sprintf("setLatency %.2f 1\r\n", on_delay);
-              return std::vector<unsigned char>(ms.begin(), ms.end());
-        - delay: 1s
-        - uart.write:
-            id: uart_bus_dfrobot
-            data: !lambda |-
-              return led_enabled
-                ? std::vector<unsigned char>{'s','e','t','L','e','d','M','o','d','e',' ','1',' ','0','\r','\n'}
-                : std::vector<unsigned char>{'s','e','t','L','e','d','M','o','d','e',' ','1',' ','1','\r','\n'};
-        - delay: 1s
-        - uart.write:
-            id: uart_bus_dfrobot
-            data: "saveConfig\r\n"
-        - delay: 1s
-        - uart.write:
-            id: uart_bus_dfrobot
-            data: "sensorStart\r\n"
     - action: epp_set_static_timeout
       variables:
         timeout: float
