@@ -1306,6 +1306,26 @@ describe("clear heatmap button", () => {
 		expect(consoleError).toHaveBeenCalled();
 		consoleError.mockRestore();
 	});
+
+	it("does NOT clear local cells when callWS is unavailable (no false clear-success)", async () => {
+		const consoleError = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+		const el = await mount({
+			device_id: "hm-clear-no-callws",
+			show_map: true,
+			show_heatmap: "toggle_and_clear",
+		});
+		// hass with no callWS at all — double optional-chaining on a missing
+		// callWS must NOT be mistaken for a successful WS round-trip.
+		const { callWS: _omit, ...hassWithoutCallWS } = (el as any).__hass;
+		(el as any).hass = hassWithoutCallWS;
+		(el as any)._heatmapCells = [1, 2, 3];
+		await (el as any)._onClearHeatmapConfirm();
+		expect((el as any)._heatmapCells).toEqual([1, 2, 3]);
+		expect(consoleError).toHaveBeenCalled();
+		consoleError.mockRestore();
+	});
 });
 
 describe("getEntitySuggestion", () => {

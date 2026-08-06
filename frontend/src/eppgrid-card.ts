@@ -687,7 +687,14 @@ export class EppGridCard extends LitElement {
 			| { callWS?: (msg: unknown) => Promise<unknown> }
 			| undefined;
 		try {
-			await hass?.callWS?.({
+			// Fail honestly when callWS is unavailable: hass?.callWS?.(...) would
+			// otherwise evaluate to `undefined`, `await undefined` resolves
+			// immediately, and success would be reported without ever contacting
+			// the backend.
+			if (!hass?.callWS) {
+				throw new Error("Home Assistant connection unavailable");
+			}
+			await hass.callWS({
 				type: "eppgrid/clear_heatmap",
 				device_id: deviceId,
 			});
