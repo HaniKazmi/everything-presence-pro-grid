@@ -9,7 +9,7 @@ esphome:
   min_version: "2026.5.3"
   project:
     name: EverythingSmartTechnology.Everything Presence Lite
-    version: "1.6.0"
+    version: "1.6.1"
   on_boot:
     - priority: 200
       then:
