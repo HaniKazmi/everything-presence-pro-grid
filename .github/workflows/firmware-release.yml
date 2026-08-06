@@ -3,6 +3,12 @@ name: Firmware Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 1.6.2)'
+        required: true
+        default: '1.6.2'
 
 permissions:
   contents: write
@@ -23,8 +29,12 @@ jobs:
       - name: Extract version
         id: version
         run: |
-          TAG="${GITHUB_REF#refs/tags/v}"
-          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG="${GITHUB_REF#refs/tags/v}"
+            echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Validate source versions match tag
         run: .github/scripts/validate-release.sh "${{ steps.version.outputs.version }}"
@@ -88,7 +98,11 @@ jobs:
       - name: Build release notes from the changelog
         id: notes
         run: |
-          TAG="${GITHUB_REF#refs/tags/v}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="v${{ github.event.inputs.version }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/v}"
+          fi
           # Prefer the curated, user-facing CHANGES.md section as the release
           # body. Tags with no changelog entry (e.g. pre-release betas) exit
           # non-zero and fall back to GitHub's auto-generated commit notes.
@@ -102,17 +116,11 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           files: dist/*
+          tag_name: v${{ steps.version.outputs.version }}
           fail_on_unmatched_files: false
           # Use the curated changelog section as the release body when present;
           # otherwise let GitHub generate notes from the commit log.
           body_path: ${{ steps.notes.outputs.from_changelog == 'true' && 'release-notes.md' || '' }}
           generate_release_notes: ${{ steps.notes.outputs.from_changelog != 'true' }}
-          # Every release is published as a pre-release and is never auto-marked
-          # the GitHub "latest". It still builds firmware from the current source
-          # and ships it as release assets — integration-only releases attach a
-          # rebuild of the unchanged firmware. Test it, then promote with
-          # `bin/promote.sh <version>` (or manually:
-          #   gh release edit v{VERSION} --prerelease=false --latest=true)
-          # which flips it to latest and re-fires pages.yml to stage fw/latest/.
           prerelease: true
           make_latest: false
