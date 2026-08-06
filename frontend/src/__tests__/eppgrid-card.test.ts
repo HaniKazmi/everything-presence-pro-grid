@@ -1198,6 +1198,116 @@ describe("heatmap toggle-on-card", () => {
 	});
 });
 
+describe("clear heatmap button", () => {
+	const clearBtn = (el: any) =>
+		el.shadowRoot!.querySelector(
+			".heatmap-clear-overlay epp-icon-button",
+		) as HTMLElement | null;
+
+	it("is absent for show_heatmap 'off'", async () => {
+		const el = await mount({
+			device_id: "hm-clear-off",
+			show_map: true,
+			show_heatmap: "off",
+		});
+		expect(clearBtn(el)).toBeNull();
+	});
+
+	it("is absent for show_heatmap 'on'", async () => {
+		const el = await mount({
+			device_id: "hm-clear-on",
+			show_map: true,
+			show_heatmap: "on",
+		});
+		expect(clearBtn(el)).toBeNull();
+	});
+
+	it("is absent for show_heatmap 'toggle'", async () => {
+		const el = await mount({
+			device_id: "hm-clear-toggle",
+			show_map: true,
+			show_heatmap: "toggle",
+		});
+		expect(clearBtn(el)).toBeNull();
+	});
+
+	it("is present for show_heatmap 'toggle_and_clear'", async () => {
+		const el = await mount({
+			device_id: "hm-clear-tc",
+			show_map: true,
+			show_heatmap: "toggle_and_clear",
+		});
+		expect(clearBtn(el)).not.toBeNull();
+	});
+
+	it("clicking opens the confirm dialog", async () => {
+		const el = await mount({
+			device_id: "hm-clear-open",
+			show_map: true,
+			show_heatmap: "toggle_and_clear",
+		});
+		clearBtn(el)!.dispatchEvent(
+			new CustomEvent("click", { bubbles: true, composed: true }),
+		);
+		await el.updateComplete;
+		expect((el as any)._showClearHeatmapDialog).toBe(true);
+	});
+
+	it("cancel closes the dialog without a WS call", async () => {
+		const callWS = vi.fn();
+		const el = await mount({
+			device_id: "hm-clear-cancel",
+			show_map: true,
+			show_heatmap: "toggle_and_clear",
+		});
+		(el as any).hass = { ...(el as any).__hass, callWS };
+		(el as any)._showClearHeatmapDialog = true;
+		await el.updateComplete;
+		const dialog = el.shadowRoot!.querySelector("epp-confirm-dialog")!;
+		dialog.dispatchEvent(
+			new CustomEvent("cancel", { bubbles: true, composed: true }),
+		);
+		await el.updateComplete;
+		expect((el as any)._showClearHeatmapDialog).toBe(false);
+		expect(callWS).not.toHaveBeenCalled();
+	});
+
+	it("confirming sends the WS command and clears local cells on success", async () => {
+		const callWS = vi.fn().mockResolvedValue({});
+		const el = await mount({
+			device_id: "hm-clear-ok",
+			show_map: true,
+			show_heatmap: "toggle_and_clear",
+		});
+		(el as any).hass = { ...(el as any).__hass, callWS };
+		(el as any)._heatmapCells = [1, 2, 3];
+		await (el as any)._onClearHeatmapConfirm();
+		expect(callWS).toHaveBeenCalledWith({
+			type: "eppgrid/clear_heatmap",
+			device_id: "hm-clear-ok",
+		});
+		expect((el as any)._heatmapCells).toEqual([]);
+	});
+
+	it("does NOT clear local cells when the WS call fails", async () => {
+		const callWS = vi.fn().mockRejectedValue(new Error("network"));
+		const consoleError = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+		const el = await mount({
+			device_id: "hm-clear-fail",
+			show_map: true,
+			show_heatmap: "toggle_and_clear",
+		});
+		(el as any).hass = { ...(el as any).__hass, callWS };
+		(el as any)._heatmapCells = [1, 2, 3];
+		await (el as any)._onClearHeatmapConfirm();
+		expect((el as any)._heatmapCells).toEqual([1, 2, 3]);
+		expect(consoleError).toHaveBeenCalled();
+		consoleError.mockRestore();
+	});
+});
+
 describe("getEntitySuggestion", () => {
 	beforeEach(() => __resetEntitySuggestionCache());
 

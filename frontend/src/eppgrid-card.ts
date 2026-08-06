@@ -1,7 +1,9 @@
 import { css, html, LitElement, nothing } from "lit";
 import { state } from "lit/decorators.js";
+import "./components/epp-confirm-dialog.js";
 import "./components/epp-grid.js";
 import "./components/epp-live-sidebar.js";
+import "./ui/epp-icon-button.js";
 import "./ui/epp-toggle.js";
 import "./ui/epp-tooltip.js";
 import { DeviceSubscription } from "./card/device-subscription.js";
@@ -272,6 +274,13 @@ export class EppGridCard extends LitElement {
 				border: 1px solid var(--epp-border);
 				border-radius: var(--epp-radius-pill);
 			}
+			/* Positioned beside .heatmap-overlay, clearing its pill width — a
+			   hand-tuned offset (control height + a gap), nudge if it overlaps. */
+			.heatmap-clear-overlay {
+				position: absolute;
+				right: calc(var(--epp-control-height) + var(--epp-space-2));
+				bottom: var(--epp-space-2);
+			}
 			.content {
 				padding: var(--epp-space-3);
 			}
@@ -339,6 +348,9 @@ export class EppGridCard extends LitElement {
 	// the toggle handler. Irrelevant in "on"/"off" mode.
 	@state() private _heatmapOn = false;
 
+	// Whether the "Clear heatmap" confirm dialog is open (toggle_and_clear mode only).
+	@state() private _showClearHeatmapDialog = false;
+
 	private _overviewSub = new DeviceSubscription<OverviewState>({
 		getHass: () => this.__hass,
 		getDeviceId: () => this._config?.device_id,
@@ -385,9 +397,9 @@ export class EppGridCard extends LitElement {
 		this._config = config;
 		this._resolved = applyCardDefaults(config);
 		// Seed the runtime heatmap switch from the card-only per-device
-		// preference (only meaningful in "toggle" mode; default off).
+		// preference (only meaningful in "toggle"/"toggle_and_clear" mode; default off).
 		this._heatmapOn =
-			this._resolved.show_heatmap === "toggle" && config.device_id
+			heatmapHasToggle(this._resolved.show_heatmap) && config.device_id
 				? readCardHeatmapEnabled(config.device_id)
 				: false;
 		const rawPres = config?.sensors?.presence;
@@ -585,14 +597,15 @@ export class EppGridCard extends LitElement {
 	/**
 	 * Effective "is the heatmap being shown right now" — the single boolean that
 	 * gates the subscription and the render. "on" is always visible; "toggle"
-	 * follows the viewer's runtime switch; "off" is never visible.
+	 * and "toggle_and_clear" follow the viewer's runtime switch; "off" is never
+	 * visible.
 	 */
 	private _heatmapVisible(): boolean {
 		const cfg = this._resolved;
 		return (
 			cfg != null &&
 			(cfg.show_heatmap === "on" ||
-				(cfg.show_heatmap === "toggle" && this._heatmapOn))
+				(heatmapHasToggle(cfg.show_heatmap) && this._heatmapOn))
 		);
 	}
 
@@ -623,6 +636,67 @@ export class EppGridCard extends LitElement {
 			</epp-tooltip>
 		</div>`;
 	}
+
+	// "Clear heatmap" affordance — only shown in "toggle_and_clear" mode
+	// (heatmapHasClear). Same positioned-div-in-own-shadow-tree pattern as the
+	// toggle overlay above, next to it.
+	private _renderClearHeatmapButton() {
+		const label = this._localize("card.clear_heatmap");
+		return html`<div class="heatmap-clear-overlay">
+			<epp-tooltip content=${label}>
+				<epp-icon-button
+					icon="mdi:delete-sweep"
+					variant="danger"
+					.label=${label}
+					@click=${this._onClearHeatmapClick}
+				></epp-icon-button>
+			</epp-tooltip>
+		</div>`;
+	}
+
+	private _renderClearHeatmapDialog() {
+		return html`<epp-confirm-dialog
+			.open=${this._showClearHeatmapDialog}
+			.heading=${this._localize("card.clear_heatmap")}
+			.message=${this._localize("card.clear_heatmap_confirm")}
+			.confirmLabel=${this._localize("card.clear")}
+			.cancelLabel=${this._localize("card.cancel")}
+			.danger=${true}
+			@confirm=${this._onClearHeatmapConfirm}
+			@cancel=${this._onClearHeatmapCancel}
+		></epp-confirm-dialog>`;
+	}
+
+	private _onClearHeatmapClick = (): void => {
+		this._showClearHeatmapDialog = true;
+	};
+
+	private _onClearHeatmapCancel = (): void => {
+		this._showClearHeatmapDialog = false;
+	};
+
+	// Clear-on-success only: the locally-rendered heatmap is blanked ONLY after
+	// the WS call resolves. A failure leaves `_heatmapCells` untouched — no
+	// optimistic clear — so a rejected/offline call doesn't lie to the viewer
+	// about data that's still on the device.
+	private _onClearHeatmapConfirm = async (): Promise<void> => {
+		this._showClearHeatmapDialog = false;
+		const deviceId = this._config?.device_id;
+		if (!deviceId) return;
+		const hass = this.__hass as
+			| { callWS?: (msg: unknown) => Promise<unknown> }
+			| undefined;
+		try {
+			await hass?.callWS?.({
+				type: "eppgrid/clear_heatmap",
+				device_id: deviceId,
+			});
+			this._heatmapCells = [];
+			this.requestUpdate();
+		} catch (err) {
+			console.error("Failed to clear heatmap:", err);
+		}
+	};
 
 	private _renderMap(cfg: ResolvedCardConfig) {
 		if (this._data.snapshot == null) {
@@ -664,7 +738,9 @@ export class EppGridCard extends LitElement {
 				.trails=${heatmapVisible ? this._targetTrails : []}
 				?showHeatmap=${heatmapVisible}
 			></epp-grid>
-			${cfg.show_heatmap === "toggle" ? this._renderHeatmapToggle() : nothing}
+			${heatmapHasToggle(cfg.show_heatmap) ? this._renderHeatmapToggle() : nothing}
+			${heatmapHasClear(cfg.show_heatmap) ? this._renderClearHeatmapButton() : nothing}
+			${heatmapHasClear(cfg.show_heatmap) ? this._renderClearHeatmapDialog() : nothing}
 		`;
 	}
 
