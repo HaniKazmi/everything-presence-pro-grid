@@ -289,12 +289,50 @@ firmware-side accumulator and gating.
 
 ## 3. Commands
 
+### HA Actions (Services)
+
+#### `eppgrid.clear_heatmap`
+
+Admin-only HA action — registered via `async_register_admin_service` in
+`__init__.py`, declared in `services.yaml`, named/described via `strings.json` →
+`services.clear_heatmap`. Clears the on-device activity heatmap (RAM accumulator
+\+ NVS blob — see [Activity Heatmap](#activity-heatmap-firmware)) for one or more
+devices. This is the admin-facing counterpart of the non-admin
+`eppgrid/clear_heatmap` WS command documented under *Overview Card Commands*
+below, which the dashboard card uses instead.
+
+Accepts a standard HA `target:` (`device_id` / `entity_id` / `area_id` /
+`label_id`, any combination, each optionally a list).
+`_resolve_target_device_ids` expands entities/areas/labels to device_ids via the
+device and entity registries (`dr.async_entries_for_area` / `_for_label`,
+`er.async_entries_for_area` / `_for_label`) and unions them with any
+`device_id`s given directly.
+
+- **With a target:** clears every targeted device that resolves to a live
+    session (`manager.get_session(mac)`); non-eppgrid device_ids are silently
+    ignored. A device with no live session, or whose clear call raises, is
+    collected rather than short-circuiting the loop — once every target has been
+    attempted, the action raises `HomeAssistantError` naming every device_id
+    that failed.
+- **With no target:** clears every device the manager currently tracks
+    (`manager.devices`), silently skipping devices with no live session or whose
+    clear call raises. This is a best-effort sweep, not all-or-nothing — some
+    devices may reasonably be offline at any given moment, and the caller asked
+    to clear "everything", not "everything or nothing."
+
+Both paths call `DeviceConnection.async_clear_heatmap()`
+(`device_manager/_connection.py`), a thin wrapper over
+`async_execute_service("epp_clear_heatmap", {})` — the same firmware action the
+WS command and the firmware section below describe.
+
 ### Overview Card Commands
 
-These two commands power the `custom:eppgrid-card` dashboard card. Unlike all
-other eppgrid commands they are **not** `@require_admin` — the card is designed
-for shared dashboards viewed by non-admin household users. They are read-only
-and cannot mutate device config.
+These commands power the `custom:eppgrid-card` dashboard card. Unlike all other
+eppgrid commands they are **not** `@require_admin` — the card is designed for
+shared dashboards viewed by non-admin household users. Most are read-only;
+`eppgrid/clear_heatmap` (below) is the one exception, permitted because it only
+resets *display data* (the on-device heatmap accumulator), never device
+*configuration*.
 
 #### `eppgrid/overview/list_devices`
 
@@ -371,14 +409,45 @@ coming.
 
 Errors: `device_not_found` when the `device_id` doesn't match a known device.
 
+#### `eppgrid/clear_heatmap`
+
+Clears a device's on-device activity heatmap (RAM accumulator + NVS blob),
+non-admin — the card counterpart of the admin `eppgrid.clear_heatmap` HA action
+documented under *HA Actions (Services)* above. Powers the card's **Toggle and
+clear on card** heatmap mode (`show_heatmap: "toggle_and_clear"` — see *Card
+configuration keys* below): clicking the Clear button, after the confirm dialog,
+sends this command directly — a one-shot mutation, unlike the subscribe-style
+commands elsewhere in this section.
+
+Resolves `device_id` to a mac server-side (same as `overview/subscribe`), gets
+the device's live session, and calls `DeviceConnection.async_clear_heatmap()` —
+the same method the admin HA action calls, which executes the firmware's
+`epp_clear_heatmap` service action (see
+[Activity Heatmap](#activity-heatmap-firmware)).
+
+**Request:** `{ "type": "eppgrid/clear_heatmap", "device_id": str }`
+
+**Response:** empty result on success.
+
+Errors: `device_not_found` (unknown `device_id`), `no_session` (device known but
+no live session — the standard `_send_no_session` shape, translation key
+`no_active_session`), `clear_heatmap_failed` (the firmware service call raised —
+e.g. firmware predates the `epp_clear_heatmap` action).
+
+The card only clears its locally-rendered heatmap overlay after this call
+resolves (`_onClearHeatmapConfirm` in `eppgrid-card.ts`) — a failed or offline
+call leaves the displayed cells untouched rather than optimistically blanking
+data that may still be on the device.
+
 #### Card configuration keys
 
 `custom:eppgrid-card` config keys (in addition to `device_id`):
 
-| Key                  | Type   | Default   | Description                                                                                                                                                                                                                                                                                                                                    |
-| -------------------- | ------ | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `floor_plan`         | string | *(unset)* | Floor-plan background image URL (uploaded `/api/image/serve/{id}/original`, or any user URL such as `/local/plan.png`). Rendered behind the map, stretched to the calibrated room rectangle. While a floor plan is set, the map always renders the clean look (no gridlines/cell fills) so the plan stays visible — `show_grid` has no effect. |
-| `floor_plan_opacity` | number | `100`     | Floor-plan opacity, 0–100 (%).                                                                                                                                                                                                                                                                                                                 |
+| Key                  | Type           | Default   | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| -------------------- | -------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `show_heatmap`       | bool \| string | `false`   | Heatmap layer mode: `"off"`, `"on"`, `"toggle"` (adds a viewer-facing show/hide switch on the map, state persisted per device via `persistCardHeatmapEnabled`), or `"toggle_and_clear"` (the same switch, plus a Clear button that calls `eppgrid/clear_heatmap` above, with a confirm dialog). Legacy boolean configs still work — `true` normalizes to `"on"`, `false`/absent to `"off"` (`normalizeHeatmapMode` in `eppgrid-card.ts`); `heatmapHasToggle(mode)` / `heatmapHasClear(mode)` gate which affordances render. |
+| `floor_plan`         | string         | *(unset)* | Floor-plan background image URL (uploaded `/api/image/serve/{id}/original`, or any user URL such as `/local/plan.png`). Rendered behind the map, stretched to the calibrated room rectangle. While a floor plan is set, the map always renders the clean look (no gridlines/cell fills) so the plan stays visible — `show_grid` has no effect.                                                                                                                                                                              |
+| `floor_plan_opacity` | number         | `100`     | Floor-plan opacity, 0–100 (%).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 
 ______________________________________________________________________
 
@@ -1063,6 +1132,19 @@ looking at it:
     grid geometry or calibration changes (new perspective calibration, new room
     layout) — old cell activity has no meaning against a different room mapping,
     so it doesn't carry over.
+- **Clear** — `EPPComponent::clear_heatmap()` (`epp_component.cpp`) is the
+    user-triggered counterpart of Reset above: it calls `reset_heatmap_()` to
+    zero the RAM accumulator, then immediately `save_heatmap_to_nvs_()` to
+    overwrite the persisted NVS blob too (rather than waiting for the hourly
+    persist), and logs `Heatmap cleared (RAM + NVS)`. Invoked by the
+    `epp_clear_heatmap` ESPHome API action
+    (`firmware/common/everything-presence-pro-base.yaml`), which both the HA
+    action `eppgrid.clear_heatmap` and the WS command `eppgrid/clear_heatmap`
+    call via `DeviceConnection.async_clear_heatmap()` — see *HA Actions
+    (Services)* and *Overview Card Commands* in section 3 above. Because it also
+    rewrites NVS, the clear survives a device reboot — unlike Reset, which only
+    zeroes RAM (a subsequent geometry-change reset is always followed by the
+    normal hourly persist).
 
 **Build flag:** the accumulator (and the `Heatmap` sensor/`heatmap_interval`
 pipeline field) can be compiled out entirely via `EPP_HEATMAP_ENABLED` (default

@@ -45,6 +45,22 @@ A small number of device variants don't have enough memory to run the heatmap
 feature at all. If that's the case, the toggle is disabled with a note that it's
 unavailable on that device — there's nothing to fix.
 
+## Clearing the heatmap
+
+If you want to start the picture over — after rearranging furniture, moving the
+sensor, or just to wipe old activity — there are two ways to clear it:
+
+- **From a dashboard card.** If the card is set to **Toggle and clear on card**
+    (see [Overview dashboard card](overview-card.md)), a Clear button sits next
+    to the heatmap switch on the map. It asks you to confirm before clearing.
+- **With the `eppgrid.clear_heatmap` action.** Run it from Developer tools or an
+    automation to clear one or more sensors, or every Everything Presence Pro
+    Grid sensor at once — see [Automations](automations.md).
+
+Either way, clearing wipes the accumulated data permanently — there's no undo —
+and the cleared state survives a device reboot, so the heatmap starts building
+from empty rather than picking back up where it left off.
+
 ## Where to next
 
 - **[Live overview →](live-overview.md)** — the rest of what the grid and side

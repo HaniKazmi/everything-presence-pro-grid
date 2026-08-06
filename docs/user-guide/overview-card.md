@@ -66,11 +66,16 @@ sidebar.
 
 ### Map layers
 
-| Option             | Default | Description                                                                                                                                                                                                                                                                    |
-| ------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Show furniture** | on      | Overlay furniture icons on the grid.                                                                                                                                                                                                                                           |
-| **Show overlays**  | on      | Show Entry/Exit, Interference, and Suppress cell markings.                                                                                                                                                                                                                     |
-| **Heatmap**        | Off     | Show the activity heatmap and live movement trails on the map. Choose **Off**, **On**, or **Toggle on card** — the last adds a small switch on the map so viewers can show or hide the heatmap themselves, remembered per device. Requires firmware that supports the heatmap. |
+| Option             | Default | Description                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Show furniture** | on      | Overlay furniture icons on the grid.                                                                                                                                                                                                                                                                                                                        |
+| **Show overlays**  | on      | Show Entry/Exit, Interference, and Suppress cell markings.                                                                                                                                                                                                                                                                                                  |
+| **Heatmap**        | Off     | Show the activity heatmap and live movement trails on the map. Choose **Off**, **On**, **Toggle on card** (adds a small switch on the map so viewers can show or hide the heatmap themselves, remembered per device), or **Toggle and clear on card** (adds the same switch, plus a Clear button — see below). Requires firmware that supports the heatmap. |
+
+Choosing **Toggle and clear on card** adds a small delete-sweep button next to
+the heatmap switch. Any dashboard viewer can use it to wipe the device's
+accumulated heatmap — it asks for confirmation first, since clearing can't be
+undone. See [Heatmap → Clearing the heatmap](heatmap.md#clearing-the-heatmap).
 
 ### Templated text
 
