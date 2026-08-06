@@ -42,7 +42,7 @@ jobs:
       - name: Install ESPHome
         run: pip install -r firmware/requirements.txt
       - name: Compile firmware
-        run: esphome compile firmware/variants/${{ matrix.variant }}.yaml
+        run: esphome compile firmware/variants/${{ matrix.variant }}.yaml -s epp_components_source ../components
       - name: Collect artifacts
         run: |
           mkdir -p dist

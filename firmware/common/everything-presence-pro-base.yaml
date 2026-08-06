@@ -48,7 +48,7 @@ esphome:
             effect: "Network Connecting"
 
 substitutions:
-  epp_components_source: "../components"
+  epp_components_source: "github://HaniKazmi/everything-presence-pro-grid@main"
 
 external_components:
   - source: ${epp_components_source}
