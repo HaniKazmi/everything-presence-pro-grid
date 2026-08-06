@@ -18,8 +18,6 @@ from pytest_homeassistant_custom_component.common import MockUser
 
 from custom_components.eppgrid import _async_register_services
 from custom_components.eppgrid.const import DOMAIN
-from custom_components.eppgrid.const import EPP_MANUFACTURER
-from custom_components.eppgrid.const import EPP_MODEL
 from tests.test_websocket_api import setup_integration
 
 SERVICES_YAML = Path(__file__).parent.parent / "custom_components" / "eppgrid" / "services.yaml"
@@ -294,46 +292,28 @@ async def test_non_admin_rejected(hass, config_entry):
         await hass.services.async_call(DOMAIN, "clear_heatmap", {}, blocking=True, context=non_admin_context)
 
 
-def test_services_yaml_target_filter_matches_epp_device_signature():
-    """Lock the services.yaml target picker filter to const.py's EPP device
-    signature.
+def test_services_yaml_target_is_unrestricted_and_valid():
+    """The target picker is deliberately unfiltered — no manufacturer/model/
+    integration restriction on device or entity.
 
-    The eppgrid integration owns only virtual "Device Group" devices — the
-    real Everything Presence Pro sensors (the ones `mac_for_device_id`
-    resolves) are esphome-owned devices identified by manufacturer/model, not
-    by `integration: eppgrid`. If const.py's signature ever changes, this
-    test fails loudly instead of the target picker silently going stale
-    again (see PR history: `integration: eppgrid` surfaced the wrong
-    devices).
+    The physical EPP sensors' entities are esphome-owned (not eppgrid-owned),
+    so the picker can't be scoped to "EPP entities" via a static filter
+    anyway. Filtering is delegated to the resolver instead:
+    `_resolve_target_device_ids` + `manager.mac_for_device_id` already ignore
+    any resolved device_id that isn't an eppgrid-managed device (see
+    `test_non_eppgrid_target_ignored`), so a bare target is both simpler and
+    exactly as safe.
+
+    This test guards two things: (1) the target is still unrestricted (no
+    filter key crept back in), and (2) it's still a structurally valid HA
+    `TargetSelector` config — a plain "the key exists" check wouldn't have
+    caught the earlier invalid `entity: {device: {...}}` shape, so we run it
+    through the real selector, not just yaml.safe_load.
     """
     doc = yaml.safe_load(SERVICES_YAML.read_text())
+    target = doc["clear_heatmap"].get("target")
 
-    device_target = doc["clear_heatmap"]["target"]["device"]
-    assert device_target["manufacturer"] == EPP_MANUFACTURER
-    assert device_target["model"] == EPP_MODEL
-
-    # HA's entity target filter (`ENTITY_FILTER_SELECTOR_CONFIG_SCHEMA`) has no
-    # nested `device` sub-filter and no manufacturer/model keys at all — only
-    # `integration`/`domain`/`device_class`/`supported_features`. The physical
-    # EPP sensors are esphome-platform entities, so `integration: esphome`
-    # surfaces them; the handler's resolver ignores any non-EPP entity that
-    # resolves to a non-eppgrid device (see test_non_eppgrid_target_ignored).
-    entity_target = doc["clear_heatmap"]["target"]["entity"]
-    assert entity_target == {"integration": "esphome"}
-
-
-def test_services_yaml_target_is_a_valid_selector():
-    """Validate the whole `target:` block against HA's real TargetSelector schema.
-
-    String-equality checks (above) can pass even when the shape itself is
-    invalid HA selector config — that's exactly how `entity: {device: {...}}`
-    slipped through: HA's entity filter has no `device` sub-key, so the value
-    would be silently rejected by HA at integration-load / service-call time,
-    but a plain yaml.safe_load + dict-equality test never exercises HA's
-    schema at all. Run the parsed target through `selector.TargetSelector`
-    itself so an invalid shape fails loudly here instead of in production.
-    """
-    doc = yaml.safe_load(SERVICES_YAML.read_text())
-    target = doc["clear_heatmap"]["target"]
+    # Unrestricted: either absent (None) or an empty mapping — never a filter.
+    assert target in (None, {})
 
     selector.TargetSelector(target)  # raises voluptuous.Invalid on a bad shape

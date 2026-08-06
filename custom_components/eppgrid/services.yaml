@@ -1,7 +1,2 @@
 clear_heatmap:
   target:
-    device:
-      manufacturer: EverythingSmartTechnology
-      model: Everything Presence Pro
-    entity:
-      integration: esphome
