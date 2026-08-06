@@ -1326,6 +1326,43 @@ describe("clear heatmap button", () => {
 		expect(consoleError).toHaveBeenCalled();
 		consoleError.mockRestore();
 	});
+
+	it("a real confirm event on the dialog routes to the clear WS call", async () => {
+		// Mirrors the cancel test above but dispatches `confirm` — exercises the
+		// actual @confirm=${this._onClearHeatmapConfirm} binding rather than
+		// calling the handler directly, so a confirm/cancel handler-swap typo
+		// would be caught here.
+		const callWS = vi.fn().mockResolvedValue({});
+		const el = await mount({
+			device_id: "hm-clear-confirm-event",
+			show_map: true,
+			show_heatmap: "toggle_and_clear",
+		});
+		(el as any).hass = { ...(el as any).__hass, callWS };
+		(el as any)._showClearHeatmapDialog = true;
+		await el.updateComplete;
+		const dialog = el.shadowRoot!.querySelector("epp-confirm-dialog")!;
+		dialog.dispatchEvent(
+			new CustomEvent("confirm", { bubbles: true, composed: true }),
+		);
+		await el.updateComplete;
+		expect(callWS).toHaveBeenCalledWith({
+			type: "eppgrid/clear_heatmap",
+			device_id: "hm-clear-confirm-event",
+		});
+	});
+
+	it("does NOT call callWS when device_id is empty (the `if (!deviceId) return` guard)", async () => {
+		const callWS = vi.fn();
+		const el = await mount({
+			device_id: "",
+			show_map: true,
+			show_heatmap: "toggle_and_clear",
+		});
+		(el as any).hass = { ...(el as any).__hass, callWS };
+		await (el as any)._onClearHeatmapConfirm();
+		expect(callWS).not.toHaveBeenCalled();
+	});
 });
 
 describe("getEntitySuggestion", () => {

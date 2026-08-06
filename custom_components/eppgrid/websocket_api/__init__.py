@@ -356,6 +356,22 @@ def _send_no_session(connection: websocket_api.ActiveConnection, msg_id: int) ->
     )
 
 
+def _send_device_not_found(connection: websocket_api.ActiveConnection, msg_id: int) -> None:
+    """Send the standard 'device not found' error.
+
+    ONE code+key pairing (`device_not_found`) for handlers that resolve a
+    card-supplied `device_id` to a mac and find no match — see
+    `_start_overview_stream` and `websocket_clear_heatmap` in `_overview.py`.
+    """
+    connection.send_error(
+        msg_id,
+        "device_not_found",
+        "Device not found",
+        translation_domain=DOMAIN,
+        translation_key="device_not_found",
+    )
+
+
 def _connection_is_closed(connection: websocket_api.ActiveConnection) -> bool:
     """True when HA has already torn down this WS connection.
 

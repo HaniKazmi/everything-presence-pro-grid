@@ -17,8 +17,8 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
 
-from ..const import DOMAIN
 from . import _require_manager
+from . import _send_device_not_found
 from . import _send_exception
 from . import _send_no_session
 from ._devices import _make_grid_target_on_state
@@ -39,13 +39,7 @@ async def _start_overview_stream(
     """Resolve the card's `device_id` to a mac, then start a durable stream."""
     mac = manager.mac_for_device_id(msg["device_id"])
     if mac is None:
-        connection.send_error(
-            msg["id"],
-            "device_not_found",
-            "Device not found",
-            translation_domain=DOMAIN,
-            translation_key="device_not_found",
-        )
+        _send_device_not_found(connection, msg["id"])
         return
     await start_durable_stream(
         connection,
@@ -184,13 +178,7 @@ async def websocket_clear_heatmap(
     """
     mac = manager.mac_for_device_id(msg["device_id"])
     if mac is None:
-        connection.send_error(
-            msg["id"],
-            "device_not_found",
-            "Device not found",
-            translation_domain=DOMAIN,
-            translation_key="device_not_found",
-        )
+        _send_device_not_found(connection, msg["id"])
         return
     session = manager.get_session(mac)
     if session is None:
