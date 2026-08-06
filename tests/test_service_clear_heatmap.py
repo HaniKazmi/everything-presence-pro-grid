@@ -13,6 +13,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.exceptions import Unauthorized
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import selector
 from pytest_homeassistant_custom_component.common import MockUser
 
 from custom_components.eppgrid import _async_register_services
@@ -311,6 +312,28 @@ def test_services_yaml_target_filter_matches_epp_device_signature():
     assert device_target["manufacturer"] == EPP_MANUFACTURER
     assert device_target["model"] == EPP_MODEL
 
-    entity_device_target = doc["clear_heatmap"]["target"]["entity"]["device"]
-    assert entity_device_target["manufacturer"] == EPP_MANUFACTURER
-    assert entity_device_target["model"] == EPP_MODEL
+    # HA's entity target filter (`ENTITY_FILTER_SELECTOR_CONFIG_SCHEMA`) has no
+    # nested `device` sub-filter and no manufacturer/model keys at all — only
+    # `integration`/`domain`/`device_class`/`supported_features`. The physical
+    # EPP sensors are esphome-platform entities, so `integration: esphome`
+    # surfaces them; the handler's resolver ignores any non-EPP entity that
+    # resolves to a non-eppgrid device (see test_non_eppgrid_target_ignored).
+    entity_target = doc["clear_heatmap"]["target"]["entity"]
+    assert entity_target == {"integration": "esphome"}
+
+
+def test_services_yaml_target_is_a_valid_selector():
+    """Validate the whole `target:` block against HA's real TargetSelector schema.
+
+    String-equality checks (above) can pass even when the shape itself is
+    invalid HA selector config — that's exactly how `entity: {device: {...}}`
+    slipped through: HA's entity filter has no `device` sub-key, so the value
+    would be silently rejected by HA at integration-load / service-call time,
+    but a plain yaml.safe_load + dict-equality test never exercises HA's
+    schema at all. Run the parsed target through `selector.TargetSelector`
+    itself so an invalid shape fails loudly here instead of in production.
+    """
+    doc = yaml.safe_load(SERVICES_YAML.read_text())
+    target = doc["clear_heatmap"]["target"]
+
+    selector.TargetSelector(target)  # raises voluptuous.Invalid on a bad shape
