@@ -588,6 +588,9 @@ api:
     - action: epp_clear_heatmap
       then:
         - lambda: 'id(epp_component).clear_heatmap();'
+        - api.respond:
+            data: !lambda |-
+              root["cleared"] = true;
 
   on_client_connected:
     then:

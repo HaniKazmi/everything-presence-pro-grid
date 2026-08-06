@@ -14,6 +14,7 @@ from typing import Any
 from aioesphomeapi import APIClient
 from aioesphomeapi import LogLevel
 from aioesphomeapi import UserService
+from homeassistant.exceptions import HomeAssistantError
 
 from ..const import DEFAULT_PORT
 from ..const import GRID_CELL_SIZE_MM
@@ -429,13 +430,17 @@ class DeviceConnection:
             _raise_service_unavailable("epp_dismiss_target")
         await self._client.execute_service(service, {"target_index": target_index, "cell_index": cell_index})
 
-    async def async_clear_heatmap(self) -> None:
-        """Clear the device's accumulated heatmap (RAM + NVS).
+    async def async_clear_heatmap(self, timeout: float = 10.0) -> None:
+        """Clear the device's heatmap (RAM + NVS), confirming the device applied it.
 
-        Fire-and-forget ESPHome user action. Raises HomeAssistantError via
-        async_execute_service when the firmware predates the action.
+        Uses a response-returning action (not fire-and-forget): an unreachable or
+        unresponsive device times out and raises rather than silently
+        'succeeding'. Raises HomeAssistantError via async_execute_service on
+        firmware that predates the action.
         """
-        await self.async_execute_service("epp_clear_heatmap", {})
+        resp = await self.async_execute_service("epp_clear_heatmap", {}, return_response=True, timeout=timeout)
+        if resp is None or not getattr(resp, "response_data", None):
+            raise HomeAssistantError("Device did not confirm the heatmap clear")
 
     async def async_push_config(self, config: dict[str, Any]) -> None:
         """Push perspective, grid, and zones to the device.

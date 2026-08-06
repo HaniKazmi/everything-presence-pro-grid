@@ -99,6 +99,31 @@ async def test_clear_heatmap_execute_error(
     assert msg["error"]["code"] == "clear_heatmap_failed"
 
 
+async def test_clear_heatmap_offline_device_times_out(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    hass_ws_client: WebSocketGenerator,
+) -> None:
+    """An unreachable device that never confirms the clear (timeout) also yields
+    clear_heatmap_failed -- not a false success. This is the crux of the fix: the
+    action is now response-confirmed, so a device that's offline/unresponsive
+    raises instead of silently 'succeeding' as it did when the action was
+    fire-and-forget.
+    """
+    mock_dm = await setup_integration(hass, config_entry)
+    session = MagicMock()
+    session.async_clear_heatmap = AsyncMock(side_effect=TimeoutError())
+    mock_dm.mac_for_device_id = MagicMock(return_value=MAC)
+    mock_dm.get_session = MagicMock(return_value=session)
+
+    client = await hass_ws_client(hass)
+    await client.send_json({"id": 1, "type": "eppgrid/clear_heatmap", "device_id": "dev1"})
+    msg = await client.receive_json()
+
+    assert msg["success"] is False
+    assert msg["error"]["code"] == "clear_heatmap_failed"
+
+
 async def test_clear_heatmap_reachable_by_non_admin_user(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,
