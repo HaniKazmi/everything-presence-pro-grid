@@ -47,10 +47,11 @@ esphome:
             white: 0%
             effect: "Network Connecting"
 
+substitutions:
+  epp_components_source: "../components"
+
 external_components:
-  - source:
-      type: local
-      path: ../components
+  - source: ${epp_components_source}
     components: [epp]
 
 epp:
