@@ -269,17 +269,17 @@ export class EppGridCard extends LitElement {
 				bottom: var(--epp-space-2);
 				display: inline-flex;
 				align-items: center;
+				gap: var(--epp-space-2);
 				padding: var(--epp-space-1) var(--epp-space-2);
 				background: var(--epp-surface);
 				border: 1px solid var(--epp-border);
 				border-radius: var(--epp-radius-pill);
 			}
-			/* Positioned beside .heatmap-overlay, clearing its pill width — a
-			   hand-tuned offset (control height + a gap), nudge if it overlaps. */
-			.heatmap-clear-overlay {
-				position: absolute;
-				right: calc(var(--epp-control-height) + var(--epp-space-2));
-				bottom: var(--epp-space-2);
+			/* The clear button is visually heavier than the compact toggle at the
+			   default control height — scope it down so the two controls in the
+			   pill line up at the same height. */
+			.heatmap-overlay epp-icon-button {
+				--epp-control-height: var(--epp-control-height-sm);
 			}
 			.content {
 				padding: var(--epp-space-3);
@@ -350,6 +350,10 @@ export class EppGridCard extends LitElement {
 
 	// Whether the "Clear heatmap" confirm dialog is open (toggle_and_clear mode only).
 	@state() private _showClearHeatmapDialog = false;
+
+	// Whether the "couldn't clear heatmap" alert dialog is showing, after a
+	// failed clear attempt (toggle_and_clear mode only).
+	@state() private _clearHeatmapError = false;
 
 	private _overviewSub = new DeviceSubscription<OverviewState>({
 		getHass: () => this.__hass,
@@ -617,39 +621,38 @@ export class EppGridCard extends LitElement {
 		this._heatmapSub.ensure();
 	};
 
-	// Bare switch overlaid bottom-right of the map (no visible label — the
-	// epp-toggle primitive omits the label span when empty). The switch's
-	// accessible name is supplied via controlLabel (an aria-label on the
-	// control); epp-tooltip adds the visible hover hint (design system forbids
-	// raw title=). The positioned `.heatmap-overlay` wrapper is a plain div in
-	// this card's own shadow tree, so its `position: absolute` never depends on
-	// cross-shadow-boundary cascade order against epp-tooltip's own `:host` rule.
-	private _renderHeatmapToggle() {
-		const label = this._localize("card.heatmap_toggle");
+	// Bottom-right overlay pill on the map, holding the "Clear heatmap" button
+	// (only in "toggle_and_clear" mode, via heatmapHasClear) followed by the
+	// bare enable/disable switch (only when heatmapHasToggle). The switch has
+	// no visible label — the epp-toggle primitive omits the label span when
+	// empty; its accessible name is supplied via controlLabel (an aria-label on
+	// the control). Both controls get an epp-tooltip hover hint (design system
+	// forbids raw title=). The positioned `.heatmap-overlay` wrapper is a plain
+	// div in this card's own shadow tree, so its `position: absolute` never
+	// depends on cross-shadow-boundary cascade order against epp-tooltip's own
+	// `:host` rule.
+	private _renderHeatmapOverlay(cfg: ResolvedCardConfig) {
+		const toggleLabel = this._localize("card.heatmap_toggle");
+		const clearLabel = this._localize("card.clear_heatmap");
 		return html`<div class="heatmap-overlay">
-			<epp-tooltip content=${label}>
+			${
+				heatmapHasClear(cfg.show_heatmap)
+					? html`<epp-tooltip content=${clearLabel}>
+							<epp-icon-button
+								icon="mdi:delete-sweep"
+								variant="danger"
+								.label=${clearLabel}
+								@click=${this._onClearHeatmapClick}
+							></epp-icon-button>
+						</epp-tooltip>`
+					: nothing
+			}
+			<epp-tooltip content=${toggleLabel}>
 				<epp-toggle
-					.controlLabel=${label}
+					.controlLabel=${toggleLabel}
 					.checked=${this._heatmapOn}
 					@value-changed=${this._onHeatmapToggle}
 				></epp-toggle>
-			</epp-tooltip>
-		</div>`;
-	}
-
-	// "Clear heatmap" affordance — only shown in "toggle_and_clear" mode
-	// (heatmapHasClear). Same positioned-div-in-own-shadow-tree pattern as the
-	// toggle overlay above, next to it.
-	private _renderClearHeatmapButton() {
-		const label = this._localize("card.clear_heatmap");
-		return html`<div class="heatmap-clear-overlay">
-			<epp-tooltip content=${label}>
-				<epp-icon-button
-					icon="mdi:delete-sweep"
-					variant="danger"
-					.label=${label}
-					@click=${this._onClearHeatmapClick}
-				></epp-icon-button>
 			</epp-tooltip>
 		</div>`;
 	}
@@ -667,12 +670,33 @@ export class EppGridCard extends LitElement {
 		></epp-confirm-dialog>`;
 	}
 
+	// Alert dialog shown when a clear attempt fails (network error, offline
+	// device, etc.) — surfaces the failure to the viewer instead of only
+	// logging it to the console. Single-button (hideCancel): there's nothing to
+	// confirm, just an acknowledgement.
+	private _renderClearHeatmapErrorDialog() {
+		return html`<epp-confirm-dialog
+			.open=${this._clearHeatmapError}
+			.heading=${this._localize("card.clear_heatmap")}
+			.message=${this._localize("card.clear_heatmap_error")}
+			.confirmLabel=${this._localize("card.ok")}
+			.danger=${true}
+			.hideCancel=${true}
+			@confirm=${this._onClearHeatmapErrorDismiss}
+			@cancel=${this._onClearHeatmapErrorDismiss}
+		></epp-confirm-dialog>`;
+	}
+
 	private _onClearHeatmapClick = (): void => {
 		this._showClearHeatmapDialog = true;
 	};
 
 	private _onClearHeatmapCancel = (): void => {
 		this._showClearHeatmapDialog = false;
+	};
+
+	private _onClearHeatmapErrorDismiss = (): void => {
+		this._clearHeatmapError = false;
 	};
 
 	// Clear-on-success only: the locally-rendered heatmap is blanked ONLY after
@@ -702,6 +726,7 @@ export class EppGridCard extends LitElement {
 			this.requestUpdate();
 		} catch (err) {
 			console.error("Failed to clear heatmap:", err);
+			this._clearHeatmapError = true;
 		}
 	};
 
@@ -745,9 +770,9 @@ export class EppGridCard extends LitElement {
 				.trails=${heatmapVisible ? this._targetTrails : []}
 				?showHeatmap=${heatmapVisible}
 			></epp-grid>
-			${heatmapHasToggle(cfg.show_heatmap) ? this._renderHeatmapToggle() : nothing}
-			${heatmapHasClear(cfg.show_heatmap) ? this._renderClearHeatmapButton() : nothing}
+			${heatmapHasToggle(cfg.show_heatmap) ? this._renderHeatmapOverlay(cfg) : nothing}
 			${heatmapHasClear(cfg.show_heatmap) ? this._renderClearHeatmapDialog() : nothing}
+			${heatmapHasClear(cfg.show_heatmap) ? this._renderClearHeatmapErrorDialog() : nothing}
 		`;
 	}
 

@@ -1201,7 +1201,7 @@ describe("heatmap toggle-on-card", () => {
 describe("clear heatmap button", () => {
 	const clearBtn = (el: any) =>
 		el.shadowRoot!.querySelector(
-			".heatmap-clear-overlay epp-icon-button",
+			".heatmap-overlay epp-icon-button",
 		) as HTMLElement | null;
 
 	it("is absent for show_heatmap 'off'", async () => {
@@ -1287,9 +1287,10 @@ describe("clear heatmap button", () => {
 			device_id: "hm-clear-ok",
 		});
 		expect((el as any)._heatmapCells).toEqual([]);
+		expect((el as any)._clearHeatmapError).toBe(false);
 	});
 
-	it("does NOT clear local cells when the WS call fails", async () => {
+	it("does NOT clear local cells when the WS call fails, and shows the alert dialog", async () => {
 		const callWS = vi.fn().mockRejectedValue(new Error("network"));
 		const consoleError = vi
 			.spyOn(console, "error")
@@ -1303,7 +1304,35 @@ describe("clear heatmap button", () => {
 		(el as any)._heatmapCells = [1, 2, 3];
 		await (el as any)._onClearHeatmapConfirm();
 		expect((el as any)._heatmapCells).toEqual([1, 2, 3]);
+		expect((el as any)._clearHeatmapError).toBe(true);
 		expect(consoleError).toHaveBeenCalled();
+		consoleError.mockRestore();
+	});
+
+	it("shows a visible alert dialog on failure, dismissible via confirm", async () => {
+		const callWS = vi.fn().mockRejectedValue(new Error("network"));
+		const consoleError = vi
+			.spyOn(console, "error")
+			.mockImplementation(() => {});
+		const el = await mount({
+			device_id: "hm-clear-fail-dialog",
+			show_map: true,
+			show_heatmap: "toggle_and_clear",
+		});
+		(el as any).hass = { ...(el as any).__hass, callWS };
+		await (el as any)._onClearHeatmapConfirm();
+		await el.updateComplete;
+		const dialogs = Array.from(
+			el.shadowRoot!.querySelectorAll("epp-confirm-dialog"),
+		) as any[];
+		const errorDialog = dialogs.find((d) => d.hideCancel === true);
+		expect(errorDialog).toBeTruthy();
+		expect(errorDialog.open).toBe(true);
+		errorDialog.dispatchEvent(
+			new CustomEvent("confirm", { bubbles: true, composed: true }),
+		);
+		await el.updateComplete;
+		expect((el as any)._clearHeatmapError).toBe(false);
 		consoleError.mockRestore();
 	});
 
@@ -1323,6 +1352,7 @@ describe("clear heatmap button", () => {
 		(el as any)._heatmapCells = [1, 2, 3];
 		await (el as any)._onClearHeatmapConfirm();
 		expect((el as any)._heatmapCells).toEqual([1, 2, 3]);
+		expect((el as any)._clearHeatmapError).toBe(true);
 		expect(consoleError).toHaveBeenCalled();
 		consoleError.mockRestore();
 	});
