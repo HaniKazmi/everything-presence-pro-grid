@@ -429,6 +429,14 @@ class DeviceConnection:
             _raise_service_unavailable("epp_dismiss_target")
         await self._client.execute_service(service, {"target_index": target_index, "cell_index": cell_index})
 
+    async def async_clear_heatmap(self) -> None:
+        """Clear the device's accumulated heatmap (RAM + NVS).
+
+        Fire-and-forget ESPHome user action. Raises HomeAssistantError via
+        async_execute_service when the firmware predates the action.
+        """
+        await self.async_execute_service("epp_clear_heatmap", {})
+
     async def async_push_config(self, config: dict[str, Any]) -> None:
         """Push perspective, grid, and zones to the device.
 
