@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 
 import pytest
+import yaml
 from homeassistant.core import Context
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.exceptions import Unauthorized
@@ -15,7 +17,11 @@ from pytest_homeassistant_custom_component.common import MockUser
 
 from custom_components.eppgrid import _async_register_services
 from custom_components.eppgrid.const import DOMAIN
+from custom_components.eppgrid.const import EPP_MANUFACTURER
+from custom_components.eppgrid.const import EPP_MODEL
 from tests.test_websocket_api import setup_integration
+
+SERVICES_YAML = Path(__file__).parent.parent / "custom_components" / "eppgrid" / "services.yaml"
 
 
 def _session(ok=True):
@@ -34,6 +40,25 @@ async def test_no_target_clears_all(hass, config_entry):
 
     for s in sessions.values():
         s.async_clear_heatmap.assert_awaited_once_with()
+
+
+async def test_empty_explicit_target_clears_nothing(hass, config_entry):
+    """An explicitly-supplied but EMPTY target key (e.g. {"device_id": []} from a
+    templated automation) must resolve to zero devices — NOT fall through to the
+    "no target -> clear all" branch. Destructive, no-undo action; an empty target
+    must be a no-op, not a surprise full sweep.
+    """
+    mgr = await setup_integration(hass, config_entry)
+    sessions = {"AA": _session(), "BB": _session()}
+    mgr.devices = {"AA": MagicMock(), "BB": MagicMock()}
+    mgr.get_session = MagicMock(side_effect=lambda mac: sessions.get(mac))
+
+    # Must not raise — an explicit target resolving to nothing has no failures
+    # to report.
+    await hass.services.async_call(DOMAIN, "clear_heatmap", {"device_id": []}, blocking=True)
+
+    for s in sessions.values():
+        s.async_clear_heatmap.assert_not_awaited()
 
 
 async def test_explicit_device_target(hass, config_entry):
@@ -266,3 +291,26 @@ async def test_non_admin_rejected(hass, config_entry):
 
     with pytest.raises(Unauthorized):
         await hass.services.async_call(DOMAIN, "clear_heatmap", {}, blocking=True, context=non_admin_context)
+
+
+def test_services_yaml_target_filter_matches_epp_device_signature():
+    """Lock the services.yaml target picker filter to const.py's EPP device
+    signature.
+
+    The eppgrid integration owns only virtual "Device Group" devices — the
+    real Everything Presence Pro sensors (the ones `mac_for_device_id`
+    resolves) are esphome-owned devices identified by manufacturer/model, not
+    by `integration: eppgrid`. If const.py's signature ever changes, this
+    test fails loudly instead of the target picker silently going stale
+    again (see PR history: `integration: eppgrid` surfaced the wrong
+    devices).
+    """
+    doc = yaml.safe_load(SERVICES_YAML.read_text())
+
+    device_target = doc["clear_heatmap"]["target"]["device"]
+    assert device_target["manufacturer"] == EPP_MANUFACTURER
+    assert device_target["model"] == EPP_MODEL
+
+    entity_device_target = doc["clear_heatmap"]["target"]["entity"]["device"]
+    assert entity_device_target["manufacturer"] == EPP_MANUFACTURER
+    assert entity_device_target["model"] == EPP_MODEL

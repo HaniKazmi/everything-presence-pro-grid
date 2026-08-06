@@ -1,6 +1,9 @@
 clear_heatmap:
   target:
     device:
-      integration: eppgrid
+      manufacturer: EverythingSmartTechnology
+      model: Everything Presence Pro
     entity:
-      integration: eppgrid
+      device:
+        manufacturer: EverythingSmartTechnology
+        model: Everything Presence Pro

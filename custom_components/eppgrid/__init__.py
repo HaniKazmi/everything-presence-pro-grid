@@ -83,7 +83,11 @@ def _resolve_target_device_ids(hass: HomeAssistant, call: ServiceCall) -> set[st
 
 
 def _has_target(call: ServiceCall) -> bool:
-    return any(call.data.get(k) for k in (ATTR_DEVICE_ID, ATTR_ENTITY_ID, ATTR_AREA_ID, ATTR_LABEL_ID))
+    # Key PRESENCE, not truthiness: an explicitly-supplied-but-empty target
+    # (e.g. {"device_id": []} from a templated automation) must still count
+    # as "targeted" so it resolves to zero devices and clears nothing — not
+    # fall through to the no-target "clear everything" branch.
+    return any(k in call.data for k in (ATTR_DEVICE_ID, ATTR_ENTITY_ID, ATTR_AREA_ID, ATTR_LABEL_ID))
 
 
 def _async_register_services(hass: HomeAssistant) -> None:
