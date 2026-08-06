@@ -47,11 +47,10 @@ esphome:
             white: 0%
             effect: "Network Connecting"
 
-substitutions:
-  epp_components_source: "github://HaniKazmi/everything-presence-pro-grid@main"
-
 external_components:
-  - source: ${epp_components_source}
+  - source:
+      type: local
+      path: ../components
     components: [epp]
 
 epp:
