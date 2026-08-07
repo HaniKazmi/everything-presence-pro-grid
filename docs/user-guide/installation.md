@@ -14,7 +14,7 @@ to.
 
 ### Quick install (My Home Assistant button)
 
-[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=clintongormley&repository=everything-presence-pro-grid&category=integration)
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=HaniKazmi&repository=everything-presence-pro-grid&category=integration)
 
 Click the button and confirm the dialog in your Home Assistant to open the
 Everything Presence Pro Grid page in HACS. Click **Download**, then restart Home
@@ -34,7 +34,7 @@ Assistant.
 If you can't use HACS:
 
 1. Download the latest release archive from the
-    [Releases page](https://github.com/clintongormley/everything-presence-pro-grid/releases).
+    [Releases page](https://github.com/HaniKazmi/everything-presence-pro-grid/releases).
 1. Unpack it and copy `custom_components/eppgrid/` into your HA config's
     `custom_components/` folder.
 1. Restart Home Assistant.

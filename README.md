@@ -1,8 +1,8 @@
 # Everything Presence Pro Grid
 
-[![Tests](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/tests.yml/badge.svg)](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/tests.yml)
-[![HACS Validation](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hacs.yml/badge.svg)](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hacs.yml)
-[![Hassfest](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hassfest.yml/badge.svg)](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hassfest.yml)
+[![Tests](https://github.com/HaniKazmi/everything-presence-pro-grid/actions/workflows/tests.yml/badge.svg)](https://github.com/HaniKazmi/everything-presence-pro-grid/actions/workflows/tests.yml)
+[![HACS Validation](https://github.com/HaniKazmi/everything-presence-pro-grid/actions/workflows/hacs.yml/badge.svg)](https://github.com/HaniKazmi/everything-presence-pro-grid/actions/workflows/hacs.yml)
+[![Hassfest](https://github.com/HaniKazmi/everything-presence-pro-grid/actions/workflows/hassfest.yml/badge.svg)](https://github.com/HaniKazmi/everything-presence-pro-grid/actions/workflows/hassfest.yml)
 [![Active installations](https://img.shields.io/badge/dynamic/json?color=41BDF5&logo=home-assistant&label=active%20installations&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.eppgrid.total)](https://analytics.home-assistant.io/)
 
 Everything Presence Pro Grid is a Home Assistant integration for the
@@ -14,7 +14,7 @@ live overview, and firmware flashing, built around a calibrated grid that
 matches the real geometry of your room.
 
 📖 **Full documentation:**
-<https://clintongormley.github.io/everything-presence-pro-grid/>
+<https://hanikazmi.github.io/everything-presence-pro-grid/>
 
 ![Live overview showing a calibrated room grid with zones, target markers, and furniture overlay.](docs/images/introduction/overview.png)
 
@@ -78,7 +78,7 @@ zone-specific actions, each named zone has its own **Zone Presence** entity
 (`binary_sensor.<device>_zone_<N>_presence`).
 
 These sensors are enough to build quite sophisticated automations. See the
-[Automations guide](https://clintongormley.github.io/everything-presence-pro-grid/user-guide/automations/)
+[Automations guide](https://hanikazmi.github.io/everything-presence-pro-grid/user-guide/automations/)
 for worked examples.
 
 ## Installation
@@ -88,7 +88,7 @@ for worked examples.
 Everything Presence Pro Grid is in the **HACS** default list — search for it and
 install it directly.
 
-[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=clintongormley&repository=everything-presence-pro-grid&category=integration)
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=HaniKazmi&repository=everything-presence-pro-grid&category=integration)
 
 Or install it from the HACS list:
 
@@ -104,12 +104,12 @@ Copy the `custom_components/eppgrid` directory to your Home Assistant
 `custom_components` folder and restart Home Assistant.
 
 See the
-[Installation guide](https://clintongormley.github.io/everything-presence-pro-grid/user-guide/installation/)
+[Installation guide](https://hanikazmi.github.io/everything-presence-pro-grid/user-guide/installation/)
 for the full walkthrough, including hardware setup, placement, calibration, and
 firmware flashing.
 
 ## Links
 
-- [Documentation](https://clintongormley.github.io/everything-presence-pro-grid/)
+- [Documentation](https://hanikazmi.github.io/everything-presence-pro-grid/)
 - [Everything Presence Pro hardware](https://shop.everythingsmart.io/products/everything-presence-pro)
 - [Everything Smart Technology](https://shop.everythingsmart.io/)

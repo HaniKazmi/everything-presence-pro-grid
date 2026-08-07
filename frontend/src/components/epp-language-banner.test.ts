@@ -29,7 +29,7 @@ describe("buildTranslationRequestUrl", () => {
 			buildTranslationRequestUrl("pt-BR", "português (Brasil)"),
 		);
 		expect(url.origin + url.pathname).toBe(
-			"https://github.com/clintongormley/everything-presence-pro-grid/issues/new",
+			"https://github.com/HaniKazmi/everything-presence-pro-grid/issues/new",
 		);
 		expect(url.searchParams.get("template")).toBe("translation_request.md");
 		expect(url.searchParams.get("labels")).toBe("translation");
@@ -58,7 +58,7 @@ describe("epp-language-banner", () => {
 		expect(banner.textContent).toContain("français");
 		const link = el.shadowRoot!.querySelector("a.action") as HTMLAnchorElement;
 		expect(link.getAttribute("href")).toContain(
-			"github.com/clintongormley/everything-presence-pro-grid/issues/new",
+			"github.com/HaniKazmi/everything-presence-pro-grid/issues/new",
 		);
 		expect(link.getAttribute("target")).toBe("_blank");
 	});

@@ -67,7 +67,7 @@ EPP_MODELS = ("Everything Presence Pro", "Everything Presence Lite")
 # fills in from the repository it runs in (firmware/common/epp-core.yaml). The
 # integration can't do the same: HACS ships custom_components/ verbatim, so
 # there is no build step to substitute into.
-GITHUB_OWNER = "clintongormley"
+GITHUB_OWNER = "HaniKazmi"
 GITHUB_REPO = "everything-presence-pro-grid"
 
 # Browser-side firmware artifacts (ESP Web Flasher) — GitHub release

@@ -12,7 +12,7 @@ import {
 	languageDisplayName,
 } from "../localize.js";
 
-const REPO = "clintongormley/everything-presence-pro-grid";
+const REPO = "HaniKazmi/everything-presence-pro-grid";
 
 /** Prefilled new-issue URL for a translation request (region-qualified). */
 export function buildTranslationRequestUrl(
