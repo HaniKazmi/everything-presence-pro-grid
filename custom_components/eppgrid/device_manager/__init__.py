@@ -36,10 +36,12 @@ from ._connection import OtaWatcherState as OtaWatcherState  # re-export for tes
 from ._helpers import ZONE_TYPE_DEFAULTS as ZONE_TYPE_DEFAULTS  # re-export for tests
 from ._helpers import _compare_firmware_version
 from ._helpers import _compute_pipeline
+from ._helpers import _esphome_object_id
 from ._helpers import _extract_host
 from ._helpers import _extract_mac
 from ._helpers import _extract_noise_psk
 from ._helpers import _is_epp_device
+from ._helpers import _is_esphome_entity
 from ._helpers import _raise_service_unavailable as _raise_service_unavailable  # re-export for tests
 from ._helpers import _resolve_zone_name
 from ._helpers import _sync_firmware_repair_issue
@@ -975,14 +977,15 @@ class DeviceManager:
     def _read_sensor_state(
         self, device_id: str | None, suffix: str, *, entries: list[er.RegistryEntry] | None = None
     ) -> str | None:
-        """Read the live state of the ESPHome sensor whose unique_id ends in
-        ``-<suffix>`` on a device.
+        """Read the live state of the ESPHome sensor whose object_id is
+        ``suffix`` on a device.
 
         Shared matcher for `read_firmware_version` and
-        `read_current_connection_count`. The ``-`` separator is part of the
-        match — ESPHome unique_ids are ``{MAC}-{platform}-{object_id}``, and
-        an unanchored suffix would let an unrelated object_id that merely
-        *contains* the suffix (e.g. ``max_current_connections``) false-match.
+        `read_current_connection_count`. Matches by exact object_id equality
+        (via `_esphome_object_id`, which normalises every HA unique_id format),
+        so an unrelated object_id that merely *contains* the suffix (e.g.
+        ``max_current_connections`` vs ``current_connections``) can't
+        false-match.
 
         Returns the state string, or ``None`` when:
           * ``device_id`` is unknown (caller has no device to look up)
@@ -999,7 +1002,7 @@ class DeviceManager:
             ent_reg = er.async_get(self._hass)
             entries = er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True)
         for entry in entries:
-            if entry.platform == "esphome" and entry.domain == "sensor" and entry.unique_id.endswith(f"-{suffix}"):
+            if _is_esphome_entity(entry, "sensor", suffix):
                 state = self._hass.states.get(entry.entity_id)
                 if state is not None and state.state not in (None, "unknown", "unavailable", ""):
                     return state.state
@@ -1047,7 +1050,7 @@ class DeviceManager:
                 continue
             if entry.domain != "sensor":
                 continue
-            if not entry.unique_id.endswith("-firmware_version"):
+            if _esphome_object_id(entry.unique_id) != "firmware_version":
                 continue
             if entry.device_id is None:
                 continue
@@ -1301,8 +1304,7 @@ class DeviceManager:
         # unavailable/unknown — read_firmware_version is the single source
         # of truth for "is this a real firmware version".
         if (
-            entry.domain == "sensor"
-            and entry.unique_id.endswith("-firmware_version")
+            _is_esphome_entity(entry, "sensor", "firmware_version")
             and old_state_value in _FW_OFFLINE_STATES
             and new_state.state not in _FW_OFFLINE_STATES
         ):
@@ -2643,10 +2645,7 @@ class DeviceManager:
             # device that's actually online).
             entries = er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True)
 
-            has_firmware_version = any(
-                e.platform == "esphome" and e.domain == "sensor" and e.unique_id.endswith("-firmware_version")
-                for e in entries
-            )
+            has_firmware_version = any(_is_esphome_entity(e, "sensor", "firmware_version") for e in entries)
 
             # Filter to ESPHome — HA devices can aggregate entities from
             # multiple integrations; a live non-ESPHome sibling shouldn't
@@ -2747,17 +2746,19 @@ class DeviceManager:
         # Build (zone_index, suffix) → RegistryEntry from a single device scan.
         # Previously this method called `_find_zone_entity` 16 times, each time
         # walking the *entire* entity registry, for ~16N work per push.
-        # Anchored `endswith` (not substring) so neighbouring sensors that
-        # happen to contain "zone_3_presence" can't false-match.
+        # Match by exact object_id (via `_esphome_object_id`, format-normalised)
+        # so neighbouring sensors that merely contain "zone_3_presence" can't
+        # false-match.
         zone_entries: dict[tuple[int, str], er.RegistryEntry] = {}
         for entry in er.async_entries_for_device(ent_reg, dev.device_id, include_disabled_entities=True):
             if entry.platform != "esphome":
                 continue
+            object_id = _esphome_object_id(entry.unique_id)
             for i in range(MAX_ZONES + 1):
-                if entry.unique_id.endswith(f"-zone_{i}_presence"):
+                if object_id == f"zone_{i}_presence":
                     zone_entries[(i, "presence")] = entry
                     break
-                if entry.unique_id.endswith(f"-zone_{i}_target_count"):
+                if object_id == f"zone_{i}_target_count":
                     zone_entries[(i, "target_count")] = entry
                     break
 

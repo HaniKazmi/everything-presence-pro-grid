@@ -25,6 +25,7 @@ from ..const import GRID_COLS
 from ..const import GRID_ROWS
 from ..const import STATIC_ON_DELAY_MAX
 from ..const import empty_zone_slots
+from ..device_manager._helpers import _esphome_object_id
 from . import _LOGGER
 from . import CONFIGURATION_DICT_SCHEMA
 from . import ENTITY_ID_SCHEMA
@@ -470,7 +471,8 @@ async def websocket_delete_configuration(
 
 
 # Map ESPHome entity object_ids to frontend entity keys.
-# unique_id format: {MAC}-{platform}-{object_id}
+# Object_ids are extracted from the entity unique_id via `_object_id_from_unique_id`
+# (which normalises every HA unique_id format — see `_esphome_object_id`).
 # Single object_ids map 1:1; prefix patterns (ending with _) match multiple
 # entities (e.g. zone_0_presence, zone_1_presence, ...).
 _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
@@ -507,8 +509,12 @@ _ENTITY_PREFIX_MAP: list[tuple[str, str, str]] = [
 
 
 def _object_id_from_unique_id(unique_id: str) -> str:
-    """Extract the object_id from an ESPHome unique_id (after last '-')."""
-    return unique_id.rsplit("-", 1)[-1] if "-" in unique_id else unique_id
+    """Extract the normalised object_id from an ESPHome unique_id.
+
+    Delegates to `_esphome_object_id`, which handles every HA unique_id format
+    (legacy dash + object_id, and the HA 2026.8+ slash + unmangled name).
+    """
+    return _esphome_object_id(unique_id)
 
 
 def _entity_key_for_object_id(object_id: str) -> str | None:

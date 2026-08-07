@@ -10,6 +10,7 @@ from aioesphomeapi import LogLevel
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from ..const import DOMAIN
 from ..const import EPP_MANUFACTURER
@@ -367,6 +368,62 @@ def _extract_mac(device: dr.DeviceEntry) -> str | None:
         if conn_type == "mac":
             return dr.format_mac(conn_id).upper()
     return None
+
+
+try:
+    # aioesphomeapi ships the canonical object_id derivation (snake_case +
+    # sanitize) — the same transform ESPHome uses to mint object_ids. Reuse it
+    # so this never drifts from upstream.
+    from aioesphomeapi.object_id import compute_object_id as _esphome_compute_object_id
+except ImportError:  # older aioesphomeapi predates object_id.py — keep a local copy
+
+    def _esphome_compute_object_id(name: str) -> str:
+        """Reproduce ESPHome's object_id derivation: snake_case then sanitize."""
+        snake = "".join("_" if c == " " else c.lower() if "A" <= c <= "Z" else c for c in name)
+        return "".join(c if ("a" <= c <= "z" or "0" <= c <= "9" or c in "_-") else "_" for c in snake)
+
+
+def _esphome_object_id(unique_id: str) -> str:
+    """Normalise an ESPHome entity-registry ``unique_id`` to its object_id.
+
+    Home Assistant's ESPHome integration has shipped three unique_id formats:
+
+      * v1 (legacy): ``{mac}-{entity_type}-{object_id}`` — dash-joined, the
+        object_id already ``snake_case`` + ``sanitize``d.
+      * v2: ``{mac}-{entity_type}-{name}`` — dash-joined, unmangled name.
+      * v3 (HA 2026.8+, aioesphomeapi ``build_device_unique_id`` default):
+        ``{mac}/{device_id}/{entity_type}/{name}`` — slash-joined, unmangled
+        name, sub-device id as a path segment.
+
+    For a sub-device entity the v1/v2 forms additionally carry an ``@{device_id}``
+    suffix (``build_device_unique_id`` appends it; v3 already encodes device_id
+    in the path). EPP firmware is a single device (device_id 0) so this never
+    fires in practice, but stripping it keeps the normalisation honest.
+
+    Dropping the ``@{device_id}`` suffix, taking the final segment (after ``/``
+    for v3, else after ``-``) and re-applying :func:`_esphome_compute_object_id`
+    collapses all three formats to the same object_id (``firmware_version``,
+    ``zone_0_presence``, …). The transform is idempotent on an already-mangled
+    v1 object_id, so callers can match on the result regardless of which HA
+    version registered the entity. Match by EQUALITY (not ``endswith``):
+    equality also stops ``max_current_connections`` shadowing
+    ``current_connections``.
+    """
+    head, sep, device_id = unique_id.rpartition("@")
+    if sep and device_id.isdigit():  # HA's "@{device_id}" sub-device suffix (v1/v2)
+        unique_id = head
+    tail = unique_id.rsplit("/", 1)[-1] if "/" in unique_id else unique_id.rsplit("-", 1)[-1]
+    return _esphome_compute_object_id(tail)
+
+
+def _is_esphome_entity(entry: er.RegistryEntry, domain: str, object_id: str) -> bool:
+    """True if ``entry`` is the ESPHome entity for ``object_id`` in ``domain``.
+
+    Centralises the platform/domain/object_id selection rule so every call site
+    matches ESPHome entities the same way — by equality on the format-normalised
+    object_id (see `_esphome_object_id`), never a raw unique_id substring.
+    """
+    return entry.platform == "esphome" and entry.domain == domain and _esphome_object_id(entry.unique_id) == object_id
 
 
 def _extract_host(device: dr.DeviceEntry, config_entry_id: str | None, hass: HomeAssistant) -> str | None:

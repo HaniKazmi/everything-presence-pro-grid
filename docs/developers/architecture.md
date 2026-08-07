@@ -270,8 +270,19 @@ on-demand aioesphomeapi connections for frontend sessions (via
 and on reconnect via temporary connections (separate from the frontend session
 to avoid consuming API slots or racing with UI subscriptions). Manages ESPHome
 zone entity enable/disable/rename. Fetches build flags from firmware on connect.
-Subscribes to device log stream when any log category is set above None,
-re-emitting messages under
+
+ESPHome entities are matched by their **object_id**, never by raw `unique_id`
+substring. HA's ESPHome integration has changed the unique_id format over time —
+legacy `{mac}-{entity_type}-{object_id}` (dash, mangled object_id) vs. the HA
+2026.8+ `{mac}/{device_id}/{entity_type}/{name}` (slash, unmangled name) — so
+any `unique_id.endswith("-firmware_version")`-style match silently breaks on the
+new format (issue #355). `_esphome_object_id()` (in
+`device_manager/_helpers.py`) normalises either format back to the object_id
+(`firmware_version`, `zone_0_presence`, …); all entity matching goes through it
+and compares by equality. Device *identity* (is this an EPP device? what MAC?)
+comes from the HA device registry (`manufacturer`/`model`, MAC connection), not
+the unique_id. Subscribes to device log stream when any log category is set
+above None, re-emitting messages under
 `custom_components.eppgrid.device_manager._connection.device_logs`.
 
 Surfaces firmware-version mismatches via HA's Repairs framework

@@ -7,11 +7,12 @@ from unittest.mock import patch
 
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
 from custom_components.eppgrid.const import DOMAIN
+
+from ._esphome_helpers import add_esphome_source
 
 
 @pytest.fixture(autouse=True)
@@ -39,17 +40,8 @@ async def setup_with_sources(
     config_entry: MockConfigEntry,
     enable_custom_integrations: None,
 ) -> None:
-    er_ = er.async_get(hass)
-    er_.async_get_or_create(
-        "binary_sensor",
-        "esphome",
-        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
-    )
-    er_.async_get_or_create(
-        "binary_sensor",
-        "esphome",
-        "11:22:33:44:55:66-binary_sensor-occupancy",
-    )
+    add_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+    add_esphome_source(hass, "11:22:33:44:55:66", "occupancy")
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
 
@@ -392,7 +384,7 @@ class TestSubscribe:
             "name": "Bedroom Sensor",
             "room_layout": {"zone_slots": [{"type": "default"}, None, {"name": "Desk"}, None, None, None, None, None]},
         }
-        er.async_get(hass).async_get_or_create("binary_sensor", "esphome", f"{mac}-binary_sensor-zone_2_presence")
+        add_esphome_source(hass, mac, "zone_2_presence")
 
         client = await hass_ws_client(hass)
         await client.send_json_auto_id({"type": "eppgrid/subscribe_device_groups"})

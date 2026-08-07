@@ -4,6 +4,18 @@ Each feature page in this user guide ends with a Troubleshooting table covering
 symptoms specific to that area. If you've worked through the relevant one and
 the problem isn't there, open a GitHub issue.
 
+## A flashed device still shows "Flash firmware over USB"
+
+On **Home Assistant 2026.8 and newer**, a device already running Everything
+Presence Pro Grid firmware could be listed under **Flash Firmware** as still
+needing to be flashed over USB — and could be missing from the panel's device
+list, with its zones and settings unavailable. This was caused by a change in
+how Home Assistant 2026.8 labels ESPHome entities internally.
+
+**Fix:** update the integration to **1.7.0 or newer** (HACS → Everything
+Presence Pro Grid → Update), then reload it or restart Home Assistant. The
+device is recognised again with no re-flash needed.
+
 ## Device keeps going unavailable
 
 Each device exposes several diagnostic entities under **Settings → Devices &
