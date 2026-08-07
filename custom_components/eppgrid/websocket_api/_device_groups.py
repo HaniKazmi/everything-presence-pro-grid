@@ -18,6 +18,7 @@ from ..device_groups._projection import SourceState
 from ..device_groups._projection import derive_exposed_entities
 from ..device_groups._registry import build_source_states
 from ..device_groups._registry import zone_name_from_store
+from ..dr_compat import device_by_identifier
 from . import MAC_SCHEMA
 
 _LOGGER = logging.getLogger(__name__)
@@ -281,7 +282,11 @@ async def websocket_delete_device_group(
     from homeassistant.helpers import device_registry as dr
 
     dr_ = dr.async_get(hass)
-    dev = dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{msg['group_id']}")})
+    # Our (eppgrid) config entry owns the group's virtual device; scope the
+    # lookup to it on HA 2026.8+ (single-instance integration, so exactly one).
+    entries = hass.config_entries.async_entries(DOMAIN)
+    entry_id = entries[0].entry_id if entries else None
+    dev = device_by_identifier(dr_, (DOMAIN, f"device_group:{msg['group_id']}"), entry_id)
     if dev is not None:
         dr_.async_remove_device(dev.id)
     connection.send_result(msg["id"], {})

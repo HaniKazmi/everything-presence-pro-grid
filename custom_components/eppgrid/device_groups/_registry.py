@@ -9,12 +9,26 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
+from ..const import DOMAIN
 from ..const import NUM_ZONE_SLOTS
 from ..const import PRESENCE_SLOTS
 from ..device_manager._helpers import _esphome_object_id
 from ..device_manager._helpers import _resolve_zone_name
+from ..dr_compat import device_by_connection
 from ._projection import SourceState
 from ._projection import ZoneState
+
+
+def _esphome_entry_id(hass: HomeAssistant, mac: str) -> str | None:
+    """The ESPHome config-entry id that owns this MAC's device, if known.
+
+    Tracked per device by the DeviceManager. Returns None when the
+    integration/device isn't loaded yet — the caller then falls back to a bare
+    connection lookup, which stays unambiguous because eppgrid never registers a
+    MAC-connection device of its own.
+    """
+    manager = hass.data.get(DOMAIN)
+    return manager.esphome_entry_id_for_mac(mac) if manager is not None else None
 
 
 def zone_name_from_store(store: Any, mac: str, zone_index: int) -> str | None:
@@ -53,7 +67,11 @@ def build_source_index(hass: HomeAssistant, mac: str) -> dict[str, er.RegistryEn
     slash-separated, name-based unique_ids (``{mac}/{device_id}/{type}/{name}``),
     so the object_id is no longer a literal substring of the unique_id.
     """
-    device = dr.async_get(hass).async_get_device(connections={(dr.CONNECTION_NETWORK_MAC, dr.format_mac(mac))})
+    device = device_by_connection(
+        dr.async_get(hass),
+        (dr.CONNECTION_NETWORK_MAC, dr.format_mac(mac)),
+        _esphome_entry_id(hass, mac),
+    )
     if device is None:
         return {}
     ent_reg = er.async_get(hass)

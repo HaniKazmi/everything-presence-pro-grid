@@ -1709,6 +1709,11 @@ class DeviceManager:
         return self._device_id_to_mac.get(device_id)
 
     @callback
+    def esphome_entry_id_for_mac(self, mac: str) -> str | None:
+        """The ESPHome config-entry id owning this mac's device (O(1)), or None."""
+        return getattr(self.devices.get(mac), "esphome_config_entry_id", None)
+
+    @callback
     def note_target_subscribe(self, mac: str, kind: str) -> None:
         """Record one new frontend target-stream subscriber for `mac`.
 

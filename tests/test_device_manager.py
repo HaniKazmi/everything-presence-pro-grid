@@ -9286,6 +9286,22 @@ def test_mac_for_device_id_maps_registry_id_to_mac(hass):
     assert mgr.mac_for_device_id("nope") is None
 
 
+def test_esphome_entry_id_for_mac_maps_mac_to_esphome_entry(hass):
+    """esphome_entry_id_for_mac resolves a mac to its ESPHome config-entry id, else None."""
+    from unittest.mock import MagicMock
+
+    from custom_components.eppgrid.device_manager import DeviceManager
+    from custom_components.eppgrid.device_manager import ManagedDevice
+
+    mgr = DeviceManager(hass, MagicMock())
+    mgr.devices["AA:BB:CC:DD:EE:01"] = ManagedDevice(
+        mac="AA:BB:CC:DD:EE:01", name="LR", esphome_config_entry_id="esph1"
+    )
+
+    assert mgr.esphome_entry_id_for_mac("AA:BB:CC:DD:EE:01") == "esph1"
+    assert mgr.esphome_entry_id_for_mac("nope") is None
+
+
 class TestStateStream:
     """Tests for the durable state-stream record."""
 

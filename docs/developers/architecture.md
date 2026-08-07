@@ -72,6 +72,7 @@ everything-presence-pro-grid/
 │   ├── diagnostics.py           # HA diagnostics dump (entry + per-device snapshots, MAC/host redacted)
 │   ├── repairs.py               # Repairs flow: triggers OTA from firmware_behind_<mac>, polls version sensor
 │   ├── zone_name_translations.py # Zone entity name translation via entity_registry
+│   ├── dr_compat.py             # Device-registry lookup shim: entry-scoped (HA 2026.8+) with 2025.2 fallback
 │   ├── strings.json             # HA UI strings (config flow)
 │   ├── translations/            # HA-managed locale translations
 │   ├── brand/                   # Brand assets (icons)
