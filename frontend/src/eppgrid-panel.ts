@@ -3541,6 +3541,7 @@ export class EPPGridPanel extends LitElement {
               ></epp-kebab-menu>
             </div>
             <epp-live-sidebar
+              .capabilities=${this._devices.find((d) => d.mac === this._selectedMac) ?? {}}
               .sensorState=${this._sensorState}
               .zoneState=${this._zoneState}
               .zoneConfigs=${this._namedZones()}
