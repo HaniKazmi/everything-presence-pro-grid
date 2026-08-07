@@ -550,7 +550,7 @@ Triggers OTA firmware update on a device via the `set_update_manifest` API
 action. Derives the firmware variant (`wifi-ble-co2` or `ethernet-ble-co2`) from
 build flags and constructs the manifest URL from `FIRMWARE_VERSION` using GitHub
 Pages
-(`https://clintongormley.github.io/everything-presence-pro-grid/fw/v{VERSION}/{variant}.json`).
+(`https://hanikazmi.github.io/everything-presence-pro-grid/fw/v{VERSION}/{variant}.json`).
 Uses a temporary connection (not the persistent session).
 
 **Request:** `{ "type": "eppgrid/update_firmware", "mac": str }`

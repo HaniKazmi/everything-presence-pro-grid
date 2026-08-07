@@ -229,7 +229,7 @@ the issue alongside the diagnostics JSON.
 ### 3. File the issue
 
 Open the issue at
-[github.com/clintongormley/everything-presence-pro-grid/issues](https://github.com/clintongormley/everything-presence-pro-grid/issues).
+[github.com/HaniKazmi/everything-presence-pro-grid/issues](https://github.com/HaniKazmi/everything-presence-pro-grid/issues).
 
 Include the following in the issue description:
 

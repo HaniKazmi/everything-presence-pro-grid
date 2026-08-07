@@ -29,7 +29,7 @@ provides fixtures that don't need a real HA instance.
 ## Clone and set up
 
 ```bash
-git clone https://github.com/clintongormley/everything-presence-pro-grid
+git clone https://github.com/HaniKazmi/everything-presence-pro-grid
 cd everything-presence-pro-grid
 
 # Python environment

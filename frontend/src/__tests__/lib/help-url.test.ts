@@ -5,7 +5,7 @@ describe("lib/help-url", () => {
 	describe("DOCS_BASE_URL", () => {
 		it("points at the published mkdocs site and ends with a slash", () => {
 			expect(DOCS_BASE_URL).toBe(
-				"https://clintongormley.github.io/everything-presence-pro-grid/",
+				"https://hanikazmi.github.io/everything-presence-pro-grid/",
 			);
 		});
 	});
