@@ -393,16 +393,25 @@ def _esphome_object_id(unique_id: str) -> str:
       * v2: ``{mac}-{entity_type}-{name}`` — dash-joined, unmangled name.
       * v3 (HA 2026.8+, aioesphomeapi ``build_device_unique_id`` default):
         ``{mac}/{device_id}/{entity_type}/{name}`` — slash-joined, unmangled
-        name, sub-device id embedded.
+        name, sub-device id as a path segment.
 
-    Taking the final segment (after ``/`` for v3, else after ``-``) and
-    re-applying :func:`_esphome_compute_object_id` collapses all three to the
-    same object_id (``firmware_version``, ``zone_0_presence``, …). The
-    transform is idempotent on an already-mangled v1 object_id, so callers can
-    match on the result regardless of which HA version registered the entity.
-    Match by EQUALITY (not ``endswith``): equality also stops
-    ``max_current_connections`` shadowing ``current_connections``.
+    For a sub-device entity the v1/v2 forms additionally carry an ``@{device_id}``
+    suffix (``build_device_unique_id`` appends it; v3 already encodes device_id
+    in the path). EPP firmware is a single device (device_id 0) so this never
+    fires in practice, but stripping it keeps the normalisation honest.
+
+    Dropping the ``@{device_id}`` suffix, taking the final segment (after ``/``
+    for v3, else after ``-``) and re-applying :func:`_esphome_compute_object_id`
+    collapses all three formats to the same object_id (``firmware_version``,
+    ``zone_0_presence``, …). The transform is idempotent on an already-mangled
+    v1 object_id, so callers can match on the result regardless of which HA
+    version registered the entity. Match by EQUALITY (not ``endswith``):
+    equality also stops ``max_current_connections`` shadowing
+    ``current_connections``.
     """
+    head, sep, device_id = unique_id.rpartition("@")
+    if sep and device_id.isdigit():  # HA's "@{device_id}" sub-device suffix (v1/v2)
+        unique_id = head
     tail = unique_id.rsplit("/", 1)[-1] if "/" in unique_id else unique_id.rsplit("-", 1)[-1]
     return _esphome_compute_object_id(tail)
 

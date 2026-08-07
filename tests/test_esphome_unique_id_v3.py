@@ -44,6 +44,10 @@ class TestEsphomeObjectId:
     def test_v3_zone_name_to_object_id(self) -> None:
         assert _esphome_object_id("112233445566/0/binary_sensor/Zone 3 Presence") == "zone_3_presence"
 
+    def test_v1_sub_device_at_suffix_is_stripped(self) -> None:
+        """HA appends ``@{device_id}`` to v1/v2 unique_ids for sub-device entities."""
+        assert _esphome_object_id("112233445566-binary_sensor-zone_3_presence@2") == "zone_3_presence"
+
     def test_equality_does_not_shadow_prefixed_object_id(self) -> None:
         """`current_connections` and `max_current_connections` stay distinct.
 
