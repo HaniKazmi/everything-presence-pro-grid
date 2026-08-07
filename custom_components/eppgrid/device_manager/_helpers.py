@@ -10,6 +10,7 @@ from aioesphomeapi import LogLevel
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from ..const import DOMAIN
 from ..const import EPP_MANUFACTURER
@@ -369,17 +370,17 @@ def _extract_mac(device: dr.DeviceEntry) -> str | None:
     return None
 
 
-def _esphome_compute_object_id(name: str) -> str:
-    """Reproduce ESPHome's object_id derivation from an entity name.
+try:
+    # aioesphomeapi ships the canonical object_id derivation (snake_case +
+    # sanitize) — the same transform ESPHome uses to mint object_ids. Reuse it
+    # so this never drifts from upstream.
+    from aioesphomeapi.object_id import compute_object_id as _esphome_compute_object_id
+except ImportError:  # older aioesphomeapi predates object_id.py — keep a local copy
 
-    ESPHome (and aioesphomeapi) derive an entity's object_id by lower-casing
-    and turning spaces into underscores (``snake_case``), then replacing
-    anything outside ``[a-z0-9_-]`` with ``_`` (``sanitize``). Kept as a local
-    copy — ``aioesphomeapi.object_id`` isn't importable on every HA /
-    aioesphomeapi the integration must run against.
-    """
-    snake = "".join("_" if c == " " else c.lower() if "A" <= c <= "Z" else c for c in name)
-    return "".join(c if ("a" <= c <= "z" or "0" <= c <= "9" or c in "_-") else "_" for c in snake)
+    def _esphome_compute_object_id(name: str) -> str:
+        """Reproduce ESPHome's object_id derivation: snake_case then sanitize."""
+        snake = "".join("_" if c == " " else c.lower() if "A" <= c <= "Z" else c for c in name)
+        return "".join(c if ("a" <= c <= "z" or "0" <= c <= "9" or c in "_-") else "_" for c in snake)
 
 
 def _esphome_object_id(unique_id: str) -> str:
@@ -404,6 +405,16 @@ def _esphome_object_id(unique_id: str) -> str:
     """
     tail = unique_id.rsplit("/", 1)[-1] if "/" in unique_id else unique_id.rsplit("-", 1)[-1]
     return _esphome_compute_object_id(tail)
+
+
+def _is_esphome_entity(entry: er.RegistryEntry, domain: str, object_id: str) -> bool:
+    """True if ``entry`` is the ESPHome entity for ``object_id`` in ``domain``.
+
+    Centralises the platform/domain/object_id selection rule so every call site
+    matches ESPHome entities the same way — by equality on the format-normalised
+    object_id (see `_esphome_object_id`), never a raw unique_id substring.
+    """
+    return entry.platform == "esphome" and entry.domain == domain and _esphome_object_id(entry.unique_id) == object_id
 
 
 def _extract_host(device: dr.DeviceEntry, config_entry_id: str | None, hass: HomeAssistant) -> str | None:

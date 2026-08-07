@@ -41,6 +41,7 @@ from ._helpers import _extract_host
 from ._helpers import _extract_mac
 from ._helpers import _extract_noise_psk
 from ._helpers import _is_epp_device
+from ._helpers import _is_esphome_entity
 from ._helpers import _raise_service_unavailable as _raise_service_unavailable  # re-export for tests
 from ._helpers import _resolve_zone_name
 from ._helpers import _sync_firmware_repair_issue
@@ -1001,11 +1002,7 @@ class DeviceManager:
             ent_reg = er.async_get(self._hass)
             entries = er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True)
         for entry in entries:
-            if (
-                entry.platform == "esphome"
-                and entry.domain == "sensor"
-                and _esphome_object_id(entry.unique_id) == suffix
-            ):
+            if _is_esphome_entity(entry, "sensor", suffix):
                 state = self._hass.states.get(entry.entity_id)
                 if state is not None and state.state not in (None, "unknown", "unavailable", ""):
                     return state.state
@@ -1307,8 +1304,7 @@ class DeviceManager:
         # unavailable/unknown — read_firmware_version is the single source
         # of truth for "is this a real firmware version".
         if (
-            entry.domain == "sensor"
-            and _esphome_object_id(entry.unique_id) == "firmware_version"
+            _is_esphome_entity(entry, "sensor", "firmware_version")
             and old_state_value in _FW_OFFLINE_STATES
             and new_state.state not in _FW_OFFLINE_STATES
         ):
@@ -2649,12 +2645,7 @@ class DeviceManager:
             # device that's actually online).
             entries = er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True)
 
-            has_firmware_version = any(
-                e.platform == "esphome"
-                and e.domain == "sensor"
-                and _esphome_object_id(e.unique_id) == "firmware_version"
-                for e in entries
-            )
+            has_firmware_version = any(_is_esphome_entity(e, "sensor", "firmware_version") for e in entries)
 
             # Filter to ESPHome — HA devices can aggregate entities from
             # multiple integrations; a live non-ESPHome sibling shouldn't

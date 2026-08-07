@@ -39,31 +39,40 @@ def zone_name_from_store(store: Any, mac: str, zone_index: int) -> str | None:
     return _resolve_zone_name("en", index=zone_index, zone_name=name, target_count=False)
 
 
-def resolve_entity_id(hass: HomeAssistant, mac: str, slot: str) -> str | None:
-    """Look up the current entity_id for an EPP source binary sensor.
+def build_source_index(hass: HomeAssistant, mac: str) -> dict[str, er.RegistryEntry]:
+    """Map ``object_id -> RegistryEntry`` for a device's ESPHome binary_sensors.
 
-    Scans the device's ESPHome ``binary_sensor`` entities for the one whose
-    object_id is ``slot`` (e.g. ``occupancy``, ``zone_0_presence``), normalising
-    across HA unique_id formats via `_esphome_object_id`. Returns the entity_id
-    whether enabled or not, or None when there is no such entry.
+    One device lookup + one ``async_entries_for_device`` scan, normalising each
+    entity's object_id across HA unique_id formats via `_esphome_object_id`.
+    Callers that need several slots/zones of the same device build this once and
+    do O(1) lookups — calling `resolve_entity_id` per slot would re-scan the
+    device's entities every time (the aggregator resolves ~180 (mac, slot) pairs
+    per recompute).
 
     A direct unique_id reverse-lookup no longer works: HA 2026.8+ builds
     slash-separated, name-based unique_ids (``{mac}/{device_id}/{type}/{name}``),
     so the object_id is no longer a literal substring of the unique_id.
     """
-    dev_reg = dr.async_get(hass)
-    device = dev_reg.async_get_device(connections={(dr.CONNECTION_NETWORK_MAC, dr.format_mac(mac))})
+    device = dr.async_get(hass).async_get_device(connections={(dr.CONNECTION_NETWORK_MAC, dr.format_mac(mac))})
     if device is None:
-        return None
+        return {}
     ent_reg = er.async_get(hass)
-    for entry in er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True):
-        if (
-            entry.platform == "esphome"
-            and entry.domain == "binary_sensor"
-            and _esphome_object_id(entry.unique_id) == slot
-        ):
-            return entry.entity_id
-    return None
+    return {
+        _esphome_object_id(entry.unique_id): entry
+        for entry in er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True)
+        if entry.platform == "esphome" and entry.domain == "binary_sensor"
+    }
+
+
+def resolve_entity_id(hass: HomeAssistant, mac: str, slot: str) -> str | None:
+    """Current entity_id for an EPP source binary sensor (``slot`` = object_id).
+
+    Single-slot convenience over `build_source_index`; a caller resolving several
+    slots of one device should build the index once instead. Returns the
+    entity_id whether enabled or not, or None when there is no such entry.
+    """
+    entry = build_source_index(hass, mac).get(slot)
+    return entry.entity_id if entry is not None else None
 
 
 def build_source_states(
@@ -81,23 +90,19 @@ def build_source_states(
     and not disabled, so grouping can still mark a disabled/missing zone's output
     unavailable.
     """
-    registry = er.async_get(hass)
     sources: list[SourceState] = []
     for mac in macs:
-        enabled_presence: list[str] = []
-        for slot in PRESENCE_SLOTS:
-            entity_id = resolve_entity_id(hass, mac, slot)
-            entry = registry.async_get(entity_id) if entity_id else None
-            if entry is not None and not entry.disabled:
-                enabled_presence.append(slot)
+        index = build_source_index(hass, mac)
+        enabled_presence: list[str] = [
+            slot for slot in PRESENCE_SLOTS if (entry := index.get(slot)) is not None and not entry.disabled
+        ]
 
         zones: list[ZoneState] = []
         for i in range(NUM_ZONE_SLOTS):  # zone 0 is the "rest of room" zone
             name = zone_name_fn(mac, i)
             if name is None:
                 continue
-            entity_id = resolve_entity_id(hass, mac, f"zone_{i}_presence")
-            entry = registry.async_get(entity_id) if entity_id else None
+            entry = index.get(f"zone_{i}_presence")
             enabled = entry is not None and not entry.disabled
             zones.append(ZoneState(index=i, name=name, enabled=enabled))
 

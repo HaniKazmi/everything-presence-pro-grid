@@ -15,6 +15,9 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.eppgrid.const import EPP_MANUFACTURER
+from custom_components.eppgrid.const import EPP_MODEL
+
 _DEVICE_CACHE_KEY = "_epp_test_esphome_devices"
 
 
@@ -36,8 +39,8 @@ def _get_or_create_device(hass: HomeAssistant, mac: str) -> tuple[MockConfigEntr
         config_entry_id=entry.entry_id,
         connections={(dr.CONNECTION_NETWORK_MAC, key)},
         name=f"EPP {key}",
-        manufacturer="EverythingSmartTechnology",
-        model="Everything Presence Pro",
+        manufacturer=EPP_MANUFACTURER,
+        model=EPP_MODEL,
     )
     cache[key] = (entry, device)
     return entry, device

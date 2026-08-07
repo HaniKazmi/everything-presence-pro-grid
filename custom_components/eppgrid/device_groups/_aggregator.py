@@ -17,7 +17,7 @@ from ..const import NUM_ZONE_SLOTS
 from ..const import PRESENCE_SLOTS
 from ..const import REST_OF_ROOM_ID
 from ._aggregation import or_presence
-from ._registry import resolve_entity_id
+from ._registry import build_source_index
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -130,16 +130,15 @@ class Aggregator:
     def _tracked_entity_ids(self) -> list[str]:
         ids: list[str] = []
         for mac in self._def["sources"]:
+            index = build_source_index(self._hass, mac)
             for slot in PRESENCE_SLOTS:
-                eid = resolve_entity_id(self._hass, mac, slot)
-                if eid:
-                    ids.append(eid)
+                if (entry := index.get(slot)) is not None:
+                    ids.append(entry.entity_id)
             # Track all zone-presence slots (incl. zone 0 "rest of room"); cheap
             # and avoids re-subscribing when the user defines a new zone.
             for i in range(NUM_ZONE_SLOTS):
-                eid = resolve_entity_id(self._hass, mac, f"zone_{i}_presence")
-                if eid:
-                    ids.append(eid)
+                if (entry := index.get(f"zone_{i}_presence")) is not None:
+                    ids.append(entry.entity_id)
         return ids
 
     def _resubscribe(self) -> None:
@@ -198,30 +197,38 @@ class Aggregator:
             tuple(sorted(self.outputs["zone_passthroughs"].items())),
         )
 
-    def _state_of(self, mac: str, slot: str) -> str | None:
-        eid = resolve_entity_id(self._hass, mac, slot)
-        if eid is None:
-            return None
-        st = self._hass.states.get(eid)
-        return st.state if st else None
-
-    def _entity_enabled(self, mac: str, slot: str) -> bool:
+    @staticmethod
+    def _slot_enabled(index: dict[str, er.RegistryEntry], slot: str) -> bool:
         """True if the source entity is registered and not disabled.
 
         Mirrors build_source_states/derive_exposed_entities so the platform
         only materialises helpers for entities the user actually has enabled.
         """
-        eid = resolve_entity_id(self._hass, mac, slot)
-        if eid is None:
-            return False
-        entry = er.async_get(self._hass).async_get(eid)
+        entry = index.get(slot)
         return entry is not None and not entry.disabled
+
+    def _slot_state(self, index: dict[str, er.RegistryEntry], slot: str) -> str | None:
+        entry = index.get(slot)
+        if entry is None:
+            return None
+        st = self._hass.states.get(entry.entity_id)
+        return st.state if st else None
 
     def _recompute_all(self) -> None:
         sources = self._def["sources"]
         excluded_presence = set(self._def.get("excluded_presence", []))
         excluded_zone_keys = {(z["mac"], z["zone_index"]) for z in self._def.get("excluded_zones", [])}
         excluded_zg_ids = set(self._def.get("excluded_zone_groups", []))
+
+        # Resolve every source device's entities ONCE per recompute — one scan
+        # per MAC, then O(1) object_id lookups below. Recompute fires on every
+        # tracked-entity state change, so per-(mac, slot) rescans would be
+        # ~O(slots x macs x entities) per event. Zone-group members can name a
+        # MAC outside `sources`, so index those too.
+        indexes = {mac: build_source_index(self._hass, mac) for mac in sources}
+        for zg in self._def.get("zone_groups", []):
+            for m in zg["members"]:
+                indexes.setdefault(m["mac"], build_source_index(self._hass, m["mac"]))
 
         # Presence: expose a slot only if at least one source has that entity
         # enabled (registered + not disabled), matching derive_exposed_entities,
@@ -230,9 +237,9 @@ class Aggregator:
         for slot in PRESENCE_SLOTS:
             if slot in excluded_presence:
                 continue
-            if not any(self._entity_enabled(m, slot) for m in sources):
+            if not any(self._slot_enabled(indexes[m], slot) for m in sources):
                 continue
-            presence[slot] = or_presence([self._state_of(m, slot) for m in sources])
+            presence[slot] = or_presence([self._slot_state(indexes[m], slot) for m in sources])
 
         # Zone groups (explicit named merges, minus excluded ids).
         zg_state: dict[str, bool | None] = {}
@@ -243,7 +250,7 @@ class Aggregator:
                 # Members stay merged even when the group is excluded, so they
                 # don't fall back to passthroughs.
                 grouped_keys.add((m["mac"], m["zone_index"]))
-                states.append(self._state_of(m["mac"], f"zone_{m['zone_index']}_presence"))
+                states.append(self._slot_state(indexes[m["mac"]], f"zone_{m['zone_index']}_presence"))
             if zg["id"] in excluded_zg_ids:
                 continue
             zg_state[zg["id"]] = or_presence(states)
@@ -258,9 +265,9 @@ class Aggregator:
             # permanently-unavailable sensor.
             ror_states: list[str | None] = []
             for mac in sources:
-                if not self._entity_enabled(mac, "zone_0_presence"):
+                if not self._slot_enabled(indexes[mac], "zone_0_presence"):
                     continue
-                ror_states.append(self._state_of(mac, "zone_0_presence"))
+                ror_states.append(self._slot_state(indexes[mac], "zone_0_presence"))
             if ror_states:
                 zg_state[REST_OF_ROOM_ID] = or_presence(ror_states)
 
@@ -274,11 +281,11 @@ class Aggregator:
                     continue
                 if (mac, i) in excluded_zone_keys:
                     continue
-                if not self._entity_enabled(mac, f"zone_{i}_presence"):
+                if not self._slot_enabled(indexes[mac], f"zone_{i}_presence"):
                     continue
                 if self._zone_name_fn(mac, i) is None:
                     continue
-                passthroughs[(mac, i)] = or_presence([self._state_of(mac, f"zone_{i}_presence")])
+                passthroughs[(mac, i)] = or_presence([self._slot_state(indexes[mac], f"zone_{i}_presence")])
         self.outputs = {
             "presence": presence,
             "zone_groups": zg_state,
