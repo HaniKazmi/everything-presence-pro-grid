@@ -1137,14 +1137,13 @@ looking at it:
     zero the RAM accumulator, then immediately `save_heatmap_to_nvs_()` to
     overwrite the persisted NVS blob too (rather than waiting for the hourly
     persist), and logs `Heatmap cleared (RAM + NVS)`. Invoked by the
-    `epp_clear_heatmap` ESPHome API action
-    (`firmware/common/epp-core.yaml`), which both the HA
-    action `eppgrid.clear_heatmap` and the WS command `eppgrid/clear_heatmap`
-    call via `DeviceConnection.async_clear_heatmap()` — see *HA Actions
-    (Services)* and *Overview Card Commands* in section 3 above. Because it also
-    rewrites NVS, the clear survives a device reboot — unlike Reset, which only
-    zeroes RAM (a subsequent geometry-change reset is always followed by the
-    normal hourly persist).
+    `epp_clear_heatmap` ESPHome API action (`firmware/common/epp-core.yaml`),
+    which both the HA action `eppgrid.clear_heatmap` and the WS command
+    `eppgrid/clear_heatmap` call via `DeviceConnection.async_clear_heatmap()` —
+    see *HA Actions (Services)* and *Overview Card Commands* in section 3 above.
+    Because it also rewrites NVS, the clear survives a device reboot — unlike
+    Reset, which only zeroes RAM (a subsequent geometry-change reset is always
+    followed by the normal hourly persist).
 
 **Build flag:** the accumulator (and the `Heatmap` sensor/`heatmap_interval`
 pipeline field) can be compiled out entirely via `EPP_HEATMAP_ENABLED` (default
