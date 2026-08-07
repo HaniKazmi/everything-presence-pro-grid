@@ -95,6 +95,23 @@ pytest tests/ -x -q --cov=custom_components/eppgrid --cov-fail-under=90
     flasher, diagnostics, config flow).
 - **Coverage floor: 90%.** The hook fails the push if coverage drops below.
 - Uses `pytest-homeassistant-custom-component` for HA fixtures.
+- **CI runs the suite against three HA versions** (floor `2025.2.0`, `stable`,
+    and `dev` from git `main`), and the `nightly.yml` workflow re-runs `stable`
+    and `dev` daily against the latest dependencies. That is what surfaces an
+    upstream release that breaks us — *provided the fixtures exercise the
+    upstream behaviour*.
+- **When a test depends on a format HA or a bundled library produces, build the
+    fixture through that library — never hardcode the string.** Issue #355 (the
+    HA 2026.8 ESPHome `unique_id` format change) reached users despite the
+    nightly `dev` job because every fixture hardcoded the old
+    `{mac}-{type}-{object_id}` form, so upgrading the dependency never fed the
+    integration the new format.
+    `tests/_esphome_helpers.py:installed_esphome_unique_id()` mints unique_ids
+    via the installed `aioesphomeapi` builder at its default version, so the
+    format tracks the library (v1 on the floor, v3 on 2026.8+, whatever ships
+    next) and `tests/test_esphome_unique_id_installed_format.py` fails on the
+    `dev` job if a future format stops normalising. Keep that pattern for any
+    device→integration contract.
 
 ### Frontend
 
