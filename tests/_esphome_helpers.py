@@ -19,20 +19,27 @@ _DEVICE_CACHE_KEY = "_epp_test_esphome_devices"
 
 
 def _get_or_create_device(hass: HomeAssistant, mac: str) -> tuple[MockConfigEntry, dr.DeviceEntry]:
-    """Get-or-create an ESPHome config entry + device for `mac` (cached per MAC)."""
+    """Get-or-create an ESPHome config entry + device for `mac` (cached per MAC).
+
+    Normalise the MAC with `dr.format_mac` for both the cache key and the device
+    connection — exactly as real HA stores CONNECTION_NETWORK_MAC — so callers
+    passing the same MAC in different cases/separators reuse one device and the
+    `dr.format_mac`-based lookups in `resolve_entity_id` resolve it.
+    """
+    key = dr.format_mac(mac)
     cache: dict[str, tuple[MockConfigEntry, dr.DeviceEntry]] = hass.data.setdefault(_DEVICE_CACHE_KEY, {})
-    if mac in cache:
-        return cache[mac]
-    entry = MockConfigEntry(domain="esphome", data={"host": f"host-{mac}"}, title=f"esphome {mac}")
+    if key in cache:
+        return cache[key]
+    entry = MockConfigEntry(domain="esphome", data={"host": f"host-{key}"}, title=f"esphome {key}")
     entry.add_to_hass(hass)
     device = dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
-        connections={(dr.CONNECTION_NETWORK_MAC, mac)},
-        name=f"EPP {mac}",
+        connections={(dr.CONNECTION_NETWORK_MAC, key)},
+        name=f"EPP {key}",
         manufacturer="EverythingSmartTechnology",
         model="Everything Presence Pro",
     )
-    cache[mac] = (entry, device)
+    cache[key] = (entry, device)
     return entry, device
 
 
