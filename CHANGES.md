@@ -4,6 +4,19 @@ User-facing changes to Everything Presence Pro Grid. For full release assets and
 firmware downloads, see the
 [GitHub releases page](https://github.com/clintongormley/everything-presence-pro-grid/releases).
 
+## v1.7.0 — unreleased
+
+### New features
+
+- **Clear the heatmap on demand.** A new `eppgrid.clear_heatmap` action wipes
+    the accumulated heatmap for one or more sensors — target a device, entity,
+    area, or label, or leave the target empty to clear every Everything Presence
+    Pro Grid sensor at once. The card's heatmap setting gains a second toggle
+    option, **Toggle and clear on card**, which adds a Clear button (with a
+    confirmation dialog) next to the heatmap switch so any dashboard viewer can
+    wipe it themselves. Clearing is permanent and survives a device reboot. See
+    [Clearing the heatmap](https://clintongormley.github.io/everything-presence-pro-grid/user-guide/heatmap/#clearing-the-heatmap).
+
 ## v1.6.0 — 2026-07-20
 
 ### New features

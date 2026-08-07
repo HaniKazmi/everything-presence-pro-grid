@@ -233,7 +233,7 @@ describe("eppgrid-card-editor", () => {
 		expect(schema.find((s) => s.name === "show_grid")).toBeTruthy();
 	});
 
-	it("buildSchema has a show_heatmap mode dropdown (off/on/toggle)", () => {
+	it("buildSchema has a show_heatmap mode dropdown (off/on/toggle/toggle_and_clear)", () => {
 		const schema = buildSchema([]) as any[];
 		const entry = schema.find((s) => s.name === "show_heatmap");
 		expect(entry).toBeTruthy();
@@ -242,7 +242,15 @@ describe("eppgrid-card-editor", () => {
 			"off",
 			"on",
 			"toggle",
+			"toggle_and_clear",
 		]);
+	});
+
+	it("show_heatmap select includes the toggle_and_clear option", () => {
+		const schema = buildSchema([]) as any[];
+		const entry = schema.find((s) => s.name === "show_heatmap");
+		const values = entry.selector.select.options.map((o: any) => o.value);
+		expect(values).toContain("toggle_and_clear");
 	});
 
 	it("changing show_heatmap round-trips config-changed with the mode string", () => {

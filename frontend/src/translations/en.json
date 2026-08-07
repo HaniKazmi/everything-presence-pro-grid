@@ -537,6 +537,12 @@
 		"no_device": "Select a device in the card editor.",
 		"nothing_to_show": "Enable the map or sensors to show this card.",
 		"heatmap_toggle": "Heatmap",
+		"clear_heatmap": "Clear heatmap",
+		"clear_heatmap_confirm": "Clear all accumulated heatmap data for this device? This can't be undone.",
+		"clear_heatmap_error": "Couldn't clear the heatmap — the device may be offline.",
+		"clear": "Clear",
+		"cancel": "Cancel",
+		"ok": "OK",
 		"editor": {
 			"device_id": "Device",
 			"primary": "Primary information",

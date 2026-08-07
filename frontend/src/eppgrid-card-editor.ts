@@ -63,6 +63,7 @@ export function buildSchema(
 						{ value: "off", label: "Off" },
 						{ value: "on", label: "On" },
 						{ value: "toggle", label: "Toggle on card" },
+						{ value: "toggle_and_clear", label: "Toggle and clear on card" },
 					],
 				},
 			},

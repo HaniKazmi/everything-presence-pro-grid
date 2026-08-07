@@ -7,12 +7,23 @@ import logging
 import os
 
 import homeassistant.components.frontend as _ha_frontend
+import voluptuous as vol
 from homeassistant.components import panel_custom
 from homeassistant.components.frontend import async_remove_panel
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import ATTR_AREA_ID
+from homeassistant.const import ATTR_DEVICE_ID
+from homeassistant.const import ATTR_ENTITY_ID
+from homeassistant.const import ATTR_LABEL_ID
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.core import ServiceCall
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.service import async_register_admin_service
 
 from .const import CARD_BUNDLE_HASH_KEY
 from .const import CARD_RESOURCE_ID_KEY
@@ -28,6 +39,103 @@ _LOGGER = logging.getLogger(__name__)
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
 CARD_JS = "eppgrid-card.js"
+
+SERVICE_CLEAR_HEATMAP = "clear_heatmap"
+
+CLEAR_HEATMAP_SCHEMA = vol.Schema(
+    {
+        vol.Optional(ATTR_ENTITY_ID): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_DEVICE_ID): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_AREA_ID): vol.All(cv.ensure_list, [cv.string]),
+        vol.Optional(ATTR_LABEL_ID): vol.All(cv.ensure_list, [cv.string]),
+    }
+)
+
+
+def _resolve_target_device_ids(hass: HomeAssistant, call: ServiceCall) -> set[str]:
+    """Expand a service-call target (device/entity/area/label) to device_ids."""
+    dev_reg = dr.async_get(hass)
+    ent_reg = er.async_get(hass)
+    device_ids: set[str] = set()
+
+    device_ids.update(call.data.get(ATTR_DEVICE_ID, []))
+
+    for entity_id in call.data.get(ATTR_ENTITY_ID, []):
+        ent = ent_reg.async_get(entity_id)
+        if ent and ent.device_id:
+            device_ids.add(ent.device_id)
+
+    for area_id in call.data.get(ATTR_AREA_ID, []):
+        for dev in dr.async_entries_for_area(dev_reg, area_id):
+            device_ids.add(dev.id)
+        for ent in er.async_entries_for_area(ent_reg, area_id):
+            if ent.device_id:
+                device_ids.add(ent.device_id)
+
+    for label_id in call.data.get(ATTR_LABEL_ID, []):
+        for dev in dr.async_entries_for_label(dev_reg, label_id):
+            device_ids.add(dev.id)
+        for ent in er.async_entries_for_label(ent_reg, label_id):
+            if ent.device_id:
+                device_ids.add(ent.device_id)
+
+    return device_ids
+
+
+def _has_target(call: ServiceCall) -> bool:
+    # Key PRESENCE, not truthiness: an explicitly-supplied-but-empty target
+    # (e.g. {"device_id": []} from a templated automation) must still count
+    # as "targeted" so it resolves to zero devices and clears nothing — not
+    # fall through to the no-target "clear everything" branch.
+    return any(k in call.data for k in (ATTR_DEVICE_ID, ATTR_ENTITY_ID, ATTR_AREA_ID, ATTR_LABEL_ID))
+
+
+def _async_register_services(hass: HomeAssistant) -> None:
+    """Register the eppgrid.clear_heatmap admin action (idempotent)."""
+    if hass.services.has_service(DOMAIN, SERVICE_CLEAR_HEATMAP):
+        return
+
+    async def _handle_clear_heatmap(call: ServiceCall) -> None:
+        manager = hass.data.get(DOMAIN)
+        if manager is None:
+            raise HomeAssistantError("Integration not loaded")
+
+        if _has_target(call):
+            device_ids = _resolve_target_device_ids(hass, call)
+            targets: list[tuple[str, str]] = []  # (device_id, mac)
+            for device_id in device_ids:
+                mac = manager.mac_for_device_id(device_id)
+                if mac is not None:  # ignore non-eppgrid devices
+                    targets.append((device_id, mac))
+            failed: list[str] = []
+            for device_id, mac in targets:
+                session = manager.get_session(mac)
+                if session is None:
+                    failed.append(device_id)
+                    continue
+                try:
+                    await session.async_clear_heatmap()
+                except Exception:
+                    _LOGGER.exception("clear_heatmap failed for %s", mac)
+                    failed.append(device_id)
+            if failed:
+                raise HomeAssistantError(f"Could not clear the heatmap for: {', '.join(sorted(failed))}")
+        else:
+            # No target → clear all managed devices, skipping unreachable ones.
+            for mac in list(manager.devices.keys()):
+                session = manager.get_session(mac)
+                if session is None:
+                    _LOGGER.debug("clear_heatmap: skipping offline device %s", mac)
+                    continue
+                try:
+                    await session.async_clear_heatmap()
+                except Exception:
+                    _LOGGER.debug("clear_heatmap: skipping %s (execute failed)", mac, exc_info=True)
+
+    async_register_admin_service(
+        hass, DOMAIN, SERVICE_CLEAR_HEATMAP, _handle_clear_heatmap, schema=CLEAR_HEATMAP_SCHEMA
+    )
+
 
 # Key in hass.data marking that the static path has been registered with the
 # HTTP component. Static path registration can only happen once per HA process
@@ -87,6 +195,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await manager.async_start()
         hass.data[DOMAIN] = manager
+        _async_register_services(hass)
         await device_groups_manager.async_start()
         await hass.config_entries.async_forward_entry_setups(entry, [Platform.BINARY_SENSOR])
 
@@ -145,6 +254,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if hasattr(manager, "device_groups"):
             await manager.device_groups.async_stop()
         await manager.async_stop()
+
+    if hass.services.has_service(DOMAIN, SERVICE_CLEAR_HEATMAP):
+        hass.services.async_remove(DOMAIN, SERVICE_CLEAR_HEATMAP)
 
     await async_apply_panel_visibility(hass, False)
     await _unregister_card_resource(hass)

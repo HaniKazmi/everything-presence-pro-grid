@@ -537,6 +537,12 @@
 		"no_device": "Selecciona un dispositivo en el editor de tarjetas.",
 		"nothing_to_show": "Activa el mapa o los sensores para mostrar esta tarjeta.",
 		"heatmap_toggle": "Mapa de calor",
+		"clear_heatmap": "Borrar mapa de calor",
+		"clear_heatmap_confirm": "¿Borrar todos los datos del mapa de calor acumulados de este dispositivo? No se puede deshacer.",
+		"clear_heatmap_error": "No se pudo borrar el mapa de calor: puede que el dispositivo esté sin conexión.",
+		"clear": "Borrar",
+		"cancel": "Cancelar",
+		"ok": "OK",
 		"editor": {
 			"device_id": "Dispositivo",
 			"primary": "Información principal",

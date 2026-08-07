@@ -83,6 +83,10 @@ class EPPComponent : public esphome::Component {
   void set_display_interval(uint32_t ms) { display_interval_ms_ = ms; }
   void set_zone_state_interval(uint32_t ms) { zone_state_interval_ms_ = ms; }
   void set_heatmap_interval(int ms) { heatmap_interval_ms_ = ms < 0 ? 0 : (uint32_t) ms; }
+  // Zero the accumulated heatmap in RAM and overwrite the persisted NVS blob
+  // so the clear survives a reboot (the hourly saver would otherwise only
+  // overwrite once an hour). Invoked by the epp_clear_heatmap API action.
+  void clear_heatmap();
   void set_static_presence_sensor(esphome::binary_sensor::BinarySensor *sensor) {
     static_presence_sensor_ = sensor;
   }
@@ -192,7 +196,7 @@ class EPPComponent : public esphome::Component {
   void save_grid_to_nvs_();
   void save_zones_to_nvs_(const std::string &zones_json);
   void save_relay_to_nvs_();
-  void save_heatmap_to_nvs_();
+  bool save_heatmap_to_nvs_();
 
   // Heatmap
   void reset_heatmap_();

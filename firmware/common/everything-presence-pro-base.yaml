@@ -9,7 +9,7 @@ esphome:
   min_version: "2026.5.3"
   project:
     name: EverythingSmartTechnology.Everything Presence Pro
-    version: "1.6.0"
+    version: "1.7.0"
   on_boot:
     - priority: 200
       then:
@@ -585,6 +585,12 @@ api:
               root["firmware_channel"]  = "${ device_config.firmware_channel }";
               root["model"]             = "${ device_config.model }";
               root["heatmap"]           = EPP_HEATMAP_ENABLED != 0;
+    - action: epp_clear_heatmap
+      then:
+        - lambda: 'id(epp_component).clear_heatmap();'
+        - api.respond:
+            data: !lambda |-
+              root["cleared"] = true;
 
   on_client_connected:
     then:

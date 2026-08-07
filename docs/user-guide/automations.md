@@ -255,6 +255,29 @@ actions:
 
 ```
 
+## Clearing the heatmap
+
+The `eppgrid.clear_heatmap` action wipes the accumulated [heatmap](heatmap.md)
+for one or more sensors — permanently, with no undo. It's an admin-only action,
+meant for Developer tools or an automation you trigger yourself (a schedule, a
+script) rather than for household members — for that, use the dashboard card's
+**Toggle and clear on card** button instead.
+
+Target it at a device, entity, area, or label the same way as any other HA
+action; leave the target empty to clear every Everything Presence Pro Grid
+sensor at once.
+
+```yaml
+action: eppgrid.clear_heatmap
+target:
+  device_id: <your-device-id>
+```
+
+```yaml
+# Clear every Everything Presence Pro Grid sensor's heatmap
+action: eppgrid.clear_heatmap
+```
+
 ## Troubleshooting
 
 | Symptom                                                | Likely cause                                                                                             | Fix                                                                                                     |
