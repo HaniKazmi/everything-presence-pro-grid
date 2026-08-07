@@ -16,6 +16,8 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eppgrid.const import DOMAIN
 
+from ._esphome_helpers import register_esphome_source
+
 
 @pytest.fixture(autouse=True)
 def _stub_frontend_deps(hass):
@@ -43,17 +45,8 @@ async def integration_with_group(
     enable_custom_integrations,
 ) -> dict:
     """Set up the integration with one device group and two fake source entities."""
-    er_ = er.async_get(hass)
-    a = er_.async_get_or_create(
-        "binary_sensor",
-        "esphome",
-        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
-    )
-    b = er_.async_get_or_create(
-        "binary_sensor",
-        "esphome",
-        "11:22:33:44:55:66-binary_sensor-occupancy",
-    )
+    a = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+    b = register_esphome_source(hass, "11:22:33:44:55:66", "occupancy")
     hass.states.async_set(a.entity_id, STATE_OFF)
     hass.states.async_set(b.entity_id, STATE_OFF)
 
@@ -112,11 +105,7 @@ async def test_presence_entity_name_is_translation_driven(
     hardcoded title-cased _attr_name — so `mmwave_presence` renders as
     'mmWave presence', not 'Mmwave Presence'."""
     er_ = er.async_get(hass)
-    src = er_.async_get_or_create(
-        "binary_sensor",
-        "esphome",
-        "AA:BB:CC:DD:EE:FF-binary_sensor-mmwave_presence",
-    )
+    src = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "mmwave_presence")
     hass.states.async_set(src.entity_id, STATE_OFF)
 
     assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -151,29 +140,12 @@ async def test_helper_has_virtual_device_in_registry(hass: HomeAssistant, integr
 async def integration_with_group_and_zones(
     hass: HomeAssistant, config_entry: MockConfigEntry, enable_custom_integrations
 ) -> dict:
-    er_ = er.async_get(hass)
     # Source A: occupancy + zone_2_presence (named "Bed Left")
-    a_occ = er_.async_get_or_create(
-        "binary_sensor",
-        "esphome",
-        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
-    )
-    a_z2 = er_.async_get_or_create(
-        "binary_sensor",
-        "esphome",
-        "AA:BB:CC:DD:EE:FF-binary_sensor-zone_2_presence",
-    )
+    a_occ = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+    a_z2 = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "zone_2_presence")
     # Source B: occupancy + zone_3_presence (named "Bed Right")
-    b_occ = er_.async_get_or_create(
-        "binary_sensor",
-        "esphome",
-        "11:22:33:44:55:66-binary_sensor-occupancy",
-    )
-    b_z3 = er_.async_get_or_create(
-        "binary_sensor",
-        "esphome",
-        "11:22:33:44:55:66-binary_sensor-zone_3_presence",
-    )
+    b_occ = register_esphome_source(hass, "11:22:33:44:55:66", "occupancy")
+    b_z3 = register_esphome_source(hass, "11:22:33:44:55:66", "zone_3_presence")
     for e in (a_occ, a_z2, b_occ, b_z3):
         hass.states.async_set(e.entity_id, STATE_OFF)
 
@@ -313,10 +285,10 @@ async def test_colliding_passthrough_zone_entities_are_source_prefixed(
     projection/preview (e.g. 'Left Bedroom Desk' / 'Right Bedroom Desk')."""
     er_ = er.async_get(hass)
     for mac in ("AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"):
-        occ = er_.async_get_or_create("binary_sensor", "esphome", f"{mac}-binary_sensor-occupancy")
+        occ = register_esphome_source(hass, mac, "occupancy")
         hass.states.async_set(occ.entity_id, STATE_OFF)
-    a_z = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-zone_2_presence")
-    b_z = er_.async_get_or_create("binary_sensor", "esphome", "11:22:33:44:55:66-binary_sensor-zone_3_presence")
+    a_z = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "zone_2_presence")
+    b_z = register_esphome_source(hass, "11:22:33:44:55:66", "zone_3_presence")
     hass.states.async_set(a_z.entity_id, STATE_OFF)
     hass.states.async_set(b_z.entity_id, STATE_OFF)
 
@@ -359,8 +331,8 @@ async def test_merging_a_zone_purges_its_passthrough_entity(
     """Merging a zone into a group must fully remove its old passthrough entity
     from the registry — not leave it lingering as 'unavailable'."""
     er_ = er.async_get(hass)
-    occ = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy")
-    z2 = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-zone_2_presence")
+    occ = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+    z2 = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "zone_2_presence")
     hass.states.async_set(occ.entity_id, STATE_OFF)
     hass.states.async_set(z2.entity_id, STATE_OFF)
 
@@ -400,12 +372,7 @@ async def test_group_area_id_applied_to_device_registry(
     ar_ = ar.async_get(hass)
     area = ar_.async_create("Bedroom")
 
-    er_ = er.async_get(hass)
-    a = er_.async_get_or_create(
-        "binary_sensor",
-        "esphome",
-        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
-    )
+    a = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
     hass.states.async_set(a.entity_id, STATE_OFF)
 
     assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -435,12 +402,7 @@ async def test_clearing_group_area_id_clears_device_registry_area(
     ar_ = ar.async_get(hass)
     area = ar_.async_create("Bedroom")
 
-    er_ = er.async_get(hass)
-    a = er_.async_get_or_create(
-        "binary_sensor",
-        "esphome",
-        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
-    )
+    a = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
     hass.states.async_set(a.entity_id, STATE_OFF)
 
     assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -481,12 +443,7 @@ async def test_presence_change_does_not_overwrite_manual_area(
     """Area reconciliation must happen only on group CRUD, not on every presence
     transition — otherwise a manual area the user sets on the group device gets
     reverted on the next motion event."""
-    er_ = er.async_get(hass)
-    a = er_.async_get_or_create(
-        "binary_sensor",
-        "esphome",
-        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
-    )
+    a = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
     hass.states.async_set(a.entity_id, STATE_OFF)
 
     assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -527,12 +484,7 @@ async def test_late_created_group_device_gets_configured_area(
 
     er_ = er.async_get(hass)
     # Source registered but DISABLED -> no presence slot -> no entity/device yet.
-    a = er_.async_get_or_create(
-        "binary_sensor",
-        "esphome",
-        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
-        disabled_by=er.RegistryEntryDisabler.USER,
-    )
+    a = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "occupancy", disabled=True)
 
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
@@ -600,8 +552,8 @@ async def test_combined_rest_of_room_entity_created_and_ors_zone_zero(
     """The implicit combined Rest of Room is created via the zone-group path with
     id rest_of_room and ORs every source's zone 0."""
     er_ = er.async_get(hass)
-    a0 = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence")
-    b0 = er_.async_get_or_create("binary_sensor", "esphome", "11:22:33:44:55:66-binary_sensor-zone_0_presence")
+    a0 = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "zone_0_presence")
+    b0 = register_esphome_source(hass, "11:22:33:44:55:66", "zone_0_presence")
     hass.states.async_set(a0.entity_id, STATE_OFF)
     hass.states.async_set(b0.entity_id, STATE_OFF)
 
@@ -632,7 +584,7 @@ async def test_no_per_device_zone_zero_passthrough_entity(
     """Per-device zone-0 passthroughs are no longer created — only the combined
     Rest of Room exists."""
     er_ = er.async_get(hass)
-    a0 = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence")
+    a0 = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "zone_0_presence")
     hass.states.async_set(a0.entity_id, STATE_OFF)
 
     assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -654,7 +606,7 @@ async def test_excluding_rest_of_room_removes_its_entity(
     """Adding rest_of_room to excluded_zone_groups (via update) reconciles the
     combined RoR entity away."""
     er_ = er.async_get(hass)
-    a0 = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence")
+    a0 = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "zone_0_presence")
     hass.states.async_set(a0.entity_id, STATE_OFF)
 
     assert await hass.config_entries.async_setup(config_entry.entry_id)
@@ -686,7 +638,7 @@ async def test_excluding_a_presence_slot_removes_its_entity(
     enable_custom_integrations,
 ) -> None:
     er_ = er.async_get(hass)
-    a = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy")
+    a = register_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
     hass.states.async_set(a.entity_id, STATE_OFF)
 
     assert await hass.config_entries.async_setup(config_entry.entry_id)

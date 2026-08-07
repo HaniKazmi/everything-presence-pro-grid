@@ -136,6 +136,43 @@ class TestListFlashableDevices:
         assert len(result) == 1
         assert result[0]["firmware_type"] == "eppgrid"
 
+    async def test_recognises_v3_unique_id_firmware_version(self, hass: HomeAssistant, mock_store) -> None:
+        """HA 2026.8+ (aioesphomeapi version-3 unique_ids) devices are eppgrid.
+
+        The ESPHome entity unique_id format changed from the legacy
+        ``{mac}-{type}-{object_id}`` (dash, object_id) to
+        ``{mac}/{device_id}/{type}/{name}`` (slash, unmangled name). The
+        Firmware Version text sensor is the marker for EPP Grid firmware, so a
+        device carrying it under the new format must still read as ``eppgrid``.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.44"}, title="PoE Office")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={(dr.CONNECTION_NETWORK_MAC, "77:88:99:AA:BB:CC")},
+            name="Everything Presence Pro 99aabb",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+            sw_version="1.6.0",
+        )
+        # Version-3 unique_id: slash-separated, main device_id 0, unmangled name.
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            "778899aabbcc/0/text_sensor/Firmware Version",
+            device_id=device.id,
+            config_entry=esphome_entry,
+        )
+
+        manager = DeviceManager(hass, mock_store)
+        result = await manager.list_flashable_devices()
+
+        assert len(result) == 1
+        assert result[0]["firmware_type"] == "eppgrid"
+
     async def test_ignores_non_epp_esphome_devices(self, hass: HomeAssistant, mock_store) -> None:
         """Non-EPP ESPHome devices are not returned."""
         dev_reg = dr.async_get(hass)

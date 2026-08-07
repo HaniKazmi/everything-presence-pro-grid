@@ -369,6 +369,43 @@ def _extract_mac(device: dr.DeviceEntry) -> str | None:
     return None
 
 
+def _esphome_compute_object_id(name: str) -> str:
+    """Reproduce ESPHome's object_id derivation from an entity name.
+
+    ESPHome (and aioesphomeapi) derive an entity's object_id by lower-casing
+    and turning spaces into underscores (``snake_case``), then replacing
+    anything outside ``[a-z0-9_-]`` with ``_`` (``sanitize``). Kept as a local
+    copy — ``aioesphomeapi.object_id`` isn't importable on every HA /
+    aioesphomeapi the integration must run against.
+    """
+    snake = "".join("_" if c == " " else c.lower() if "A" <= c <= "Z" else c for c in name)
+    return "".join(c if ("a" <= c <= "z" or "0" <= c <= "9" or c in "_-") else "_" for c in snake)
+
+
+def _esphome_object_id(unique_id: str) -> str:
+    """Normalise an ESPHome entity-registry ``unique_id`` to its object_id.
+
+    Home Assistant's ESPHome integration has shipped three unique_id formats:
+
+      * v1 (legacy): ``{mac}-{entity_type}-{object_id}`` — dash-joined, the
+        object_id already ``snake_case`` + ``sanitize``d.
+      * v2: ``{mac}-{entity_type}-{name}`` — dash-joined, unmangled name.
+      * v3 (HA 2026.8+, aioesphomeapi ``build_device_unique_id`` default):
+        ``{mac}/{device_id}/{entity_type}/{name}`` — slash-joined, unmangled
+        name, sub-device id embedded.
+
+    Taking the final segment (after ``/`` for v3, else after ``-``) and
+    re-applying :func:`_esphome_compute_object_id` collapses all three to the
+    same object_id (``firmware_version``, ``zone_0_presence``, …). The
+    transform is idempotent on an already-mangled v1 object_id, so callers can
+    match on the result regardless of which HA version registered the entity.
+    Match by EQUALITY (not ``endswith``): equality also stops
+    ``max_current_connections`` shadowing ``current_connections``.
+    """
+    tail = unique_id.rsplit("/", 1)[-1] if "/" in unique_id else unique_id.rsplit("-", 1)[-1]
+    return _esphome_compute_object_id(tail)
+
+
 def _extract_host(device: dr.DeviceEntry, config_entry_id: str | None, hass: HomeAssistant) -> str | None:
     """Try to extract the host/IP from the ESPHome config entry."""
     if config_entry_id is None:

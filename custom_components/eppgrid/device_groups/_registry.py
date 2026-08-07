@@ -6,10 +6,12 @@ from collections.abc import Callable
 from typing import Any
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from ..const import NUM_ZONE_SLOTS
 from ..const import PRESENCE_SLOTS
+from ..device_manager._helpers import _esphome_object_id
 from ..device_manager._helpers import _resolve_zone_name
 from ._projection import SourceState
 from ._projection import ZoneState
@@ -40,11 +42,28 @@ def zone_name_from_store(store: Any, mac: str, zone_index: int) -> str | None:
 def resolve_entity_id(hass: HomeAssistant, mac: str, slot: str) -> str | None:
     """Look up the current entity_id for an EPP source binary sensor.
 
-    ESPHome unique_id format: `{MAC}-binary_sensor-{slot}`.
-    Returns the entity_id whether enabled or not, or None if no such entry.
+    Scans the device's ESPHome ``binary_sensor`` entities for the one whose
+    object_id is ``slot`` (e.g. ``occupancy``, ``zone_0_presence``), normalising
+    across HA unique_id formats via `_esphome_object_id`. Returns the entity_id
+    whether enabled or not, or None when there is no such entry.
+
+    A direct unique_id reverse-lookup no longer works: HA 2026.8+ builds
+    slash-separated, name-based unique_ids (``{mac}/{device_id}/{type}/{name}``),
+    so the object_id is no longer a literal substring of the unique_id.
     """
-    registry = er.async_get(hass)
-    return registry.async_get_entity_id("binary_sensor", "esphome", f"{mac}-binary_sensor-{slot}")
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get_device(connections={(dr.CONNECTION_NETWORK_MAC, dr.format_mac(mac))})
+    if device is None:
+        return None
+    ent_reg = er.async_get(hass)
+    for entry in er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True):
+        if (
+            entry.platform == "esphome"
+            and entry.domain == "binary_sensor"
+            and _esphome_object_id(entry.unique_id) == slot
+        ):
+            return entry.entity_id
+    return None
 
 
 def build_source_states(

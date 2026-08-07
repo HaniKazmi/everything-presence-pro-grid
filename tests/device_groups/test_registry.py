@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
 
 from custom_components.eppgrid.device_groups._registry import build_source_states
 from custom_components.eppgrid.device_groups._registry import resolve_entity_id
 from custom_components.eppgrid.device_groups._registry import zone_name_from_store
+
+from .._esphome_helpers import add_esphome_source
 
 
 class _FakeStore:
@@ -65,16 +66,7 @@ class TestZoneNameFromStore:
 
 def _add_entity(hass: HomeAssistant, mac: str, slot: str, *, disabled: bool = False) -> str:
     """Register a fake ESPHome binary_sensor with the integration's unique_id pattern."""
-    registry = er.async_get(hass)
-    entry = registry.async_get_or_create(
-        domain="binary_sensor",
-        platform="esphome",
-        unique_id=f"{mac}-binary_sensor-{slot}",
-        original_name=slot.replace("_", " ").title(),
-    )
-    if disabled:
-        registry.async_update_entity(entry.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
-    return entry.entity_id
+    return add_esphome_source(hass, mac, slot, disabled=disabled)
 
 
 class TestResolveEntityId:
@@ -82,6 +74,16 @@ class TestResolveEntityId:
         entity_id = _add_entity(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
         result = resolve_entity_id(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
         assert result == entity_id
+
+    async def test_resolves_v3_slash_name_unique_id(self, hass: HomeAssistant) -> None:
+        """HA 2026.8+ slash/name unique_ids resolve by object_id, not by string.
+
+        The v3 unique_id (``{mac}/0/binary_sensor/Occupancy``) shares no
+        ``-occupancy`` suffix, so resolution must go via the device's MAC and
+        the normalised object_id.
+        """
+        entity_id = add_esphome_source(hass, "AA:BB:CC:DD:EE:FF", "occupancy", unique_id_version=3)
+        assert resolve_entity_id(hass, "AA:BB:CC:DD:EE:FF", "occupancy") == entity_id
 
     async def test_returns_none_for_missing_source(self, hass: HomeAssistant) -> None:
         assert resolve_entity_id(hass, "AA:BB:CC:DD:EE:FF", "occupancy") is None

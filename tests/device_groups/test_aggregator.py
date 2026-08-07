@@ -12,16 +12,11 @@ from homeassistant.helpers import entity_registry as er
 from custom_components.eppgrid.const import REST_OF_ROOM_ID
 from custom_components.eppgrid.device_groups._aggregator import Aggregator
 
+from .._esphome_helpers import add_esphome_source
+
 
 def _register(hass: HomeAssistant, mac: str, slot: str, *, disabled: bool = False) -> str:
-    registry = er.async_get(hass)
-    entry = registry.async_get_or_create(
-        domain="binary_sensor",
-        platform="esphome",
-        unique_id=f"{mac}-binary_sensor-{slot}",
-        disabled_by=er.RegistryEntryDisabler.USER if disabled else None,
-    )
-    return entry.entity_id
+    return add_esphome_source(hass, mac, slot, disabled=disabled)
 
 
 def _set_state(hass: HomeAssistant, entity_id: str, state: str) -> None:

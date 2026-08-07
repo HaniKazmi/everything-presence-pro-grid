@@ -17,6 +17,17 @@ firmware downloads, see the
     wipe it themselves. Clearing is permanent and survives a device reboot. See
     [Clearing the heatmap](https://clintongormley.github.io/everything-presence-pro-grid/user-guide/heatmap/#clearing-the-heatmap).
 
+### Fixes
+
+- **Devices are recognised again on Home Assistant 2026.8 and newer.** After
+    updating Home Assistant to 2026.8, a device already running Everything
+    Presence Pro Grid firmware could be shown as still needing to be *flashed
+    over USB*, and could drop out of the panel entirely — zones, settings, and
+    device groups stopped working with it. Home Assistant 2026.8 changed the way
+    it labels ESPHome entities behind the scenes; the integration now
+    understands both the old and new form. If you are on Home Assistant 2026.8
+    or newer, update the integration to 1.7.0.
+
 ## v1.6.0 — 2026-07-20
 
 ### New features
