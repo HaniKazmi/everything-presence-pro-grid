@@ -21,6 +21,7 @@ from .const import REST_OF_ROOM_ID
 from .const import REST_OF_ROOM_NAME
 from .device_groups._aggregator import Aggregator
 from .device_groups._projection import resolve_name_collisions
+from .dr_compat import device_by_identifier
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up binary_sensor platform for Device Groups."""
     manager = hass.data[DOMAIN]
-    platform_proxy = _PlatformProxy(hass, async_add_entities)
+    platform_proxy = _PlatformProxy(hass, async_add_entities, entry.entry_id)
     manager.device_groups.attach_platform(platform_proxy)
     platform_proxy.sync_all(manager.device_groups.list_groups())
 
@@ -61,9 +62,12 @@ async def async_setup_entry(
 class _PlatformProxy:
     """Tracks created entities; can add/remove on demand."""
 
-    def __init__(self, hass: HomeAssistant, async_add_entities: AddEntitiesCallback) -> None:
+    def __init__(self, hass: HomeAssistant, async_add_entities: AddEntitiesCallback, entry_id: str) -> None:
         self._hass = hass
         self._async_add = async_add_entities
+        # Our (eppgrid) config-entry id — scopes the device-registry lookup on
+        # HA 2026.8+, where identifiers are unique only per config entry.
+        self._entry_id = entry_id
         # unique_id -> entity
         self._entities: dict[str, BinarySensorEntity] = {}
 
@@ -173,7 +177,7 @@ class _PlatformProxy:
         """
         dr_ = dr.async_get(self._hass)
         for g in groups:
-            dev = dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{g['id']}")})
+            dev = device_by_identifier(dr_, (DOMAIN, f"device_group:{g['id']}"), self._entry_id)
             if dev is None:
                 continue
             target = g.get("area_id")
